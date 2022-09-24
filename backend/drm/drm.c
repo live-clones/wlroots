@@ -27,6 +27,7 @@
 #include "render/color.h"
 #include "types/wlr_output.h"
 #include "util/env.h"
+#include "util/trace.h"
 #include "config.h"
 
 #if HAVE_LIBLIFTOFF
@@ -615,6 +616,8 @@ static bool drm_commit(struct wlr_drm_backend *drm,
 	// Disallow atomic-only flags
 	assert((flags & ~DRM_MODE_PAGE_FLIP_FLAGS) == 0);
 
+	wlr_trace("drm_commit");
+
 	struct wlr_drm_page_flip *page_flip = NULL;
 	if (flags & DRM_MODE_PAGE_FLIP_EVENT) {
 		page_flip = drm_page_flip_create(drm, state);
@@ -998,7 +1001,11 @@ static bool drm_connector_test(struct wlr_output *output,
 static bool drm_connector_commit(struct wlr_output *output,
 		const struct wlr_output_state *state) {
 	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
-	return drm_connector_commit_state(conn, state, false);
+	struct wlr_trace_ctx trace_ctx;
+	wlr_trace_begin_ctx(&trace_ctx, "drm_connector_commit");
+	bool ok = drm_connector_commit_state(conn, state, false);
+	wlr_trace_end_ctx(&trace_ctx, "drm_connector_commit");
+	return ok;
 }
 
 size_t drm_crtc_get_gamma_lut_size(struct wlr_drm_backend *drm,
@@ -1984,6 +1991,8 @@ static int mhz_to_nsec(int mhz) {
 static void handle_page_flip(int fd, unsigned seq,
 		unsigned tv_sec, unsigned tv_usec, unsigned crtc_id, void *data) {
 	struct wlr_drm_page_flip *page_flip = data;
+
+	wlr_trace("drm_page_flip_uevent");
 
 	struct wlr_drm_connector *conn = drm_page_flip_pop(page_flip, crtc_id);
 	if (conn != NULL) {
