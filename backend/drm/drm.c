@@ -1593,6 +1593,92 @@ static drmModeModeInfo *connector_get_current_mode(struct wlr_drm_connector *wlr
 	}
 }
 
+static struct wlr_drm_connector *find_drm_connector_by_id(struct wlr_drm_backend *drm, uint32_t id) {
+	struct wlr_drm_connector *conn = NULL;
+	wl_list_for_each(conn, &drm->connectors, link) {
+		if (conn->id == id) {
+			return conn;
+		}
+	}
+	return NULL;
+}
+
+static bool connector_write_root_port(struct wlr_drm_connector *wlr_conn, FILE *f) {
+	struct wlr_drm_backend *drm = wlr_conn->backend;
+
+	size_t seq_num = 0;
+	struct wlr_drm_connector *c;
+	wl_list_for_each(c, &drm->connectors, link) {
+		seq_num++;
+		if (c == wlr_conn) {
+			break;
+		}
+	}
+
+	return fprintf(f, "%s/connector-%zu", drm->bus, seq_num) > 0;
+}
+
+static bool connector_write_port(struct wlr_drm_connector *wlr_conn, FILE *f);
+
+static bool connector_write_nested_port(struct wlr_drm_connector *wlr_conn, FILE *f) {
+	struct wlr_drm_backend *drm = wlr_conn->backend;
+	bool ok = false;
+
+	size_t size = 0;
+	void *path_prop_data = get_drm_prop_blob(drm->fd, wlr_conn->id, wlr_conn->props.path, &size);
+	if (path_prop_data == NULL) {
+		goto out;
+	}
+
+	uint32_t parent_conn_id = 0;
+	const char *child_path = NULL;
+	if (!parse_dp_mst_path(path_prop_data, &parent_conn_id, &child_path)) {
+		goto out;
+	}
+	struct wlr_drm_connector *parent = find_drm_connector_by_id(drm, parent_conn_id);
+	if (parent == NULL) {
+		goto out;
+	}
+
+	if (!connector_write_port(parent, f)) {
+		goto out;
+	}
+
+	ok = fprintf(f, "/mst-%s", child_path) > 0;
+
+out:
+	free(path_prop_data);
+	return ok;
+}
+
+static bool connector_write_port(struct wlr_drm_connector *wlr_conn, FILE *f) {
+	if (wlr_conn->props.path != 0) {
+		return connector_write_nested_port(wlr_conn, f);
+	} else {
+		return connector_write_root_port(wlr_conn, f);
+	}
+}
+
+static char *connector_get_port(struct wlr_drm_connector *wlr_conn) {
+	if (wlr_conn->backend->bus == NULL) {
+		return NULL;
+	}
+
+	char *str = NULL;
+	size_t str_size = 0;
+	FILE *f = open_memstream(&str, &str_size);
+	if (f == NULL) {
+		return NULL;
+	}
+
+	bool ok = connector_write_port(wlr_conn, f);
+	if (fclose(f) != 0 || !ok) {
+		return NULL;
+	}
+
+	return str;
+}
+
 static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 		const drmModeConnector *drm_conn) {
 	struct wlr_drm_backend *drm = wlr_conn->backend;
@@ -1720,6 +1806,9 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	wlr_output_set_description(output, description);
 
 	free(subconnector);
+
+	output->port = connector_get_port(wlr_conn);
+
 	wlr_conn->status = DRM_MODE_CONNECTED;
 	return true;
 }
