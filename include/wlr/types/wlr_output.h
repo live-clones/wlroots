@@ -159,6 +159,7 @@ struct wlr_output {
 	char *name;
 	char *description; // may be NULL
 	char *make, *model, *serial; // may be NULL
+	char *port; // may be NULL
 	int32_t phys_width, phys_height; // mm
 
 	// Note: some backends may have zero modes
