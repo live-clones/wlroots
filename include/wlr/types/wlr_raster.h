@@ -19,9 +19,18 @@ struct wlr_renderer;
 struct wlr_drm_syncobj_timeline;
 struct wlr_surface;
 
+struct wlr_raster_source {
+	struct wlr_texture *texture;
+	struct wl_list link;
+
+	struct wl_listener renderer_destroy;
+};
+
 struct wlr_raster {
 	// May be NULL
 	struct wlr_buffer *buffer;
+
+	struct wl_list sources;
 
 	uint32_t width, height;
 	bool opaque;
@@ -39,7 +48,6 @@ struct wlr_raster {
 
 	struct wl_listener buffer_release;
 
-	struct wlr_texture *texture;
 	struct wl_listener renderer_destroy;
 };
 
