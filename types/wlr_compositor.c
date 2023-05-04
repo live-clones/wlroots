@@ -419,6 +419,10 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 		return;
 	}
 
+	// lock the buffer during the commit so that everything watching the surface
+	// can have a chance to take a look at the buffer.
+	wlr_buffer_lock(surface->current.buffer);
+
 	wl_signal_add(&surface->current.buffer->events.release,
 		&surface->current_buffer_release);
 
@@ -427,6 +431,7 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 	if (surface->buffer != NULL) {
 		if (wlr_client_buffer_apply_damage(surface->buffer,
 				surface->current.buffer, &surface->buffer_damage)) {
+			wlr_surface_consume(surface);
 			return;
 		}
 	}
@@ -437,6 +442,7 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 
 	struct wlr_client_buffer *buffer = wlr_client_buffer_create(
 			surface->current.buffer, surface->compositor->renderer);
+	wlr_surface_consume(surface);
 
 	if (buffer == NULL) {
 		wlr_log(WLR_ERROR, "Failed to upload buffer");
@@ -781,6 +787,15 @@ static void surface_handle_current_buffer_release(struct wl_listener *listener,
 		void *data) {
 	struct wlr_surface *surface = wl_container_of(listener, surface, current_buffer_release);
 	surface_clean_state(surface);
+}
+
+void wlr_surface_consume(struct wlr_surface *surface) {
+	if (surface->consumed || !surface->current.buffer) {
+		return;
+	}
+
+	surface->consumed = true;
+	wlr_buffer_unlock(surface->current.buffer);
 }
 
 static struct wlr_surface *surface_create(struct wl_client *client,
