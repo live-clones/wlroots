@@ -564,6 +564,8 @@ static void surface_commit_state(struct wlr_surface *surface,
 	// released immediately on commit when they are uploaded to the GPU.
 	wlr_buffer_unlock(surface->current.buffer);
 	surface->current.buffer = NULL;
+
+	pixman_region32_clear(&surface->buffer_damage);
 }
 
 static void surface_handle_commit(struct wl_client *client,
