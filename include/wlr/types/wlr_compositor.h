@@ -538,6 +538,12 @@ void wlr_surface_synced_finish(struct wlr_surface_synced *synced);
 void *wlr_surface_synced_get_state(struct wlr_surface_synced *synced,
 	const struct wlr_surface_state *state);
 
+/*
+ * Consumes buffer and damage state of the buffer so that the compositor may
+ * drop references to any of these resources.
+ */
+void wlr_surface_consume(struct wlr_surface *surface);
+
 /**
  * Get a Pixman region from a wl_region resource.
  */
