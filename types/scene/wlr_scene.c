@@ -2087,6 +2087,19 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		return false;
 	}
 
+	// upload all the textures that will be used within this pass before we start
+	// rendering. We need to do this because some of those textures might be
+	// created as part of a multirender blit.
+	for (int i = list_len - 1; i >= 0; i--) {
+		struct render_list_entry *entry = &list_data[i];
+		if (entry->node->type != WLR_SCENE_NODE_BUFFER) {
+			continue;
+		}
+
+		struct wlr_scene_buffer *buffer = wlr_scene_buffer_from_node(entry->node);
+		wlr_raster_create_texture(buffer->raster, output->renderer);
+	}
+
 	render_data.render_pass = render_pass;
 
 	pixman_region32_init(&render_data.damage);
