@@ -120,6 +120,8 @@ struct wlr_drag {
 	struct wlr_surface *focus; // can be NULL
 	struct wlr_data_source *source; // can be NULL
 
+	double sx, sy;
+
 	bool started, dropped, cancelling;
 	int32_t grab_touch_id, touch_id; // if WLR_DRAG_GRAB_TOUCH
 
@@ -209,6 +211,20 @@ void wlr_seat_start_pointer_drag(struct wlr_seat *seat, struct wlr_drag *drag,
  */
 void wlr_seat_start_touch_drag(struct wlr_seat *seat, struct wlr_drag *drag,
 	uint32_t serial, struct wlr_touch_point *point);
+
+void wlr_drag_start(struct wlr_drag *drag);
+
+void wlr_drag_enter(struct wlr_drag *drag, struct wlr_surface *surface,
+	double sx, double sy);
+
+void wlr_drag_clear_focus(struct wlr_drag *drag);
+
+void wlr_drag_send_motion(struct wlr_drag *drag, uint32_t time_msec,
+	double sx, double sy);
+
+void wlr_drag_drop_and_destroy(struct wlr_drag *drag, uint32_t time_msec);
+
+void wlr_drag_destroy(struct wlr_drag *drag);
 
 /**
  * Initializes the data source with the provided implementation.

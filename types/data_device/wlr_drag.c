@@ -19,104 +19,9 @@ static void drag_handle_seat_client_destroy(struct wl_listener *listener,
 	wl_list_remove(&drag->seat_client_destroy.link);
 }
 
-static void drag_set_focus(struct wlr_drag *drag,
-	struct wlr_surface *surface, double sx, double sy);
-
 static void drag_handle_focus_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_drag *drag = wl_container_of(listener, drag, focus_destroy);
-	drag_set_focus(drag, NULL, 0, 0);
-}
-
-static void drag_set_focus(struct wlr_drag *drag,
-		struct wlr_surface *surface, double sx, double sy) {
-	if (drag->focus == surface) {
-		return;
-	}
-
-	if (drag->focus_client) {
-		wl_list_remove(&drag->seat_client_destroy.link);
-
-		// If we're switching focus to another client, we want to destroy all
-		// offers without destroying the source. If the drag operation ends, we
-		// want to keep the offer around for the data transfer.
-		struct wlr_data_offer *offer, *tmp;
-		wl_list_for_each_safe(offer, tmp,
-				&drag->focus_client->seat->drag_offers, link) {
-			struct wl_client *client = wl_resource_get_client(offer->resource);
-			if (!drag->dropped && offer->source == drag->source &&
-					client == drag->focus_client->client) {
-				offer->source = NULL;
-				data_offer_destroy(offer);
-			}
-		}
-
-		struct wl_resource *resource;
-		wl_resource_for_each(resource, &drag->focus_client->data_devices) {
-			wl_data_device_send_leave(resource);
-		}
-
-		drag->focus_client = NULL;
-	}
-
-	wl_list_remove(&drag->focus_destroy.link);
-	wl_list_init(&drag->focus_destroy.link);
-	drag->focus = NULL;
-
-	if (!surface) {
-		goto out;
-	}
-
-	if (!drag->source && drag->seat_client &&
-			wl_resource_get_client(surface->resource) !=
-			drag->seat_client->client) {
-		goto out;
-	}
-
-	struct wlr_seat_client *focus_client = wlr_seat_client_for_wl_client(
-		drag->seat, wl_resource_get_client(surface->resource));
-	if (!focus_client) {
-		goto out;
-	}
-
-	if (drag->source != NULL) {
-		drag->source->accepted = false;
-
-		uint32_t serial =
-			wl_display_next_serial(drag->seat->display);
-
-		struct wl_resource *device_resource;
-		wl_resource_for_each(device_resource, &focus_client->data_devices) {
-			struct wlr_data_offer *offer = data_offer_create(device_resource,
-				drag->source, WLR_DATA_OFFER_DRAG);
-			if (offer == NULL) {
-				wl_resource_post_no_memory(device_resource);
-				return;
-			}
-
-			data_offer_update_action(offer);
-
-			if (wl_resource_get_version(offer->resource) >=
-					WL_DATA_OFFER_SOURCE_ACTIONS_SINCE_VERSION) {
-				wl_data_offer_send_source_actions(offer->resource,
-					drag->source->actions);
-			}
-
-			wl_data_device_send_enter(device_resource, serial,
-				surface->resource,
-				wl_fixed_from_double(sx), wl_fixed_from_double(sy),
-				offer->resource);
-		}
-	}
-
-	drag->focus = surface;
-	drag->focus_client = focus_client;
-	drag->focus_destroy.notify = drag_handle_focus_destroy;
-	wl_signal_add(&surface->events.destroy, &drag->focus_destroy);
-	drag->seat_client_destroy.notify = drag_handle_seat_client_destroy;
-	wl_signal_add(&focus_client->events.destroy, &drag->seat_client_destroy);
-
-out:
-	wl_signal_emit_mutable(&drag->events.focus, drag);
+	wlr_drag_enter(drag, NULL, 0, 0);
 }
 
 static void drag_icon_destroy(struct wlr_drag_icon *icon) {
@@ -126,80 +31,18 @@ static void drag_icon_destroy(struct wlr_drag_icon *icon) {
 	free(icon);
 }
 
-static void drag_destroy(struct wlr_drag *drag) {
-	if (drag->cancelling) {
-		return;
-	}
-	drag->cancelling = true;
-
-	if (drag->started) {
-		wlr_seat_keyboard_end_grab(drag->seat);
-		switch (drag->grab_type) {
-		case WLR_DRAG_GRAB_KEYBOARD:
-			break;
-		case WLR_DRAG_GRAB_KEYBOARD_POINTER:
-			wlr_seat_pointer_end_grab(drag->seat);
-			break;
-		case WLR_DRAG_GRAB_KEYBOARD_TOUCH:
-			wlr_seat_touch_end_grab(drag->seat);
-			break;
-		}
-	}
-
-	if (drag->started) {
-		drag_set_focus(drag, NULL, 0, 0);
-
-		assert(drag->seat->drag == drag);
-		drag->seat->drag = NULL;
-	}
-
-	// We issue destroy after ending the grab to allow focus changes.
-	// Furthermore, we wait until after clearing the drag focus in order
-	// to ensure that the wl_data_device.leave is sent before emitting the
-	// signal. This allows e.g. wl_pointer.enter to be sent in the destroy
-	// signal handler.
-	wl_signal_emit_mutable(&drag->events.destroy, drag);
-
-	if (drag->source) {
-		wl_list_remove(&drag->source_destroy.link);
-	}
-	wl_list_remove(&drag->focus_destroy.link);
-
-	if (drag->icon != NULL) {
-		drag_icon_destroy(drag->icon);
-	}
-	free(drag);
-}
-
 static void drag_handle_pointer_enter(struct wlr_seat_pointer_grab *grab,
 		struct wlr_surface *surface, double sx, double sy) {
-	struct wlr_drag *drag = grab->data;
-	drag_set_focus(drag, surface, sx, sy);
+	wlr_drag_enter(grab->seat->drag, surface, sx, sy);
 }
 
 static void drag_handle_pointer_clear_focus(struct wlr_seat_pointer_grab *grab) {
-	struct wlr_drag *drag = grab->data;
-	drag_set_focus(drag, NULL, 0, 0);
+	wlr_drag_clear_focus(grab->seat->drag);
 }
 
 static void drag_handle_pointer_motion(struct wlr_seat_pointer_grab *grab,
 		uint32_t time, double sx, double sy) {
-	struct wlr_drag *drag = grab->data;
-	if (drag->focus != NULL && drag->focus_client != NULL) {
-		struct wl_resource *resource;
-		wl_resource_for_each(resource, &drag->focus_client->data_devices) {
-			wl_data_device_send_motion(resource, time, wl_fixed_from_double(sx),
-				wl_fixed_from_double(sy));
-		}
-
-		struct wlr_drag_motion_event event = {
-			.drag = drag,
-			.time = time,
-			.sx = sx,
-			.sy = sy,
-		};
-		wl_signal_emit_mutable(&drag->events.motion, &event);
-	}
+	wlr_drag_send_motion(grab->seat->drag, time, sx, sy);
 }
 
 static void drag_drop(struct wlr_drag *drag, uint32_t time) {
@@ -224,26 +67,7 @@ static void drag_drop(struct wlr_drag *drag, uint32_t time) {
 
 static uint32_t drag_handle_pointer_button(struct wlr_seat_pointer_grab *grab,
 		uint32_t time, uint32_t button, uint32_t state) {
-	struct wlr_drag *drag = grab->data;
-
-	if (drag->source &&
-			grab->seat->pointer_state.grab_button == button &&
-			state == WL_POINTER_BUTTON_STATE_RELEASED) {
-		if (drag->focus_client && drag->source->current_dnd_action &&
-				drag->source->accepted) {
-			drag_drop(drag, time);
-		} else if (drag->source->impl->dnd_finish) {
-			// This will end the grab and free `drag`
-			wlr_data_source_destroy(drag->source);
-			return 0;
-		}
-	}
-
-	if (grab->seat->pointer_state.button_count == 0 &&
-			state == WL_POINTER_BUTTON_STATE_RELEASED) {
-		drag_destroy(drag);
-	}
-
+	wlr_drag_drop_and_destroy(grab->seat->drag, time);
 	return 0;
 }
 
@@ -256,7 +80,7 @@ static void drag_handle_pointer_axis(struct wlr_seat_pointer_grab *grab,
 
 static void drag_handle_pointer_cancel(struct wlr_seat_pointer_grab *grab) {
 	struct wlr_drag *drag = grab->data;
-	drag_destroy(drag);
+	wlr_drag_destroy(drag);
 }
 
 static const struct wlr_pointer_grab_interface
@@ -282,36 +106,27 @@ static uint32_t drag_handle_touch_up(struct wlr_seat_touch_grab *grab,
 		return 0;
 	}
 
-	if (drag->focus_client) {
-		drag_drop(drag, time);
-	}
-
-	drag_destroy(drag);
+	wlr_drag_drop_and_destroy(grab->seat->drag, time);
 	return 0;
 }
 
 static void drag_handle_touch_motion(struct wlr_seat_touch_grab *grab,
 		uint32_t time, struct wlr_touch_point *point) {
 	struct wlr_drag *drag = grab->data;
-	if (drag->focus && drag->focus_client) {
-		struct wl_resource *resource;
-		wl_resource_for_each(resource, &drag->focus_client->data_devices) {
-			wl_data_device_send_motion(resource, time,
-				wl_fixed_from_double(point->sx),
-				wl_fixed_from_double(point->sy));
-		}
+	if (drag->grab_touch_id != point->touch_id) {
+		return;
 	}
+	wlr_drag_send_motion(grab->seat->drag, time, point->sx, point->sy);
 }
 
 static void drag_handle_touch_enter(struct wlr_seat_touch_grab *grab,
 		uint32_t time, struct wlr_touch_point *point) {
-	struct wlr_drag *drag = grab->data;
-	drag_set_focus(drag, point->focus_surface, point->sx, point->sy);
+	wlr_drag_enter(grab->seat->drag, point->focus_surface, point->sx, point->sy);
 }
 
 static void drag_handle_touch_cancel(struct wlr_seat_touch_grab *grab) {
 	struct wlr_drag *drag = grab->data;
-	drag_destroy(drag);
+	wlr_drag_destroy(drag);
 }
 
 static const struct wlr_touch_grab_interface
@@ -347,7 +162,7 @@ static void drag_handle_keyboard_modifiers(struct wlr_seat_keyboard_grab *grab,
 
 static void drag_handle_keyboard_cancel(struct wlr_seat_keyboard_grab *grab) {
 	struct wlr_drag *drag = grab->data;
-	drag_destroy(drag);
+	wlr_drag_destroy(drag);
 }
 
 static const struct wlr_keyboard_grab_interface
@@ -368,7 +183,7 @@ static void drag_handle_icon_destroy(struct wl_listener *listener, void *data) {
 static void drag_handle_drag_source_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_drag *drag = wl_container_of(listener, drag, source_destroy);
-	drag_destroy(drag);
+	wlr_drag_destroy(drag);
 }
 
 static void drag_icon_surface_role_client_commit(struct wlr_surface *surface) {
@@ -495,24 +310,9 @@ static void seat_handle_drag_source_destroy(struct wl_listener *listener,
 void wlr_seat_start_drag(struct wlr_seat *seat, struct wlr_drag *drag,
 		uint32_t serial) {
 	assert(drag->seat == seat);
-	assert(!drag->started);
-	drag->started = true;
 
-	wlr_seat_keyboard_start_grab(seat, &drag->keyboard_grab);
-
-	seat->drag = drag;
-	seat->drag_serial = serial;
-
-	// We need to destroy the previous source, because listeners only expect one
-	// active drag source at a time.
-	wlr_data_source_destroy(seat->drag_source);
-	seat->drag_source = drag->source;
-	if (drag->source != NULL) {
-		seat->drag_source_destroy.notify = seat_handle_drag_source_destroy;
-		wl_signal_add(&drag->source->events.destroy, &seat->drag_source_destroy);
-	}
-
-	wl_signal_emit_mutable(&seat->events.start_drag, drag);
+	drag->seat->drag_serial = serial;
+	wlr_drag_start(drag);
 }
 
 void wlr_seat_start_pointer_drag(struct wlr_seat *seat, struct wlr_drag *drag,
@@ -532,7 +332,217 @@ void wlr_seat_start_touch_drag(struct wlr_seat *seat, struct wlr_drag *drag,
 	drag->touch_id = point->touch_id;
 
 	wlr_seat_touch_start_grab(seat, &drag->touch_grab);
-	drag_set_focus(drag, point->surface, point->sx, point->sy);
+	wlr_drag_enter(drag, point->surface, point->sx, point->sy);
 
 	wlr_seat_start_drag(seat, drag, serial);
+}
+
+void wlr_drag_start(struct wlr_drag *drag) {
+	assert(!drag->started);
+	drag->started = true;
+
+	struct wlr_seat *seat = drag->seat;
+
+	wlr_seat_keyboard_start_grab(seat, &drag->keyboard_grab);
+
+	seat->drag = drag;
+
+	// We need to destroy the previous source, because listeners only expect one
+	// active drag source at a time.
+	wlr_data_source_destroy(seat->drag_source);
+	seat->drag_source = drag->source;
+	if (drag->source != NULL) {
+		seat->drag_source_destroy.notify = seat_handle_drag_source_destroy;
+		wl_signal_add(&drag->source->events.destroy, &seat->drag_source_destroy);
+	}
+
+	wl_signal_emit_mutable(&seat->events.start_drag, drag);
+}
+
+void wlr_drag_enter(struct wlr_drag *drag, struct wlr_surface *surface,
+		double sx, double sy) {
+	if (drag->focus == surface) {
+		return;
+	}
+
+	if (drag->focus_client) {
+		wl_list_remove(&drag->seat_client_destroy.link);
+
+		// If we're switching focus to another client, we want to destroy all
+		// offers without destroying the source. If the drag operation ends, we
+		// want to keep the offer around for the data transfer.
+		struct wlr_data_offer *offer, *tmp;
+		wl_list_for_each_safe(offer, tmp,
+				&drag->focus_client->seat->drag_offers, link) {
+			struct wl_client *client = wl_resource_get_client(offer->resource);
+			if (!drag->dropped && offer->source == drag->source &&
+					client == drag->focus_client->client) {
+				offer->source = NULL;
+				data_offer_destroy(offer);
+			}
+		}
+
+		struct wl_resource *resource;
+		wl_resource_for_each(resource, &drag->focus_client->data_devices) {
+			wl_data_device_send_leave(resource);
+		}
+
+		drag->focus_client = NULL;
+	}
+
+	wl_list_remove(&drag->focus_destroy.link);
+	wl_list_init(&drag->focus_destroy.link);
+	drag->focus = NULL;
+	drag->sx = NAN;
+	drag->sy = NAN;
+
+	if (!surface) {
+		goto out;
+	}
+
+	if (!drag->source && drag->seat_client &&
+			wl_resource_get_client(surface->resource) !=
+			drag->seat_client->client) {
+		goto out;
+	}
+
+	struct wlr_seat_client *focus_client = wlr_seat_client_for_wl_client(
+		drag->seat, wl_resource_get_client(surface->resource));
+	if (!focus_client) {
+		goto out;
+	}
+
+	if (drag->source != NULL) {
+		drag->source->accepted = false;
+
+		uint32_t serial =
+			wl_display_next_serial(drag->seat->display);
+
+		struct wl_resource *device_resource;
+		wl_resource_for_each(device_resource, &focus_client->data_devices) {
+			struct wlr_data_offer *offer = data_offer_create(device_resource,
+				drag->source, WLR_DATA_OFFER_DRAG);
+			if (offer == NULL) {
+				wl_resource_post_no_memory(device_resource);
+				return;
+			}
+
+			data_offer_update_action(offer);
+
+			if (wl_resource_get_version(offer->resource) >=
+					WL_DATA_OFFER_SOURCE_ACTIONS_SINCE_VERSION) {
+				wl_data_offer_send_source_actions(offer->resource,
+					drag->source->actions);
+			}
+
+			wl_data_device_send_enter(device_resource, serial,
+				surface->resource,
+				wl_fixed_from_double(sx), wl_fixed_from_double(sy),
+				offer->resource);
+		}
+	}
+
+	drag->focus = surface;
+	drag->sx = sx;
+	drag->sy = sy;
+
+	drag->focus_client = focus_client;
+	drag->focus_destroy.notify = drag_handle_focus_destroy;
+	wl_signal_add(&surface->events.destroy, &drag->focus_destroy);
+	drag->seat_client_destroy.notify = drag_handle_seat_client_destroy;
+	wl_signal_add(&focus_client->events.destroy, &drag->seat_client_destroy);
+
+out:
+	wl_signal_emit_mutable(&drag->events.focus, drag);
+}
+
+void wlr_drag_clear_focus(struct wlr_drag *drag) {
+	wlr_drag_enter(drag, NULL, 0, 0);
+}
+
+void wlr_drag_send_motion(struct wlr_drag *drag, uint32_t time_msec,
+		double sx, double sy) {
+	if (drag->focus != NULL && drag->focus_client != NULL) {
+		// Ensure we don't send duplicate motion events. Instead of comparing
+		// with an epsilon, chop off some precision by converting to a
+		// `wl_fixed_t` first, since that is what a client receives.
+		wl_fixed_t sx_fixed = wl_fixed_from_double(sx);
+		wl_fixed_t sy_fixed = wl_fixed_from_double(sy);
+		if (wl_fixed_from_double(drag->sx) != sx_fixed ||
+				wl_fixed_from_double(drag->sy) != sy_fixed) {
+			struct wl_resource *resource;
+			wl_resource_for_each(resource, &drag->focus_client->data_devices) {
+				wl_data_device_send_motion(resource, time_msec, sx_fixed, sy_fixed);
+			}
+		}
+
+		struct wlr_drag_motion_event event = {
+			.drag = drag,
+			.time = time_msec,
+			.sx = sx,
+			.sy = sy,
+		};
+		wl_signal_emit_mutable(&drag->events.motion, &event);
+	}
+}
+
+void wlr_drag_drop_and_destroy(struct wlr_drag *drag, uint32_t time_msec) {
+	if (drag->source != NULL) {
+		if (drag->focus_client != NULL &&
+				drag->source->current_dnd_action != WL_DATA_DEVICE_MANAGER_DND_ACTION_NONE &&
+				drag->source->accepted) {
+			drag_drop(drag, time_msec);
+		} else if (drag->source->impl->dnd_finish != NULL) {
+			// This will call drag_destroy()
+			wlr_data_source_destroy(drag->source);
+			return;
+		}
+	}
+
+	wlr_drag_destroy(drag);
+}
+
+void wlr_drag_destroy(struct wlr_drag *drag) {
+	if (drag == NULL || drag->cancelling) {
+		return;
+	}
+	drag->cancelling = true;
+
+	if (drag->started) {
+		wlr_seat_keyboard_end_grab(drag->seat);
+		switch (drag->grab_type) {
+		case WLR_DRAG_GRAB_KEYBOARD:
+			break;
+		case WLR_DRAG_GRAB_KEYBOARD_POINTER:
+			wlr_seat_pointer_end_grab(drag->seat);
+			break;
+		case WLR_DRAG_GRAB_KEYBOARD_TOUCH:
+			wlr_seat_touch_end_grab(drag->seat);
+			break;
+		}
+	}
+
+	if (drag->started) {
+		wlr_drag_clear_focus(drag->seat->drag);
+
+		assert(drag->seat->drag == drag);
+		drag->seat->drag = NULL;
+	}
+
+	// We issue destroy after ending the grab to allow focus changes.
+	// Furthermore, we wait until after clearing the drag focus in order
+	// to ensure that the wl_data_device.leave is sent before emitting the
+	// signal. This allows e.g. wl_pointer.enter to be sent in the destroy
+	// signal handler.
+	wl_signal_emit_mutable(&drag->events.destroy, drag);
+
+	if (drag->source) {
+		wl_list_remove(&drag->source_destroy.link);
+	}
+	wl_list_remove(&drag->focus_destroy.link);
+
+	if (drag->icon != NULL) {
+		drag_icon_destroy(drag->icon);
+	}
+	free(drag);
 }
