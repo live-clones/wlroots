@@ -224,6 +224,7 @@ struct wlr_scene_output {
 	struct wlr_output *output;
 	struct wl_list link; // wlr_scene.outputs
 	struct wlr_scene *scene;
+	struct wlr_frame_scheduler *frame_scheduler;
 	struct wlr_addon addon;
 
 	struct wlr_damage_ring damage_ring;
@@ -258,7 +259,6 @@ struct wlr_scene_output {
 
 		struct wl_listener output_commit;
 		struct wl_listener output_damage;
-		struct wl_listener output_needs_frame;
 
 		struct wl_list damage_highlight_regions;
 

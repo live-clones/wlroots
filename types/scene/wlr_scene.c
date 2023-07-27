@@ -8,6 +8,7 @@
 #include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_damage_ring.h>
+#include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -362,7 +363,7 @@ static void scene_output_damage(struct wlr_scene_output *scene_output,
 	pixman_region32_intersect_rect(&clipped, damage, 0, 0, output->width, output->height);
 
 	if (!pixman_region32_empty(&clipped)) {
-		wlr_output_schedule_frame(scene_output->output);
+		wlr_frame_scheduler_schedule_frame(scene_output->frame_scheduler);
 		wlr_damage_ring_add(&scene_output->damage_ring, &clipped);
 
 		pixman_region32_union(&scene_output->pending_commit_damage,
@@ -1576,7 +1577,7 @@ static void scene_handle_gamma_control_manager_v1_set_gamma(struct wl_listener *
 	output->gamma_lut = event->control;
 	wlr_color_transform_unref(output->gamma_lut_color_transform);
 	output->gamma_lut_color_transform = wlr_gamma_control_v1_get_color_transform(event->control);
-	wlr_output_schedule_frame(output->output);
+	wlr_frame_scheduler_schedule_frame(output->frame_scheduler);
 }
 
 static void scene_handle_gamma_control_manager_v1_destroy(struct wl_listener *listener,
@@ -1691,7 +1692,7 @@ static void scene_output_handle_commit(struct wl_listener *listener, void *data)
 
 	if (scene_output->scene->debug_damage_option == WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT &&
 			!wl_list_empty(&scene_output->damage_highlight_regions)) {
-		wlr_output_schedule_frame(scene_output->output);
+		wlr_frame_scheduler_schedule_frame(scene_output->frame_scheduler);
 	}
 
 	// Next time the output is enabled, try to re-apply the gamma LUT
@@ -1720,16 +1721,16 @@ static void scene_output_handle_damage(struct wl_listener *listener, void *data)
 	pixman_region32_fini(&damage);
 }
 
-static void scene_output_handle_needs_frame(struct wl_listener *listener, void *data) {
-	struct wlr_scene_output *scene_output = wl_container_of(listener,
-		scene_output, output_needs_frame);
-	wlr_output_schedule_frame(scene_output->output);
-}
-
 struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 		struct wlr_output *output) {
 	struct wlr_scene_output *scene_output = calloc(1, sizeof(*scene_output));
 	if (scene_output == NULL) {
+		return NULL;
+	}
+
+	scene_output->frame_scheduler = wlr_frame_scheduler_autocreate(output);
+	if (scene_output->frame_scheduler == NULL) {
+		free(scene_output);
 		return NULL;
 	}
 
@@ -1778,9 +1779,6 @@ struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 	scene_output->output_damage.notify = scene_output_handle_damage;
 	wl_signal_add(&output->events.damage, &scene_output->output_damage);
 
-	scene_output->output_needs_frame.notify = scene_output_handle_needs_frame;
-	wl_signal_add(&output->events.needs_frame, &scene_output->output_needs_frame);
-
 	scene_output_update_geometry(scene_output, false);
 
 	return scene_output;
@@ -1810,12 +1808,12 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
 	}
 
 	wlr_addon_finish(&scene_output->addon);
+	wlr_frame_scheduler_destroy(scene_output->frame_scheduler);
 	wlr_damage_ring_finish(&scene_output->damage_ring);
 	pixman_region32_fini(&scene_output->pending_commit_damage);
 	wl_list_remove(&scene_output->link);
 	wl_list_remove(&scene_output->output_commit.link);
 	wl_list_remove(&scene_output->output_damage.link);
-	wl_list_remove(&scene_output->output_needs_frame.link);
 	if (scene_output->in_timeline != NULL) {
 		wlr_drm_syncobj_timeline_signal(scene_output->in_timeline, UINT64_MAX);
 		wlr_drm_syncobj_timeline_unref(scene_output->in_timeline);
