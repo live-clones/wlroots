@@ -220,8 +220,6 @@ struct wlr_output {
 	bool adaptive_sync_supported;
 
 	bool needs_frame;
-	// damage for cursors and fullscreen surface, in output-local coordinates
-	bool frame_pending;
 
 	// true for example with VR headsets
 	bool non_desktop;
@@ -230,8 +228,6 @@ struct wlr_output {
 	uint32_t commit_seq;
 
 	struct {
-		// Request to render a frame
-		struct wl_signal frame;
 		// Emitted when software cursors or backend-specific logic damage the
 		// output
 		struct wl_signal damage; // struct wlr_output_event_damage
@@ -252,7 +248,6 @@ struct wlr_output {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_event_source *idle_frame;
 	struct wl_event_source *idle_done;
 
 	int attach_render_locks; // number of locks forcing rendering
@@ -406,11 +401,6 @@ bool wlr_output_test_state(struct wlr_output *output,
  */
 bool wlr_output_commit_state(struct wlr_output *output,
 	const struct wlr_output_state *state);
-/**
- * Manually schedules a `frame` event. If a `frame` event is already pending,
- * it is a no-op.
- */
-void wlr_output_schedule_frame(struct wlr_output *output);
 /**
  * Returns the maximum length of each gamma ramp, or 0 if unsupported.
  */

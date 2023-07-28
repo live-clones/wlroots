@@ -367,7 +367,7 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 	wl_list_init(&output->layers);
 	wl_list_init(&output->resources);
 
-	wl_signal_init(&output->events.frame);
+
 	wl_signal_init(&output->events.damage);
 	wl_signal_init(&output->events.needs_frame);
 	wl_signal_init(&output->events.precommit);
@@ -397,7 +397,6 @@ void wlr_output_finish(struct wlr_output *output) {
 	wl_signal_emit_mutable(&output->events.destroy, output);
 	wlr_addon_set_finish(&output->addons);
 
-	assert(wl_list_empty(&output->events.frame.listener_list));
 	assert(wl_list_empty(&output->events.damage.listener_list));
 	assert(wl_list_empty(&output->events.needs_frame.listener_list));
 	assert(wl_list_empty(&output->events.precommit.listener_list));
@@ -429,10 +428,6 @@ void wlr_output_finish(struct wlr_output *output) {
 	wlr_color_transform_unref(output->color_transform);
 
 	wlr_swapchain_destroy(output->swapchain);
-
-	if (output->idle_frame != NULL) {
-		wl_event_source_remove(output->idle_frame);
-	}
 
 	if (output->idle_done != NULL) {
 		wl_event_source_remove(output->idle_done);
@@ -763,12 +758,6 @@ bool output_prepare_commit(struct wlr_output *output, const struct wlr_output_st
 		return false;
 	}
 
-	if ((state->committed & WLR_OUTPUT_STATE_BUFFER) &&
-			output->idle_frame != NULL) {
-		wl_event_source_remove(output->idle_frame);
-		output->idle_frame = NULL;
-	}
-
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
 
@@ -786,7 +775,6 @@ void output_apply_commit(struct wlr_output *output, const struct wlr_output_stat
 	output->commit_seq++;
 
 	if (output_pending_enabled(output, state)) {
-		output->frame_pending = true;
 		output->needs_frame = false;
 	}
 
@@ -842,38 +830,6 @@ bool wlr_output_commit_state(struct wlr_output *output,
 	}
 
 	return true;
-}
-
-void wlr_output_send_frame(struct wlr_output *output) {
-	output->frame_pending = false;
-	if (output->enabled) {
-		wl_signal_emit_mutable(&output->events.frame, output);
-	}
-}
-
-static void schedule_frame_handle_idle_timer(void *data) {
-	struct wlr_output *output = data;
-	output->idle_frame = NULL;
-	if (!output->frame_pending) {
-		wlr_output_send_frame(output);
-	}
-}
-
-void wlr_output_schedule_frame(struct wlr_output *output) {
-	// Make sure the compositor commits a new frame. This is necessary to make
-	// clients which ask for frame callbacks without submitting a new buffer
-	// work.
-	// TODO(rose): figure out why
-	wlr_output_update_needs_frame(output);
-
-	if (output->frame_pending || output->idle_frame != NULL) {
-		return;
-	}
-
-	// We're using an idle timer here in case a buffer swap happens right after
-	// this function is called
-	output->idle_frame = wl_event_loop_add_idle(output->event_loop,
-		schedule_frame_handle_idle_timer, output);
 }
 
 void wlr_output_send_present(struct wlr_output *output,
