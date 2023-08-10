@@ -1,11 +1,15 @@
 #include <assert.h>
 #include <stdlib.h>
+#include <types/wlr_output.h>
+#include <wayland-client-protocol.h>
 #include <wayland-server-core.h>
 #include <wayland-util.h>
+#include <wlr/backend/wayland.h>
 #include <wlr/interfaces/wlr_frame_scheduler.h>
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/util/log.h>
 
 void wlr_frame_scheduler_schedule_frame(struct wlr_frame_scheduler *scheduler) {
 	scheduler->needs_frame = true;
@@ -149,6 +153,73 @@ struct wlr_frame_scheduler *wlr_present_scheduler_create(struct wlr_output *outp
 	return &scheduler->base.base;
 }
 
+// This scheduler builds on idle_frame_scheduler and uses Wayland's frame callbacks for driving the
+// render loop.
+struct wl_scheduler {
+	struct idle_frame_scheduler base;
+	struct wl_callback *frame;
+	struct wl_listener precommit;
+};
+
+static void wl_scheduler_destroy(struct wlr_frame_scheduler *wlr_scheduler) {
+	struct wl_scheduler *scheduler = wl_container_of(wlr_scheduler, scheduler, base.base);
+	idle_frame_scheduler_finish(&scheduler->base);
+	wl_list_remove(&scheduler->precommit.link);
+	wl_callback_destroy(scheduler->frame);
+	free(scheduler);
+}
+
+static void wl_scheduler_handle_frame(void *data, struct wl_callback *cb, uint32_t time) {
+	struct wl_scheduler *scheduler = data;
+	assert(scheduler->frame == cb);
+	idle_frame_scheduler_emit_frame(&scheduler->base);
+}
+
+static const struct wl_callback_listener wl_scheduler_frame_listener = {
+	.done = wl_scheduler_handle_frame,
+};
+
+static void wl_scheduler_handle_precommit(struct wl_listener *listener, void *data) {
+	struct wl_scheduler *scheduler = wl_container_of(listener, scheduler, precommit);
+	struct wlr_output_event_precommit *precommit = data;
+	if (!output_pending_enabled(precommit->output, precommit->state)) {
+		return;
+	}
+	idle_frame_scheduler_set_frame_pending(&scheduler->base);
+	if (scheduler->frame != NULL) {
+		wl_callback_destroy(scheduler->frame);
+	}
+	struct wl_surface *surface = wlr_wl_output_get_surface(scheduler->base.base.output);
+	scheduler->frame = wl_surface_frame(surface);
+	wl_callback_add_listener(scheduler->frame, &wl_scheduler_frame_listener, scheduler);
+}
+
+static const struct wlr_frame_scheduler_impl wl_scheduler_impl = {
+	.schedule_frame = idle_frame_scheduler_schedule_frame,
+	.destroy = wl_scheduler_destroy,
+};
+
+static struct wlr_frame_scheduler *wl_scheduler_create(struct wlr_output *output) {
+	if (!wlr_output_is_wl(output)) {
+		return NULL;
+	}
+
+	struct wl_scheduler *scheduler = calloc(1, sizeof(*scheduler));
+	if (!scheduler) {
+		return NULL;
+	}
+	wlr_frame_scheduler_init(&scheduler->base.base, &wl_scheduler_impl, output);
+	scheduler->precommit.notify = wl_scheduler_handle_precommit;
+	wl_signal_add(&output->events.precommit, &scheduler->precommit);
+
+	return &scheduler->base.base;
+}
+
 struct wlr_frame_scheduler *wlr_frame_scheduler_autocreate(struct wlr_output *output) {
+	if (wlr_output_is_wl(output) && !wlr_wl_backend_has_presentation_time(output->backend)) {
+		wlr_log(WLR_INFO, "wp_presentation not available, falling back to frame callbacks");
+		return wl_scheduler_create(output);
+	}
+
 	return wlr_present_scheduler_create(output);
 }
