@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_alpha_modifier_v1.h>
+#include <wlr/types/wlr_commit_timing_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
@@ -13,6 +14,12 @@ static void handle_scene_buffer_outputs_update(
 		struct wl_listener *listener, void *data) {
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, outputs_update);
+
+	if (surface->commit_timer_v1 && surface->commit_timer_v1->output.output !=
+			surface->buffer->primary_output->output) {
+		wlr_commit_timer_v1_set_output(surface->commit_timer_v1,
+			surface->buffer->primary_output->output);
+	}
 
 	if (surface->buffer->primary_output == NULL) {
 		return;
