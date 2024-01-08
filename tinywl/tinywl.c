@@ -12,6 +12,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_dbg_txn.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_output.h>
@@ -20,6 +21,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
+#include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
@@ -980,6 +982,9 @@ int main(int argc, char *argv[]) {
 	 * images are available at all scale factors on the screen (necessary for
 	 * HiDPI support). */
 	server.cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
+
+	wlr_viewporter_create(server.wl_display);
+	wlr_dbg_txn_manager_create(server.wl_display);
 
 	/*
 	 * wlr_cursor *only* displays an image on screen. It does not move around
