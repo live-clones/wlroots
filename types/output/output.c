@@ -774,10 +774,6 @@ bool output_prepare_commit(struct wlr_output *output, const struct wlr_output_st
 void output_apply_commit(struct wlr_output *output, const struct wlr_output_state *state) {
 	output->commit_seq++;
 
-	if (output_pending_enabled(output, state)) {
-		output->needs_frame = false;
-	}
-
 	output_apply_state(output, state);
 }
 
@@ -945,10 +941,6 @@ size_t wlr_output_get_gamma_size(struct wlr_output *output) {
 }
 
 void wlr_output_update_needs_frame(struct wlr_output *output) {
-	if (output->needs_frame) {
-		return;
-	}
-	output->needs_frame = true;
 	wl_signal_emit_mutable(&output->events.needs_frame, output);
 }
 

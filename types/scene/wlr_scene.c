@@ -2144,7 +2144,7 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 }
 
 bool wlr_scene_output_needs_frame(struct wlr_scene_output *scene_output) {
-	return scene_output->output->needs_frame ||
+	return scene_output->frame_scheduler->needs_frame ||
 		!pixman_region32_empty(&scene_output->pending_commit_damage) ||
 		scene_output->gamma_lut_changed;
 }

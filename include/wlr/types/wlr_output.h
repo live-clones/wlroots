@@ -219,8 +219,6 @@ struct wlr_output {
 	// true, changes may either succeed or fail.
 	bool adaptive_sync_supported;
 
-	bool needs_frame;
-
 	// true for example with VR headsets
 	bool non_desktop;
 
