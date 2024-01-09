@@ -25,9 +25,7 @@ static bool subsurface_is_synchronized(struct wlr_subsurface *subsurface) {
 static const struct wl_subsurface_interface subsurface_implementation;
 
 static void subsurface_destroy(struct wlr_subsurface *subsurface) {
-	if (subsurface->has_cache) {
-		wlr_surface_unlock_cached(subsurface->surface, subsurface->cached_seq);
-	}
+	wlr_surface_state_lock_release(&subsurface->cached_lock);
 
 	wlr_surface_unmap(subsurface->surface);
 
@@ -170,11 +168,8 @@ static void subsurface_handle_set_desync(struct wl_client *client,
 	if (subsurface->synchronized) {
 		subsurface->synchronized = false;
 
-		if (!subsurface_is_synchronized(subsurface) &&
-				subsurface->has_cache) {
-			wlr_surface_unlock_cached(subsurface->surface,
-				subsurface->cached_seq);
-			subsurface->has_cache = false;
+		if (!subsurface_is_synchronized(subsurface)) {
+			wlr_surface_state_lock_release(&subsurface->cached_lock);
 		}
 	}
 }
@@ -264,23 +259,20 @@ static void subsurface_handle_surface_client_commit(
 	struct wlr_surface *surface = subsurface->surface;
 
 	if (subsurface_is_synchronized(subsurface)) {
-		if (subsurface->has_cache) {
+		if (wlr_surface_state_lock_locked(&subsurface->cached_lock)) {
 			// We already lock a previous commit. The prevents any future
 			// commit to be applied before we release the previous commit.
 			return;
 		}
-		subsurface->has_cache = true;
-		subsurface->cached_seq = wlr_surface_lock_pending(surface);
-	} else if (subsurface->has_cache) {
-		wlr_surface_unlock_cached(surface, subsurface->cached_seq);
-		subsurface->has_cache = false;
+		wlr_surface_state_lock_acquire(&subsurface->cached_lock, surface);
+	} else {
+		wlr_surface_state_lock_release(&subsurface->cached_lock);
 	}
 }
 
 void subsurface_handle_parent_commit(struct wlr_subsurface *subsurface) {
-	if (subsurface->synchronized && subsurface->has_cache) {
-		wlr_surface_unlock_cached(subsurface->surface, subsurface->cached_seq);
-		subsurface->has_cache = false;
+	if (subsurface->synchronized) {
+		wlr_surface_state_lock_release(&subsurface->cached_lock);
 	}
 
 	if (!subsurface->added) {

@@ -928,51 +928,72 @@ static void surface_destroy_role_object(struct wlr_surface *surface) {
 	wl_list_init(&surface->role_resource_destroy.link);
 }
 
-uint32_t wlr_surface_lock_pending(struct wlr_surface *surface) {
-	surface->pending.cached_state_locks++;
-	return surface->pending.seq;
-}
-
-void wlr_surface_unlock_cached(struct wlr_surface *surface, uint32_t seq) {
+static struct wlr_surface_state *state_by_seq(struct wlr_surface *surface, uint32_t seq) {
 	if (surface->pending.seq == seq) {
-		assert(surface->pending.cached_state_locks > 0);
-		surface->pending.cached_state_locks--;
-		return;
+		return &surface->pending;
 	}
 
-	bool found = false;
 	struct wlr_surface_state *cached;
 	wl_list_for_each(cached, &surface->cached, cached_state_link) {
 		if (cached->seq == seq) {
-			found = true;
-			break;
+			return cached;
 		}
 	}
-	assert(found);
 
-	assert(cached->cached_state_locks > 0);
-	cached->cached_state_locks--;
+	abort(); // Invalid seq
+}
 
-	if (cached->cached_state_locks != 0) {
+static void state_lock_handle_surface_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_surface_state_lock *lock = wl_container_of(listener, lock, surface_destroy);
+	wlr_surface_state_lock_release(lock);
+}
+
+void wlr_surface_state_lock_acquire(struct wlr_surface_state_lock *lock,
+		struct wlr_surface *surface) {
+	assert(lock->surface == NULL && "Tried to acquire a locked lock");
+	lock->surface = surface;
+	lock->seq = surface->pending.seq;
+	++surface->pending.cached_state_locks;
+	lock->surface_destroy.notify = state_lock_handle_surface_destroy;
+	wl_signal_add(&surface->events.destroy, &lock->surface_destroy);
+}
+
+void wlr_surface_state_lock_release(struct wlr_surface_state_lock *lock) {
+	struct wlr_surface *surface = lock->surface;
+	if (surface == NULL) {
+		// Already unlocked
 		return;
 	}
 
-	if (cached->cached_state_link.prev != &surface->cached) {
+	lock->surface = NULL;
+	wl_list_remove(&lock->surface_destroy.link);
+
+	struct wlr_surface_state *state = state_by_seq(surface, lock->seq);
+	--state->cached_state_locks;
+	if (state == &lock->surface->pending) {
+		return;
+	}
+
+	if (state->cached_state_link.prev != &surface->cached) {
 		// This isn't the first cached state. This means we're blocked on a
 		// previous cached state.
 		return;
 	}
 
-	// TODO: consider merging all committed states together
-	struct wlr_surface_state *next, *tmp;
-	wl_list_for_each_safe(next, tmp, &surface->cached, cached_state_link) {
-		if (next->cached_state_locks > 0) {
+	 // TODO: consider merging all committed states together
+	struct wlr_surface_state *tmp;
+	wl_list_for_each_safe(state, tmp, &surface->cached, cached_state_link) {
+		if (state->cached_state_locks > 0) {
 			break;
 		}
 
-		surface_commit_state(surface, next);
-		surface_state_destroy_cached(next, surface);
+		surface_commit_state(surface, state);
+		surface_state_destroy_cached(state, surface);
 	}
+}
+
+bool wlr_surface_state_lock_locked(struct wlr_surface_state_lock *lock) {
+	return lock->surface != NULL;
 }
 
 struct wlr_surface *wlr_surface_get_root_surface(struct wlr_surface *surface) {

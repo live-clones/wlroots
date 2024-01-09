@@ -74,6 +74,13 @@ struct wlr_surface_state {
 	struct wl_array synced; // void *
 };
 
+struct wlr_surface_state_lock {
+	// private state
+	struct wlr_surface *surface;
+	uint32_t seq;
+	struct wl_listener surface_destroy;
+};
+
 struct wlr_surface_role {
 	const char *name;
 	/**
@@ -443,23 +450,30 @@ void wlr_surface_get_buffer_source_box(struct wlr_surface *surface,
 	struct wlr_fbox *box);
 
 /**
- * Acquire a lock for the pending surface state.
+ * Acquire a lock for the pending surface state. The lock must be unlocked.
  *
  * The state won't be committed before the caller releases the lock. Instead,
- * the state becomes cached. The caller needs to use wlr_surface_unlock_cached()
- * to release the lock.
- *
- * Returns a surface commit sequence number for the cached state.
+ * the state becomes cached. The caller needs to use
+ * wlr_surface_state_lock_release() to release the lock.
  */
-uint32_t wlr_surface_lock_pending(struct wlr_surface *surface);
+void wlr_surface_state_lock_acquire(struct wlr_surface_state_lock *lock,
+	struct wlr_surface *surface);
 
 /**
- * Release a lock for a cached state.
+ * Release a lock for a surface state. If the lock is already unlocked,
+ * this is no-op.
  *
  * Callers should not assume that the cached state will immediately be
  * committed. Another caller may still have an active lock.
  */
-void wlr_surface_unlock_cached(struct wlr_surface *surface, uint32_t seq);
+void wlr_surface_state_lock_release(struct wlr_surface_state_lock *lock);
+
+/**
+ * Get the status of a lock.
+ *
+ * Returns true if the lock is locked, false otherwise.
+ */
+bool wlr_surface_state_lock_locked(struct wlr_surface_state_lock *lock);
 
 /**
  * Set the preferred buffer scale for the surface.
