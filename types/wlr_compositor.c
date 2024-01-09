@@ -19,6 +19,19 @@
 #define COMPOSITOR_VERSION 6
 #define CALLBACK_VERSION 1
 
+struct wlr_surface_state_group_entry {
+	struct wlr_surface_state_group *group;
+	struct wlr_surface *surface;
+	struct wlr_surface_state *state;
+	struct wl_listener surface_destroy;
+};
+
+struct wlr_surface_state_group {
+	size_t n_entries;
+	size_t n_waiting;
+	struct wlr_surface_state_group_entry entries[];
+};
+
 static int min(int fst, int snd) {
 	if (fst < snd) {
 		return fst;
@@ -468,11 +481,13 @@ static void surface_update_input_region(struct wlr_surface *surface) {
 		0, 0, surface->current.width, surface->current.height);
 }
 
-static bool surface_state_init(struct wlr_surface_state *state,
-	struct wlr_surface *surface);
+static bool surface_state_init(struct wlr_surface_state *state, struct wlr_surface *surface);
 static void surface_state_finish(struct wlr_surface_state *state);
 
-static void surface_cache_pending(struct wlr_surface *surface) {
+static bool transaction_commit(struct wlr_surface_transaction *txn,
+	struct wlr_surface *commit_surface);
+
+static struct wlr_surface_state *surface_cache_pending(struct wlr_surface *surface) {
 	struct wlr_surface_state *cached = calloc(1, sizeof(*cached));
 	if (!cached) {
 		goto error;
@@ -498,7 +513,7 @@ static void surface_cache_pending(struct wlr_surface *surface) {
 
 	surface->pending.seq++;
 
-	return;
+	return cached;
 
 error_state:
 	surface_state_finish(cached);
@@ -506,11 +521,12 @@ error_cached:
 	free(cached);
 error:
 	wl_resource_post_no_memory(surface->resource);
+	return NULL;
 }
 
-static void surface_commit_state(struct wlr_surface *surface,
-		struct wlr_surface_state *next) {
+static void surface_commit_state(struct wlr_surface *surface, struct wlr_surface_state *next) {
 	assert(next->cached_state_locks == 0);
+	assert(next->group == NULL);
 
 	bool invalid_buffer = next->committed & WLR_SURFACE_STATE_BUFFER;
 
@@ -578,17 +594,21 @@ static void surface_handle_commit(struct wl_client *client,
 		surface->role->client_commit(surface);
 	}
 
-	wl_signal_emit_mutable(&surface->events.client_commit, NULL);
+	struct wlr_surface_transaction txn;
+	wlr_surface_transaction_init(&txn, &surface->txn_buffer);
 
 	surface->handling_commit = false;
 	if (surface->pending_rejected) {
 		return;
 	}
 
-	if (surface->pending.cached_state_locks > 0 || !wl_list_empty(&surface->cached)) {
-		surface_cache_pending(surface);
-	} else {
-		surface_commit_state(surface, &surface->pending);
+	struct wlr_surface_client_commit_event event = {
+		.transaction = &txn,
+	};
+	wl_signal_emit_mutable(&surface->events.client_commit, &event);
+
+	if (!transaction_commit(&txn, surface)) {
+		wl_resource_post_no_memory(resource);
 	}
 }
 
@@ -718,6 +738,9 @@ static void surface_destroy_role_object(struct wlr_surface *surface);
 static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	struct wlr_surface *surface = wlr_surface_from_resource(resource);
 
+	assert(surface->txn_state == NULL &&
+		"Tried to destroy a surface which was a part of a transaction");
+
 	struct wlr_surface_output *surface_output, *surface_output_tmp;
 	wl_list_for_each_safe(surface_output, surface_output_tmp,
 			&surface->current_outputs, link) {
@@ -735,6 +758,8 @@ static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	wl_list_for_each_safe(cached, cached_tmp, &surface->cached, cached_state_link) {
 		surface_state_destroy_cached(cached, surface);
 	}
+
+	wl_array_release(&surface->txn_buffer);
 
 	wl_list_remove(&surface->role_resource_destroy.link);
 
@@ -789,6 +814,7 @@ static struct wlr_surface *surface_create(struct wl_client *client,
 	pixman_region32_init(&surface->input_region);
 	wlr_addon_set_init(&surface->addons);
 	wl_list_init(&surface->synced);
+	wl_array_init(&surface->txn_buffer);
 
 	wl_list_init(&surface->role_resource_destroy.link);
 
@@ -943,6 +969,190 @@ static struct wlr_surface_state *state_by_seq(struct wlr_surface *surface, uint3
 	abort(); // Invalid seq
 }
 
+// Returns true if the cached state can be applied immediately
+static bool cached_state_ready(struct wlr_surface *surface, struct wlr_surface_state *state) {
+	return state->cached_state_locks == 0 && state->cached_state_link.prev == &surface->cached;
+}
+
+static void group_notify_ready(struct wlr_surface_state_group *group);
+
+static void commit_cached_states(struct wlr_surface *surface) {
+	 // TODO: consider merging all committed states together
+	struct wlr_surface_state *state, *tmp;
+	wl_list_for_each_safe(state, tmp, &surface->cached, cached_state_link) {
+		if (state->cached_state_locks > 0) {
+			break;
+		} else if (state->group != NULL) {
+			// XXX: possible stack overflow?
+			group_notify_ready(state->group);
+			break;
+		}
+
+		surface_commit_state(surface, state);
+		surface_state_destroy_cached(state, surface);
+	}
+}
+
+static void group_entry_finish(struct wlr_surface_state_group_entry *entry) {
+	entry->surface = NULL;
+	entry->state = NULL;
+	wl_list_remove(&entry->surface_destroy.link);
+}
+
+static void group_notify_ready(struct wlr_surface_state_group *group) {
+	assert(group->n_waiting > 0);
+	--group->n_waiting;
+	if (group->n_waiting > 0) {
+		return;
+	}
+
+	for (size_t i = 0; i < group->n_entries; i++) {
+		struct wlr_surface_state_group_entry *entry = &group->entries[i];
+		if (entry->surface == NULL) {
+			// Surface was destroyed
+			continue;
+		}
+		entry->state->group = NULL;
+		commit_cached_states(entry->surface);
+		group_entry_finish(entry);
+	}
+
+	free(group);
+}
+
+static void group_entry_handle_surface_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_surface_state_group_entry *entry =
+		wl_container_of(listener, entry, surface_destroy);
+
+	struct wlr_surface_state_group *group = entry->group;
+	struct wlr_surface *surface = entry->surface;
+	struct wlr_surface_state *state = entry->state;
+
+	group_entry_finish(entry);
+
+	if (!cached_state_ready(surface, state)) {
+		group_notify_ready(group);
+	}
+}
+
+static void group_add_entry(struct wlr_surface_state_group *group, struct wlr_surface *surface,
+		struct wlr_surface_state *state) {
+	struct wlr_surface_state_group_entry *entry = &group->entries[group->n_entries++];
+	entry->group = group;
+	entry->surface = surface;
+	entry->state = state;
+
+	entry->surface_destroy.notify = group_entry_handle_surface_destroy;
+	wl_signal_add(&surface->events.destroy, &entry->surface_destroy);
+
+	state->group = group;
+}
+
+// Commit a transaction with an optional pending state of commit_surface
+static bool transaction_commit(struct wlr_surface_transaction *txn,
+		struct wlr_surface *commit_surface) {
+	size_t n_waiting = 0;
+	struct wlr_surface **iter;
+	wl_array_for_each(iter, txn->surfaces) {
+		struct wlr_surface *surface = *iter;
+		struct wlr_surface_state *state = surface->txn_state;
+
+		assert(state->group == NULL);
+		assert(state->cached_state_locks > 0);
+		if (state->cached_state_locks > 1 || state->cached_state_link.prev != &surface->cached) {
+			// The state isn't the first cached one or has locks other than
+			// the one added to the transaction
+			++n_waiting;
+		}
+	}
+
+	size_t n_entries = txn->surfaces->size / sizeof(struct wlr_surface *);
+	if (n_entries == 0) {
+		// Fast path: no cached states
+		if (commit_surface != NULL) {
+			if (wl_list_empty(&commit_surface->cached) &&
+					commit_surface->pending.cached_state_locks == 0) {
+				surface_commit_state(commit_surface, &commit_surface->pending);
+			} else if (surface_cache_pending(commit_surface) == NULL) {
+				return false;
+			}
+		}
+		return true;
+	} else if (n_entries == 1 && commit_surface == NULL) {
+		// Fast path: one cached state, no pending state
+		struct wlr_surface *surface = ((struct wlr_surface **)txn->surfaces->data)[0];
+		--surface->txn_state->cached_state_locks;
+		surface->txn_state = NULL;
+		commit_cached_states(surface);
+		return true;
+	}
+
+	if (commit_surface != NULL) {
+		if (!wl_list_empty(&commit_surface->cached) ||
+				commit_surface->pending.cached_state_locks > 0) {
+			++n_waiting;
+		}
+	}
+
+	if (n_waiting == 0) {
+		// Fast path: all states can be applied immediately
+		// Unlock and unset txn_state separately so commit listeners won't get
+		// a surface which is still in a transaction
+		wl_array_for_each(iter, txn->surfaces) {
+			struct wlr_surface *surface = *iter;
+			--surface->txn_state->cached_state_locks;
+			surface->txn_state = NULL;
+		}
+
+		// Then, apply everything
+		wl_array_for_each(iter, txn->surfaces) {
+			commit_cached_states(*iter);
+		}
+		if (commit_surface != NULL) {
+			surface_commit_state(commit_surface, &commit_surface->pending);
+		}
+
+		return true;
+	}
+
+	// "Slow" path
+	struct wlr_surface_state *commit_state = NULL;
+	if (commit_surface != NULL) {
+		commit_state = surface_cache_pending(commit_surface);
+		if (commit_state == NULL) {
+			goto error;
+		}
+		++n_entries;
+	}
+
+	struct wlr_surface_state_group *group =
+		calloc(1, sizeof(*group) + n_entries * sizeof(*group->entries));
+	if (group == NULL) {
+		if (commit_surface != NULL) {
+			commit_cached_states(commit_surface);
+		}
+		goto error;
+	}
+
+	wl_array_for_each(iter, txn->surfaces) {
+		struct wlr_surface *surface = *iter;
+		--surface->txn_state->cached_state_locks;
+		group_add_entry(group, surface, surface->txn_state);
+		surface->txn_state = NULL;
+	}
+
+	if (commit_state != NULL) {
+		group_add_entry(group, commit_surface, commit_state);
+	}
+
+	group->n_waiting = n_waiting;
+	return true;
+
+error:
+	wlr_surface_transaction_drop(txn);
+	return false;
+}
+
 static void state_lock_handle_surface_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_surface_state_lock *lock = wl_container_of(listener, lock, surface_destroy);
 	wlr_surface_state_lock_release(lock);
@@ -970,30 +1180,96 @@ void wlr_surface_state_lock_release(struct wlr_surface_state_lock *lock) {
 
 	struct wlr_surface_state *state = state_by_seq(surface, lock->seq);
 	--state->cached_state_locks;
-	if (state == &lock->surface->pending) {
+	if (state == &surface->pending) {
 		return;
 	}
 
-	if (state->cached_state_link.prev != &surface->cached) {
-		// This isn't the first cached state. This means we're blocked on a
-		// previous cached state.
-		return;
-	}
-
-	 // TODO: consider merging all committed states together
-	struct wlr_surface_state *tmp;
-	wl_list_for_each_safe(state, tmp, &surface->cached, cached_state_link) {
-		if (state->cached_state_locks > 0) {
-			break;
-		}
-
-		surface_commit_state(surface, state);
-		surface_state_destroy_cached(state, surface);
-	}
+	commit_cached_states(surface);
 }
 
 bool wlr_surface_state_lock_locked(struct wlr_surface_state_lock *lock) {
 	return lock->surface != NULL;
+}
+
+void wlr_surface_transaction_init(struct wlr_surface_transaction *txn, struct wl_array *buffer) {
+	txn->surfaces = buffer;
+	buffer->size = 0;
+}
+
+bool wlr_surface_transaction_add_lock(struct wlr_surface_transaction *txn,
+		struct wlr_surface_state_lock *lock) {
+	struct wlr_surface *surface = lock->surface;
+	assert(surface != NULL);
+
+	struct wlr_surface_state *state = state_by_seq(surface, lock->seq);
+	if (surface->txn_state == state) {
+		// Already added
+		--state->cached_state_locks;
+		goto release;
+	}
+
+	assert(surface->txn_state == NULL &&
+		"Tried to add locks for different states of the same surface");
+
+	if (state == &surface->pending) {
+		// No cached state to add
+		--state->cached_state_locks;
+		goto release;
+	}
+
+	struct wlr_surface_state_group *group = state->group;
+	if (group != NULL) {
+		// Add the whole group instead
+		struct wlr_surface **ptr = wl_array_add(txn->surfaces, sizeof(surface) * group->n_entries);
+		if (ptr == NULL) {
+			return false;
+		}
+
+		for (size_t i = 0; i < group->n_entries; i++) {
+			struct wlr_surface_state_group_entry *entry = &group->entries[i];
+			assert(entry->surface->txn_state == NULL);
+
+			ptr[i] = entry->surface;
+			entry->surface->txn_state = entry->state;
+
+			entry->state->group = NULL;
+			++entry->state->cached_state_locks;
+
+			group_entry_finish(entry);
+		}
+
+		free(group);
+		--state->cached_state_locks;
+		goto release;
+	}
+
+	struct wlr_surface **ptr = wl_array_add(txn->surfaces, sizeof(surface));
+	if (ptr == NULL) {
+		return false;
+	}
+	*ptr = surface;
+	surface->txn_state = state;
+
+release:
+	lock->surface = NULL;
+	wl_list_remove(&lock->surface_destroy.link);
+	return true;
+}
+
+void wlr_surface_transaction_drop(struct wlr_surface_transaction *txn) {
+	struct wlr_surface **surfaces = txn->surfaces->data;
+	size_t n_surfaces = txn->surfaces->size / sizeof(*surfaces);
+	for (size_t i = 0; i < n_surfaces; i++) {
+		struct wlr_surface *surface = surfaces[i];
+		struct wlr_surface_state *state = surface->txn_state;
+		surface->txn_state = NULL;
+		--state->cached_state_locks;
+		commit_cached_states(surface);
+	}
+}
+
+bool wlr_surface_transaction_commit(struct wlr_surface_transaction *txn) {
+	return transaction_commit(txn, NULL);
 }
 
 struct wlr_surface *wlr_surface_get_root_surface(struct wlr_surface *surface) {
