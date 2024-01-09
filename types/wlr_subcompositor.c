@@ -34,6 +34,7 @@ static void subsurface_destroy(struct wlr_subsurface *subsurface) {
 	wlr_surface_synced_finish(&subsurface->parent_synced);
 
 	wl_list_remove(&subsurface->surface_client_commit.link);
+	wl_list_remove(&subsurface->parent_client_commit.link);
 	wl_list_remove(&subsurface->parent_destroy.link);
 
 	wl_resource_set_user_data(subsurface->resource, NULL);
@@ -243,10 +244,19 @@ static struct wlr_surface_synced_impl surface_synced_impl = {
 	.move_state = surface_synced_move_state,
 };
 
-static void subsurface_handle_parent_destroy(struct wl_listener *listener,
-		void *data) {
+static void subsurface_handle_parent_client_commit(struct wl_listener *listener, void *data) {
 	struct wlr_subsurface *subsurface =
-		wl_container_of(listener, subsurface, parent_destroy);
+		wl_container_of(listener, subsurface, parent_client_commit);
+	struct wlr_surface_client_commit_event *event = data;
+	if (wlr_surface_state_lock_locked(&subsurface->cached_lock)) {
+		if (!wlr_surface_transaction_add_lock(event->transaction, &subsurface->cached_lock)) {
+			wl_resource_post_no_memory(subsurface->resource);
+		}
+	}
+}
+
+static void subsurface_handle_parent_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_subsurface *subsurface = wl_container_of(listener, subsurface, parent_destroy);
 	// Once the parent is destroyed, the client has no way to use the
 	// wl_subsurface object anymore, so we can destroy it.
 	subsurface_destroy(subsurface);
@@ -367,6 +377,8 @@ static void subcompositor_handle_get_subsurface(struct wl_client *client,
 
 	// link parent
 	subsurface->parent = parent;
+	wl_signal_add(&parent->events.client_commit, &subsurface->parent_client_commit);
+	subsurface->parent_client_commit.notify = subsurface_handle_parent_client_commit;
 	wl_signal_add(&parent->events.destroy, &subsurface->parent_destroy);
 	subsurface->parent_destroy.notify = subsurface_handle_parent_destroy;
 

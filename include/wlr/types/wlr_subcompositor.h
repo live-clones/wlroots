@@ -39,6 +39,7 @@ struct wlr_subsurface {
 	bool added;
 
 	struct wl_listener surface_client_commit;
+	struct wl_listener parent_client_commit;
 	struct wl_listener parent_destroy;
 
 	struct {
