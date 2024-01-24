@@ -188,34 +188,64 @@ static void seat_keyboard_handle_surface_destroy(struct wl_listener *listener,
 	wlr_seat_keyboard_clear_focus(state->seat);
 }
 
-void wlr_seat_keyboard_send_modifiers(struct wlr_seat *seat,
-		const struct wlr_keyboard_modifiers *modifiers) {
-	struct wlr_seat_client *client = seat->keyboard_state.focused_client;
-	if (client == NULL) {
+static void seat_keyboard_send_modifiers(struct wlr_seat *seat,
+		const struct wlr_keyboard_modifiers *modifiers,
+		struct wlr_seat_client *client) {
+	struct wl_resource *resource;
+	struct wlr_keyboard_modifiers *tracked = &client->tracked_modifiers;
+	if (tracked->depressed == modifiers->depressed &&
+			tracked->latched == modifiers->latched &&
+			tracked->locked == modifiers->locked &&
+			tracked->group == modifiers->group) {
 		return;
 	}
 
 	uint32_t serial = wlr_seat_client_next_serial(client);
-	struct wl_resource *resource;
+	*tracked = *modifiers;
+
 	wl_resource_for_each(resource, &client->keyboards) {
 		if (seat_client_from_keyboard_resource(resource) == NULL) {
 			continue;
 		}
 
-		if (modifiers == NULL) {
-			wl_keyboard_send_modifiers(resource, serial, 0, 0, 0, 0);
-		} else {
-			wl_keyboard_send_modifiers(resource, serial,
-				modifiers->depressed, modifiers->latched,
-				modifiers->locked, modifiers->group);
-		}
+		wl_keyboard_send_modifiers(resource, serial,
+			modifiers->depressed, modifiers->latched,
+			modifiers->locked, modifiers->group);
 	}
+}
+
+void wlr_seat_keyboard_send_modifiers(struct wlr_seat *seat,
+		const struct wlr_keyboard_modifiers *modifiers) {
+	struct wlr_seat_client *client = seat->keyboard_state.focused_client;
+	const struct wlr_keyboard_modifiers empty = {};
+	if (client == NULL) {
+		return;
+	}
+
+	if (modifiers == NULL) {
+		modifiers = &empty;
+	}
+
+	seat_keyboard_send_modifiers(seat, modifiers, client);
+}
+
+void wlr_seat_client_notify_modifiers(struct wlr_seat *seat,
+		struct wlr_seat_client *target) {
+	struct wlr_seat_client *focused = seat->keyboard_state.focused_client;
+	if (target == NULL || target == focused) {
+		return;
+	}
+
+	struct wlr_keyboard_modifiers *modifiers = &seat->keyboard_state.keyboard->modifiers;
+	seat_keyboard_send_modifiers(seat, modifiers, target);
 }
 
 void seat_client_send_keyboard_leave_raw(struct wlr_seat_client *seat_client,
 		struct wlr_surface *surface) {
 	uint32_t serial = wlr_seat_client_next_serial(seat_client);
 	struct wl_resource *resource;
+	const struct wlr_keyboard_modifiers unset = {};
+	seat_client->tracked_modifiers = unset;
 	wl_resource_for_each(resource, &seat_client->keyboards) {
 		if (seat_client_from_keyboard_resource(resource) == NULL) {
 			continue;
