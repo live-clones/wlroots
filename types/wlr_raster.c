@@ -6,8 +6,8 @@
 #include <wlr/render/wlr_texture.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
-#include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_raster.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/wlr_texture.h>
@@ -366,6 +366,30 @@ struct wlr_texture *wlr_raster_obtain_texture_with_allocator(struct wlr_raster *
 	if (texture) {
 		raster_attach_with_allocator(raster, texture, allocator);
 		return texture;
+	}
+
+	// if this is a linux_dmabuf_v1 buffer, then we can try to use the
+	// main device for blitting which should support all the modifiers we
+	// advertise.
+	if (raster->buffer) {
+		struct wlr_dmabuf_v1_buffer *dmabuf_buffer =
+			wlr_dmabuf_v1_buffer_try_from_buffer(raster->buffer);
+		if (dmabuf_buffer && dmabuf_buffer->linux_dmabuf_v1->main_renderer) {
+			struct wlr_linux_dmabuf_v1 *linux_dmabuf = dmabuf_buffer->linux_dmabuf_v1;
+			struct wlr_texture *texture = wlr_texture_from_buffer(
+				linux_dmabuf->main_renderer, raster->buffer);
+			if (texture) {
+				wlr_raster_attach_with_allocator(raster, texture,
+					linux_dmabuf->main_allocator);
+
+				// try to create a blit but this time through the primary device
+				texture = raster_try_texture_from_blit(raster, renderer);
+				if (texture) {
+					wlr_raster_attach_with_allocator(raster, texture, allocator);
+					return texture;
+				}
+			}
+		}
 	}
 
 	// as a last resort we need to do a copy through the CPU

@@ -7,6 +7,7 @@
 #include <wlr/backend.h>
 #include <wlr/config.h>
 #include <wlr/interfaces/wlr_buffer.h>
+#include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
@@ -92,16 +93,19 @@ struct wlr_dmabuf_v1_buffer *wlr_dmabuf_v1_buffer_try_from_buffer_resource(
 
 static const struct wlr_buffer_impl buffer_impl;
 
-static struct wlr_dmabuf_v1_buffer *dmabuf_v1_buffer_from_buffer(
+struct wlr_dmabuf_v1_buffer *wlr_dmabuf_v1_buffer_try_from_buffer(
 		struct wlr_buffer *wlr_buffer) {
-	assert(wlr_buffer->impl == &buffer_impl);
+	if (wlr_buffer->impl != &buffer_impl) {
+		return NULL;
+	}
+
 	struct wlr_dmabuf_v1_buffer *buffer = wl_container_of(wlr_buffer, buffer, base);
 	return buffer;
 }
 
 static void buffer_destroy(struct wlr_buffer *wlr_buffer) {
 	struct wlr_dmabuf_v1_buffer *buffer =
-		dmabuf_v1_buffer_from_buffer(wlr_buffer);
+		wlr_dmabuf_v1_buffer_try_from_buffer(wlr_buffer);
 	if (buffer->resource != NULL) {
 		wl_resource_set_user_data(buffer->resource, NULL);
 	}
@@ -113,7 +117,7 @@ static void buffer_destroy(struct wlr_buffer *wlr_buffer) {
 static bool buffer_get_dmabuf(struct wlr_buffer *wlr_buffer,
 		struct wlr_dmabuf_attributes *attribs) {
 	struct wlr_dmabuf_v1_buffer *buffer =
-		dmabuf_v1_buffer_from_buffer(wlr_buffer);
+		wlr_dmabuf_v1_buffer_try_from_buffer(wlr_buffer);
 	*attribs = buffer->attributes;
 	return true;
 }
@@ -368,6 +372,7 @@ static void params_create_common(struct wl_resource *params_resource,
 		&wl_buffer_impl, buffer, buffer_handle_resource_destroy);
 
 	buffer->attributes = attribs;
+	buffer->linux_dmabuf_v1 = linux_dmabuf;
 
 	buffer->release.notify = buffer_handle_release;
 	wl_signal_add(&buffer->base.events.release, &buffer->release);
@@ -872,6 +877,8 @@ static void linux_dmabuf_v1_destroy(struct wlr_linux_dmabuf_v1 *linux_dmabuf) {
 	}
 
 	wl_list_remove(&linux_dmabuf->display_destroy.link);
+	wl_list_remove(&linux_dmabuf->main_renderer_destroy.link);
+	wl_list_remove(&linux_dmabuf->main_allocator_destroy.link);
 
 	wl_global_destroy(linux_dmabuf->global);
 	free(linux_dmabuf);
@@ -959,6 +966,8 @@ struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *displa
 	linux_dmabuf->main_device_fd = -1;
 
 	wl_list_init(&linux_dmabuf->surfaces);
+	wl_list_init(&linux_dmabuf->main_renderer_destroy.link);
+	wl_list_init(&linux_dmabuf->main_allocator_destroy.link);
 	wl_signal_init(&linux_dmabuf->events.destroy);
 
 	linux_dmabuf->global = wl_global_create(display, &zwp_linux_dmabuf_v1_interface,
@@ -1160,4 +1169,43 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
 error:
 	wlr_linux_dmabuf_feedback_v1_finish(feedback);
 	return false;
+}
+
+static void linux_dmabuf_unregister_main_blit_device(struct wlr_linux_dmabuf_v1 *linux_dmabuf) {
+	wl_list_remove(&linux_dmabuf->main_renderer_destroy.link);
+	wl_list_remove(&linux_dmabuf->main_allocator_destroy.link);
+	wl_list_init(&linux_dmabuf->main_renderer_destroy.link);
+	wl_list_init(&linux_dmabuf->main_allocator_destroy.link);
+
+	linux_dmabuf->main_renderer = NULL;
+	linux_dmabuf->main_allocator = NULL;
+}
+
+static void linux_dmabuf_handle_main_renderer_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_linux_dmabuf_v1 *linux_dmabuf = wl_container_of(
+		listener, linux_dmabuf, main_renderer_destroy);
+	linux_dmabuf_unregister_main_blit_device(linux_dmabuf);
+}
+
+static void linux_dmabuf_handle_main_allocator_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_linux_dmabuf_v1 *linux_dmabuf = wl_container_of(
+		listener, linux_dmabuf, main_allocator_destroy);
+	linux_dmabuf_unregister_main_blit_device(linux_dmabuf);
+}
+
+void wlr_linux_dmabuf_v1_set_main_blit_device(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+		struct wlr_renderer *renderer, struct wlr_allocator *allocator) {
+	assert(renderer != NULL && allocator != NULL);
+
+	wl_list_remove(&linux_dmabuf->main_renderer_destroy.link);
+	wl_list_remove(&linux_dmabuf->main_allocator_destroy.link);
+
+	linux_dmabuf->main_renderer_destroy.notify = linux_dmabuf_handle_main_renderer_destroy;
+	wl_signal_add(&renderer->events.destroy, &linux_dmabuf->main_renderer_destroy);
+
+	linux_dmabuf->main_allocator_destroy.notify = linux_dmabuf_handle_main_allocator_destroy;
+	wl_signal_add(&allocator->events.destroy, &linux_dmabuf->main_allocator_destroy);
+
+	linux_dmabuf->main_renderer = renderer;
+	linux_dmabuf->main_allocator = allocator;
 }

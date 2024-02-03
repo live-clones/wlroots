@@ -17,6 +17,8 @@
 #include <wlr/render/drm_format_set.h>
 
 struct wlr_surface;
+struct wlr_renderer;
+struct wlr_allocator;
 
 struct wlr_dmabuf_v1_buffer {
 	struct wlr_buffer base;
@@ -27,6 +29,8 @@ struct wlr_dmabuf_v1_buffer {
 	// private state
 
 	struct wl_listener release;
+
+	struct wlr_linux_dmabuf_v1 *linux_dmabuf_v1;
 };
 
 /**
@@ -63,7 +67,13 @@ struct wlr_linux_dmabuf_v1 {
 
 	int main_device_fd; // to sanity check FDs sent by clients, -1 if unavailable
 
+	// used for multigpu
+	struct wlr_renderer *main_renderer;
+	struct wlr_allocator *main_allocator;
+
 	struct wl_listener display_destroy;
+	struct wl_listener main_renderer_destroy;
+	struct wl_listener main_allocator_destroy;
 
 	bool (*check_dmabuf_callback)(struct wlr_dmabuf_attributes *attribs, void *data);
 	void *check_dmabuf_callback_data;
@@ -77,6 +87,23 @@ struct wlr_linux_dmabuf_v1 {
  */
 struct wlr_linux_dmabuf_v1 *wlr_linux_dmabuf_v1_create(struct wl_display *display,
 	uint32_t version, const struct wlr_linux_dmabuf_feedback_v1 *default_feedback);
+
+/**
+ * Returns the associated dmabuf object from a generic buffer. Returnns
+ * NULL if the generic buffer is not a dmabuf.
+ */
+struct wlr_dmabuf_v1_buffer *wlr_dmabuf_v1_buffer_try_from_buffer(
+	struct wlr_buffer *buffer);
+
+/**
+ * Sets the main blit device used for multigpu. With multigpu, dmabufs with
+ * implicit modifiers or just modifiers that aren't supported by other GPUs
+ * might need to be blitted into a staging buffer with correct modifiers. This
+ * will be done with this allocator (to allocate the staging buffer) and renderer
+ * to render into the staging buffer.
+ */
+void wlr_linux_dmabuf_v1_set_main_blit_device(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
+	struct wlr_renderer *renderer, struct wlr_allocator *allocator);
 
 /**
  * Create the linux-dmabuf-v1 global.
@@ -120,6 +147,9 @@ void wlr_linux_dmabuf_feedback_v1_finish(struct wlr_linux_dmabuf_feedback_v1 *fe
 struct wlr_linux_dmabuf_feedback_v1_init_options {
 	// Main renderer used by the compositor
 	struct wlr_renderer *main_renderer;
+	// Optional allocator created for the primary GPU used by the default feedback.
+	// This is used for multi gpu for allocating staging buffers.
+	struct wlr_allocator *main_allocator;
 	// Output on which direct scan-out is possible on the primary plane, or NULL
 	struct wlr_output *scanout_primary_output;
 	// Output layer feedback event, or NULL
