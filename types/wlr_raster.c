@@ -23,6 +23,10 @@ static void raster_handle_buffer_release(struct wl_listener *listener, void *dat
 	raster->buffer = NULL;
 	wl_list_remove(&raster->buffer_release.link);
 	wl_list_init(&raster->buffer_release.link);
+
+	if (wl_list_empty(&raster->sources)) {
+		wl_signal_emit_mutable(&raster->events.invalidated, NULL);
+	}
 }
 
 struct wlr_raster *wlr_raster_create(struct wlr_buffer *buffer,
@@ -34,6 +38,7 @@ struct wlr_raster *wlr_raster_create(struct wlr_buffer *buffer,
 
 	wl_list_init(&raster->sources);
 	wl_signal_init(&raster->events.destroy);
+	wl_signal_init(&raster->events.invalidated);
 
 	assert(buffer);
 	raster->opaque = buffer_is_opaque(buffer);
@@ -58,6 +63,11 @@ static void raster_source_destroy(struct wlr_raster_source *source) {
 	wl_list_remove(&source->link);
 	wl_list_remove(&source->renderer_destroy.link);
 	wl_list_remove(&source->allocator_destroy.link);
+
+	if (!source->raster->buffer && wl_list_empty(&source->raster->sources)) {
+		wl_signal_emit_mutable(&source->raster->events.invalidated, NULL);
+	}
+
 	free(source);
 }
 
@@ -67,6 +77,9 @@ static void raster_consider_destroy(struct wlr_raster *raster) {
 	}
 
 	wl_signal_emit_mutable(&raster->events.destroy, NULL);
+
+	// we don't want to call invalidation signals as we're destroying the raster
+	wl_signal_init(&raster->events.invalidated);
 
 	struct wlr_raster_source *source, *source_tmp;
 	wl_list_for_each_safe(source, source_tmp, &raster->sources, link) {
@@ -150,6 +163,7 @@ static void raster_attach_with_allocator(struct wlr_raster *raster,
 	wl_list_insert(&raster->sources, &source->link);
 	source->texture = texture;
 	source->allocator = allocator;
+	source->raster = raster;
 }
 
 static struct wlr_texture *wlr_raster_get_texture(struct wlr_raster *raster,

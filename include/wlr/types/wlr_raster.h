@@ -23,6 +23,7 @@ struct wlr_allocator;
 struct wlr_raster_source {
 	struct wlr_texture *texture;
 	struct wlr_allocator *allocator; // may be NULL
+	struct wlr_raster *raster;
 	struct wl_list link;
 
 	struct wl_listener renderer_destroy;
@@ -43,6 +44,7 @@ struct wlr_raster {
 
 	struct {
 		struct wl_signal destroy;
+		struct wl_signal invalidated;
 	} events;
 
 	// private state
