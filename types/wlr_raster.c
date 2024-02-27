@@ -298,6 +298,47 @@ static struct wlr_texture *raster_try_texture_from_blit(struct wlr_raster *raste
 	return wlr_texture_from_buffer(renderer, imported);
 }
 
+static struct wlr_texture *raster_try_cpu_copy(struct wlr_raster *raster,
+		struct wlr_renderer *dst) {
+	if (wl_list_empty(&raster->sources)) {
+		return NULL;
+	}
+
+	wlr_log(WLR_DEBUG, "Performing multigpu blit through the CPU");
+	struct wlr_texture *texture = NULL;
+
+	uint32_t format = DRM_FORMAT_ARGB8888;
+	uint32_t stride = raster->width * 4;
+	void *data = malloc(stride * raster->height);
+	if (!data) {
+		return NULL;
+	}
+
+	struct wlr_raster_source *source;
+	wl_list_for_each(source, &raster->sources, link) {
+		if (!wlr_texture_read_pixels(source->texture, &(struct wlr_texture_read_pixels_options){
+			.format = format,
+			.stride = stride,
+			.data = data,
+		})) {
+			wlr_log(WLR_ERROR, "Failed to read pixels");
+			continue;
+		}
+
+		texture = wlr_texture_from_pixels(dst, format,
+			stride, raster->width, raster->height, data);
+		if (!texture) {
+			wlr_log(WLR_ERROR, "Failed to upload texture from cpu data");
+			continue;
+		}
+
+		break;
+	}
+
+	free(data);
+	return texture;
+}
+
 struct wlr_texture *wlr_raster_obtain_texture_with_allocator(struct wlr_raster *raster,
 		struct wlr_renderer *renderer, struct wlr_allocator *allocator) {
 	struct wlr_texture *texture = wlr_raster_get_texture(raster, renderer);
@@ -322,6 +363,13 @@ struct wlr_texture *wlr_raster_obtain_texture_with_allocator(struct wlr_raster *
 
 	// try to blit using the textures already available to us
 	texture = raster_try_texture_from_blit(raster, renderer);
+	if (texture) {
+		raster_attach_with_allocator(raster, texture, allocator);
+		return texture;
+	}
+
+	// as a last resort we need to do a copy through the CPU
+	texture = raster_try_cpu_copy(raster, renderer);
 	if (texture) {
 		raster_attach_with_allocator(raster, texture, allocator);
 		return texture;
