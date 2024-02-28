@@ -17,6 +17,7 @@ static void output_manager_backend_finish(
 	wlr_allocator_destroy(backend->allocator);
 	wlr_renderer_destroy(backend->renderer);
 	wl_list_remove(&backend->backend_destroy.link);
+	wl_list_remove(&backend->renderer_lost.link);
 	wl_list_remove(&backend->link);
 }
 
@@ -32,6 +33,44 @@ static void output_manager_handle_backend_destroy(
 	} else {
 		free(backend);
 	}
+}
+
+static void output_manager_handle_renderer_lost(
+		struct wl_listener *listener, void *data) {
+	struct wlr_output_manager_backend *backend =
+		wl_container_of(listener, backend, renderer_lost);
+
+	wlr_log(WLR_INFO, "Attempting renderer recovery after GPU reset!");
+
+	struct wlr_renderer *renderer = wlr_renderer_autocreate(backend->backend);
+	if (!renderer) {
+		wlr_log(WLR_ERROR, "Could not create a new renderer after GPU reset");
+		return;
+	}
+
+	struct wlr_allocator *allocator =
+		wlr_allocator_autocreate(backend->backend, renderer);
+	if (!allocator) {
+		wlr_log(WLR_ERROR, "Could not create a new allocator after GPU reset");
+		wlr_renderer_destroy(renderer);
+		return;
+	}
+
+	wlr_log(WLR_INFO, "Created new renderer and allocator after reset. Attempting to swap...");
+
+	struct wlr_renderer *old_renderer = backend->renderer;
+	struct wlr_allocator *old_allocator = backend->allocator;
+	backend->renderer = renderer;
+	backend->allocator = allocator;
+
+	wl_signal_add(&backend->renderer->events.lost, &backend->renderer_lost);
+
+	// Only destroy the old state once we signal a recovery to avoid the old
+	// state being referenced during its destruction.
+	wlr_allocator_destroy(old_allocator);
+	wlr_renderer_destroy(old_renderer);
+
+	wl_signal_emit_mutable(&backend->events.recovery, NULL);
 }
 
 static bool output_manager_backend_init(struct wlr_output_manager *manager,
@@ -52,8 +91,13 @@ static bool output_manager_backend_init(struct wlr_output_manager *manager,
 	backend->backend = wlr_backend;
 	backend->locks = 1;
 
+	wl_signal_init(&backend->events.recovery);
+
 	backend->backend_destroy.notify = output_manager_handle_backend_destroy;
 	wl_signal_add(&wlr_backend->events.destroy, &backend->backend_destroy);
+
+	backend->renderer_lost.notify = output_manager_handle_renderer_lost;
+	wl_signal_add(&backend->renderer->events.lost, &backend->renderer_lost);
 
 	wl_list_insert(&manager->backends, &backend->link);
 	return true;
@@ -152,7 +196,11 @@ void wlr_output_manager_unlock_backend(struct wlr_output_manager_backend *backen
 
 struct output_manager_output {
 	struct wlr_output_manager_backend *backend;
+	struct wlr_output *output;
 	struct wlr_addon addon;
+
+	// recover from GPU resets
+	struct wl_listener backend_recovery;
 };
 
 static void manager_output_handle_output_destroy(struct wlr_addon *addon) {
@@ -160,6 +208,7 @@ static void manager_output_handle_output_destroy(struct wlr_addon *addon) {
 		wl_container_of(addon, manager_output, addon);
 	wlr_addon_finish(&manager_output->addon);
 	wlr_output_manager_unlock_backend(manager_output->backend);
+	wl_list_remove(&manager_output->backend_recovery.link);
 	free(manager_output);
 }
 
@@ -168,12 +217,22 @@ static const struct wlr_addon_interface output_addon_impl = {
 	.destroy = manager_output_handle_output_destroy,
 };
 
+static void output_handle_recovery(struct wl_listener *listener, void *data) {
+	struct output_manager_output *manager = wl_container_of(listener, manager, backend_recovery);
+
+	// we lost the context, create a new renderer and switch everything out.
+	wlr_output_init_render(manager->output, manager->backend->allocator,
+		manager->backend->renderer);
+}
+
 bool wlr_output_manager_init_output(struct wlr_output_manager *manager,
 		struct wlr_output *output) {
 	struct output_manager_output *manager_output = calloc(1, sizeof(*manager_output));
 	if (!manager_output) {
 		return false;
 	}
+
+	manager_output->output = output;
 
 	manager_output->backend = wlr_output_manager_lock_backend(
 		manager, output->backend);
@@ -183,6 +242,9 @@ bool wlr_output_manager_init_output(struct wlr_output_manager *manager,
 	}
 
 	wlr_addon_init(&manager_output->addon, &output->addons, manager, &output_addon_impl);
+
+	manager_output->backend_recovery.notify = output_handle_recovery;
+	wl_signal_add(&manager_output->backend->events.recovery, &manager_output->backend_recovery);
 
 	wlr_output_init_render(output, manager_output->backend->allocator,
 		manager_output->backend->renderer);

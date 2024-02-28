@@ -27,10 +27,15 @@ struct wlr_output_manager_backend {
 
 	struct wl_list link; // wlr_output_manager.backends
 
+	struct {
+		struct wl_signal recovery;
+	} events;
+
 	// private state
 
 	uint32_t locks;
 	struct wl_listener backend_destroy;
+	struct wl_listener renderer_lost;
 };
 
 struct wlr_output_manager {
