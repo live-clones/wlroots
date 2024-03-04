@@ -419,7 +419,6 @@ static void layer_handle_addon_destroy(struct wlr_addon *addon) {
 #if HAVE_LIBLIFTOFF
 	liftoff_layer_destroy(layer->liftoff);
 #endif
-	drm_fb_clear(&layer->pending_fb);
 	drm_fb_clear(&layer->queued_fb);
 	drm_fb_clear(&layer->current_fb);
 	free(layer->candidate_planes);
@@ -554,6 +553,7 @@ static void drm_connector_set_pending_page_flip(struct wlr_drm_connector *conn,
 static void drm_connector_apply_commit(const struct wlr_drm_connector_state *state,
 		struct wlr_drm_page_flip *page_flip) {
 	struct wlr_drm_connector *conn = state->connector;
+	struct wlr_drm_backend *drm = conn->backend;
 	struct wlr_drm_crtc *crtc = conn->crtc;
 
 	drm_fb_copy(&crtc->primary->queued_fb, state->primary_fb);
@@ -562,9 +562,13 @@ static void drm_connector_apply_commit(const struct wlr_drm_connector_state *sta
 	}
 	drm_fb_clear(&conn->cursor_pending_fb);
 
-	struct wlr_drm_layer *layer;
-	wl_list_for_each(layer, &crtc->layers, link) {
-		drm_fb_move(&layer->queued_fb, &layer->pending_fb);
+	if (crtc->liftoff) {
+		for (size_t i = 0; i < state->base->layers_len; i++) {
+			struct wlr_output_layer_state *layer_state = &state->base->layers[i];
+			struct wlr_drm_layer *layer = get_or_create_layer(drm, crtc, layer_state->layer);
+			assert(layer != NULL);
+			drm_fb_copy(&layer->queued_fb, state->layer_fbs[i]);
+		}
 	}
 
 	drm_connector_set_pending_page_flip(conn, page_flip);
@@ -580,22 +584,6 @@ static void drm_connector_apply_commit(const struct wlr_drm_connector_state *sta
 
 		conn->cursor_enabled = false;
 		conn->crtc = NULL;
-	}
-}
-
-static void drm_connector_rollback_commit(const struct wlr_drm_connector_state *state) {
-	struct wlr_drm_crtc *crtc = state->connector->crtc;
-
-	// The set_cursor() hook is a bit special: it's not really synchronized
-	// to commit() or test(). Once set_cursor() returns true, the new
-	// cursor is effectively committed. So don't roll it back here, or we
-	// risk ending up in a state where we don't have a cursor FB but
-	// wlr_drm_connector.cursor_enabled is true.
-	// TODO: fix our output interface to avoid this issue.
-
-	struct wlr_drm_layer *layer;
-	wl_list_for_each(layer, &crtc->layers, link) {
-		drm_fb_clear(&layer->pending_fb);
 	}
 }
 
@@ -620,9 +608,12 @@ static bool drm_commit(struct wlr_drm_backend *drm,
 			drm_connector_apply_commit(&state->connectors[i], page_flip);
 		}
 	} else {
-		for (size_t i = 0; i < state->connectors_len; i++) {
-			drm_connector_rollback_commit(&state->connectors[i]);
-		}
+		// The set_cursor() hook is a bit special: it's not really synchronized
+		// to commit() or test(). Once set_cursor() returns true, the new
+		// cursor is effectively committed. So don't roll it back here, or we
+		// risk ending up in a state where we don't have a cursor FB but
+		// wlr_drm_connector.cursor_enabled is true.
+		// TODO: fix our output interface to avoid this issue.
 		drm_page_flip_destroy(page_flip);
 	}
 	return ok;
@@ -666,6 +657,13 @@ static bool drm_connector_state_init(struct wlr_drm_connector_state *state,
 		state->mode.type = DRM_MODE_TYPE_USERDEF;
 	}
 
+	if (base->layers_len > 0) {
+		state->layer_fbs = calloc(base->layers_len, sizeof(state->layer_fbs[0]));
+		if (state->layer_fbs == NULL) {
+			return false;
+		}
+	}
+
 	if (output_pending_enabled(&conn->output, base)) {
 		// The CRTC must be set up before this function is called
 		assert(conn->crtc != NULL);
@@ -688,6 +686,19 @@ static bool drm_connector_state_init(struct wlr_drm_connector_state *state,
 				state->cursor_fb = drm_fb_lock(cursor->current_fb);
 			}
 		}
+
+		if (!conn->backend->parent && conn->crtc->liftoff) {
+			for (size_t i = 0; i < base->layers_len; i++) {
+				struct wlr_output_layer_state *layer_state = &base->layers[i];
+				if (layer_state->buffer != NULL) {
+					drm_fb_import(&state->layer_fbs[i], conn->backend, layer_state->buffer, NULL);
+				}
+
+				if (get_or_create_layer(conn->backend, conn->crtc, layer_state->layer) == NULL) {
+					return false;
+				}
+			}
+		}
 	}
 
 	return true;
@@ -697,6 +708,10 @@ static void drm_connector_state_finish(struct wlr_drm_connector_state *state) {
 	drm_fb_clear(&state->primary_fb);
 	drm_fb_clear(&state->cursor_fb);
 	wlr_drm_syncobj_timeline_unref(state->wait_timeline);
+	for (size_t i = 0; i < state->base->layers_len; i++) {
+		drm_fb_clear(&state->layer_fbs[i]);
+	}
+	free(state->layer_fbs);
 }
 
 static bool drm_connector_state_update_primary_fb(struct wlr_drm_connector *conn,
@@ -766,39 +781,6 @@ static bool drm_connector_state_update_primary_fb(struct wlr_drm_connector *conn
 	return true;
 }
 
-static bool drm_connector_set_pending_layer_fbs(struct wlr_drm_connector *conn,
-		const struct wlr_output_state *state) {
-	struct wlr_drm_backend *drm = conn->backend;
-
-	struct wlr_drm_crtc *crtc = conn->crtc;
-	if (!crtc || drm->parent) {
-		return false;
-	}
-
-	if (!crtc->liftoff) {
-		return true; // libliftoff is disabled
-	}
-
-	assert(state->committed & WLR_OUTPUT_STATE_LAYERS);
-
-	for (size_t i = 0; i < state->layers_len; i++) {
-		struct wlr_output_layer_state *layer_state = &state->layers[i];
-		struct wlr_drm_layer *layer =
-			get_or_create_layer(drm, crtc, layer_state->layer);
-		if (!layer) {
-			return false;
-		}
-
-		if (layer_state->buffer != NULL) {
-			drm_fb_import(&layer->pending_fb, drm, layer_state->buffer, NULL);
-		} else {
-			drm_fb_clear(&layer->pending_fb);
-		}
-	}
-
-	return true;
-}
-
 static bool drm_connector_alloc_crtc(struct wlr_drm_connector *conn);
 
 static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bool test_only) {
@@ -843,11 +825,6 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 
 		if (conn_state->base->tearing_page_flip && !conn->backend->supports_tearing_page_flips) {
 			wlr_log(WLR_ERROR, "Attempted to submit a tearing page flip to an unsupported backend!");
-			return false;
-		}
-	}
-	if (state->committed & WLR_OUTPUT_STATE_LAYERS) {
-		if (!drm_connector_set_pending_layer_fbs(conn, conn_state->base)) {
 			return false;
 		}
 	}
