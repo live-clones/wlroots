@@ -628,7 +628,7 @@ static bool drm_commit(struct wlr_drm_backend *drm,
 	return ok;
 }
 
-static void drm_connector_state_init(struct wlr_drm_connector_state *state,
+static bool drm_connector_state_init(struct wlr_drm_connector_state *state,
 		struct wlr_drm_connector *conn,
 		const struct wlr_output_state *base) {
 	*state = (struct wlr_drm_connector_state){
@@ -689,6 +689,8 @@ static void drm_connector_state_init(struct wlr_drm_connector_state *state,
 			}
 		}
 	}
+
+	return true;
 }
 
 static void drm_connector_state_finish(struct wlr_drm_connector_state *state) {
@@ -880,7 +882,9 @@ static bool drm_connector_commit_state(struct wlr_drm_connector *conn,
 
 	bool ok = false;
 	struct wlr_drm_connector_state pending = {0};
-	drm_connector_state_init(&pending, conn, state);
+	if (!drm_connector_state_init(&pending, conn, state)) {
+		return false;
+	}
 	struct wlr_drm_device_state pending_dev = {
 		.modeset = state->allow_reconfiguration,
 		// The wlr_output API requires non-modeset commits with a new buffer to
@@ -1987,7 +1991,9 @@ bool commit_drm_device(struct wlr_drm_backend *drm,
 		}
 
 		struct wlr_drm_connector_state *conn_state = &conn_states[conn_states_len];
-		drm_connector_state_init(conn_state, conn, &output_state->base);
+		if (!drm_connector_state_init(conn_state, conn, &output_state->base)) {
+			goto out;
+		}
 		conn_states_len++;
 
 		if (!drm_connector_prepare(conn_state, test_only)) {
