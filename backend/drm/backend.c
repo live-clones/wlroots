@@ -234,10 +234,16 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 		goto error_event;
 	}
 
+	drm->session_destroy.notify = handle_session_destroy;
+	wl_signal_add(&session->events.destroy, &drm->session_destroy);
+
 	if (drm->parent) {
 		if (!init_drm_renderer(drm, &drm->mgpu_renderer)) {
-			wlr_log(WLR_ERROR, "Failed to initialize renderer");
-			goto error_resources;
+			wlr_log(WLR_INFO, "Failed to initialize secondary GPU renderer, "
+				"falling back to scanout from primary renderer");
+			wl_list_remove(&drm->parent_destroy.link);
+			drm->parent = NULL;
+			return &drm->backend;
 		}
 
 		// We'll perform a multi-GPU copy for all submitted buffers, we need
@@ -264,14 +270,10 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 		}
 	}
 
-	drm->session_destroy.notify = handle_session_destroy;
-	wl_signal_add(&session->events.destroy, &drm->session_destroy);
-
 	return &drm->backend;
 
 error_mgpu_renderer:
 	finish_drm_renderer(&drm->mgpu_renderer);
-error_resources:
 	finish_drm_resources(drm);
 error_event:
 	wl_list_remove(&drm->session_active.link);
