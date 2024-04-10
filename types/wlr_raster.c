@@ -279,6 +279,21 @@ static struct surface_raster *get_surface_raster(struct wlr_surface *surface) {
 	return surface_raster;
 }
 
+// Because wlr_raster doesn't lock the buffer itself, we need something extra
+// to keep client buffer locked when operating in legacy mode.
+struct client_buffer_compat {
+	struct wlr_client_buffer *buffer;
+	struct wl_listener destroy;
+};
+
+static void client_buffer_compat_raster_destroy(struct wl_listener *listener, void *data) {
+	struct client_buffer_compat *compat = wl_container_of(listener, compat, destroy);
+
+	wlr_buffer_unlock(&compat->buffer->base);
+	wl_list_remove(&compat->destroy.link);
+	free(compat);
+}
+
 struct wlr_raster *wlr_raster_from_surface(struct wlr_surface *surface) {
 	struct wlr_linux_drm_syncobj_surface_v1_state *syncobj_surface_state =
 		wlr_linux_drm_syncobj_v1_get_surface_state(surface);
@@ -287,6 +302,32 @@ struct wlr_raster *wlr_raster_from_surface(struct wlr_surface *surface) {
 	if (syncobj_surface_state) {
 		options.wait_timeline = syncobj_surface_state->acquire_timeline;
 		options.wait_point = syncobj_surface_state->acquire_point;
+	}
+
+	if (surface->compositor->renderer) {
+		// use legacy wlr_client_buffer
+		if (!surface->buffer) {
+			return NULL;
+		}
+
+		struct client_buffer_compat *compat = calloc(1, sizeof(*compat));
+		if (!compat) {
+			return NULL;
+		}
+
+		struct wlr_raster *raster = wlr_raster_create(&surface->buffer->base, &options);
+		if (!raster) {
+			free(compat);
+			return NULL;
+		}
+
+		compat->destroy.notify = client_buffer_compat_raster_destroy;
+		wl_signal_add(&raster->events.destroy, &compat->destroy);
+
+		compat->buffer = surface->buffer;
+		wlr_buffer_lock(&surface->buffer->base);
+
+		return raster;
 	}
 
 	struct surface_raster *surface_raster = get_surface_raster(surface);
