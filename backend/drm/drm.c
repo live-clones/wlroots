@@ -1136,7 +1136,6 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 		conn->cursor_height = buffer->height;
 	}
 
-	wlr_output_update_needs_frame(output);
 	return true;
 }
 
@@ -1166,7 +1165,6 @@ static bool drm_connector_move_cursor(struct wlr_output *output,
 	conn->cursor_x = box.x;
 	conn->cursor_y = box.y;
 
-	wlr_output_update_needs_frame(output);
 	return true;
 }
 
