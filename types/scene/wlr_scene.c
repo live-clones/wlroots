@@ -2096,7 +2096,8 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		}
 
 		struct wlr_scene_buffer *buffer = wlr_scene_buffer_from_node(entry->node);
-		wlr_raster_create_texture(buffer->raster, output->renderer);
+		wlr_raster_obtain_texture_with_allocator(buffer->raster,
+			output->renderer, output->allocator);
 	}
 
 	render_data.render_pass = render_pass;
