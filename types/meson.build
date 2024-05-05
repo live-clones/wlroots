@@ -60,6 +60,7 @@ wlr_files += files(
 	'wlr_output_layer.c',
 	'wlr_output_layout.c',
 	'wlr_output_management_v1.c',
+	'wlr_output_manager.c',
 	'wlr_output_power_management_v1.c',
 	'wlr_output_swapchain_manager.c',
 	'wlr_pointer_constraints_v1.c',
