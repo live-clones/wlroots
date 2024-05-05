@@ -152,10 +152,6 @@ static void raster_attach_with_allocator(struct wlr_raster *raster,
 	source->allocator = allocator;
 }
 
-static void raster_attach(struct wlr_raster *raster, struct wlr_texture *texture) {
-	raster_attach_with_allocator(raster, texture, NULL);
-}
-
 static struct wlr_texture *wlr_raster_get_texture(struct wlr_raster *raster,
 		struct wlr_renderer *renderer) {
 	struct wlr_raster_source *source;
@@ -379,13 +375,13 @@ struct wlr_texture *wlr_raster_obtain_texture_with_allocator(struct wlr_raster *
 			struct wlr_texture *texture = wlr_texture_from_buffer(
 				linux_dmabuf->main_renderer, raster->buffer);
 			if (texture) {
-				wlr_raster_attach_with_allocator(raster, texture,
+				raster_attach_with_allocator(raster, texture,
 					linux_dmabuf->main_allocator);
 
 				// try to create a blit but this time through the primary device
 				texture = raster_try_texture_from_blit(raster, renderer);
 				if (texture) {
-					wlr_raster_attach_with_allocator(raster, texture, allocator);
+					raster_attach_with_allocator(raster, texture, allocator);
 					return texture;
 				}
 			}
@@ -404,7 +400,7 @@ struct wlr_texture *wlr_raster_obtain_texture_with_allocator(struct wlr_raster *
 
 struct wlr_texture *wlr_raster_obtain_texture(struct wlr_raster *raster,
 		struct wlr_renderer *renderer) {
-	return wlr_raster_create_texture_with_allocator(raster, renderer, NULL);
+	return wlr_raster_obtain_texture_with_allocator(raster, renderer, NULL);
 }
 
 struct raster_update_state {
@@ -444,9 +440,10 @@ static void raster_update_handle_old_raster_destroy(struct wl_listener *listener
 	struct wlr_raster_source *source, *tmp_source;
 	wl_list_for_each_safe(source, tmp_source, &state->old_raster->sources, link) {
 		struct wlr_texture *texture = source->texture;
+		struct wlr_allocator *allocator = source->allocator;
 		if (wlr_texture_update_from_buffer(texture, state->buffer, &state->damage)) {
 			raster_detach(state->old_raster, texture);
-			raster_attach(state->new_raster, texture);
+			raster_attach_with_allocator(state->new_raster, texture, allocator);
 		}
 	}
 
@@ -530,7 +527,8 @@ static void surface_raster_handle_buffer_prerelease(struct wl_listener *listener
 
 	struct wlr_surface_output *output;
 	wl_list_for_each(output, &surface_raster->surface->current_outputs, link) {
-		wlr_raster_obtain_texture(raster, output->output->renderer);
+		wlr_raster_obtain_texture_with_allocator(raster,
+			output->output->renderer, output->output->allocator);
 	}
 
 	// if there was a failed texture upload, keep on locking the buffer
