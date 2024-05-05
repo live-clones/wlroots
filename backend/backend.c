@@ -258,7 +258,7 @@ static struct wlr_backend *attempt_drm_backend(struct wlr_backend *backend, stru
 
 	struct wlr_backend *primary_drm = NULL;
 	for (size_t i = 0; i < (size_t)num_gpus; ++i) {
-		struct wlr_backend *drm = wlr_drm_backend_create(session, gpus[i], primary_drm);
+		struct wlr_backend *drm = wlr_drm_backend_create(session, gpus[i]);
 		if (!drm) {
 			wlr_log(WLR_ERROR, "Failed to create DRM backend");
 			continue;

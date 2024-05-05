@@ -65,15 +65,6 @@ bool check_drm_features(struct wlr_drm_backend *drm) {
 		return false;
 	}
 
-	if (drm->parent) {
-		if (drmGetCap(drm->parent->fd, DRM_CAP_PRIME, &cap) ||
-				!(cap & DRM_PRIME_CAP_EXPORT)) {
-			wlr_log(WLR_ERROR,
-				"PRIME export not supported on primary GPU");
-			return false;
-		}
-	}
-
 	if (drmSetClientCap(drm->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1)) {
 		wlr_log(WLR_ERROR, "DRM universal planes unsupported");
 		return false;
@@ -369,8 +360,6 @@ static void drm_plane_finish_surface(struct wlr_drm_plane *plane) {
 
 	drm_fb_clear(&plane->queued_fb);
 	drm_fb_clear(&plane->current_fb);
-
-	finish_drm_surface(&plane->mgpu_surf);
 }
 
 void finish_drm_resources(struct wlr_drm_backend *drm) {
@@ -709,52 +698,8 @@ static bool drm_connector_state_update_primary_fb(struct wlr_drm_connector *conn
 	struct wlr_drm_plane *plane = crtc->primary;
 	struct wlr_buffer *source_buf = state->base->buffer;
 
-	struct wlr_drm_syncobj_timeline *wait_timeline = NULL;
-	uint64_t wait_point = 0;
-	if (state->base->committed & WLR_OUTPUT_STATE_WAIT_TIMELINE) {
-		wait_timeline = state->base->wait_timeline;
-		wait_point = state->base->wait_point;
-	}
-	assert(state->wait_timeline == NULL);
-
-	struct wlr_buffer *local_buf;
-	if (drm->parent) {
-		struct wlr_drm_format format = {0};
-		if (!drm_plane_pick_render_format(plane, &format, &drm->mgpu_renderer)) {
-			wlr_log(WLR_ERROR, "Failed to pick primary plane format");
-			return false;
-		}
-
-		// TODO: fallback to modifier-less buffer allocation
-		bool ok = init_drm_surface(&plane->mgpu_surf, &drm->mgpu_renderer,
-			source_buf->width, source_buf->height, &format);
-		wlr_drm_format_finish(&format);
-		if (!ok) {
-			return false;
-		}
-
-		local_buf = drm_surface_blit(&plane->mgpu_surf, source_buf,
-			wait_timeline, wait_point);
-		if (local_buf == NULL) {
-			return false;
-		}
-
-		if (plane->mgpu_surf.timeline != NULL) {
-			state->wait_timeline = wlr_drm_syncobj_timeline_ref(plane->mgpu_surf.timeline);
-			state->wait_point = plane->mgpu_surf.point;
-		}
-	} else {
-		local_buf = wlr_buffer_lock(source_buf);
-
-		if (wait_timeline != NULL) {
-			state->wait_timeline = wlr_drm_syncobj_timeline_ref(wait_timeline);
-			state->wait_point = wait_point;
-		}
-	}
-
-	bool ok = drm_fb_import(&state->primary_fb, drm, local_buf,
+	bool ok = drm_fb_import(&state->primary_fb, drm, source_buf,
 		&plane->formats);
-	wlr_buffer_unlock(local_buf);
 	if (!ok) {
 		wlr_drm_conn_log(conn, WLR_DEBUG,
 			"Failed to import buffer for scan-out");
@@ -769,7 +714,7 @@ static bool drm_connector_set_pending_layer_fbs(struct wlr_drm_connector *conn,
 	struct wlr_drm_backend *drm = conn->backend;
 
 	struct wlr_drm_crtc *crtc = conn->crtc;
-	if (!crtc || drm->parent) {
+	if (!crtc) {
 		return false;
 	}
 
@@ -826,12 +771,6 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 		wlr_drm_conn_log(conn, WLR_DEBUG,
 				"Can't enable adaptive sync: connector doesn't support VRR");
 		return false;
-	}
-
-	if (test_only && conn->backend->parent) {
-		// If we're running as a secondary GPU, we can't perform an atomic
-		// commit without blitting a buffer.
-		return true;
 	}
 
 	if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
@@ -895,13 +834,6 @@ static bool drm_connector_commit_state(struct wlr_drm_connector *conn,
 	};
 
 	if (!drm_connector_prepare(&pending, test_only)) {
-		goto out;
-	}
-
-	if (test_only && conn->backend->parent) {
-		// If we're running as a secondary GPU, we can't perform an atomic
-		// commit without blitting a buffer.
-		ok = true;
 		goto out;
 	}
 
@@ -1094,28 +1026,7 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 			return false;
 		}
 
-		struct wlr_buffer *local_buf;
-		if (drm->parent) {
-			struct wlr_drm_format format = {0};
-			if (!drm_plane_pick_render_format(plane, &format, &drm->mgpu_renderer)) {
-				wlr_log(WLR_ERROR, "Failed to pick cursor plane format");
-				return false;
-			}
-
-			bool ok = init_drm_surface(&plane->mgpu_surf, &drm->mgpu_renderer,
-				buffer->width, buffer->height, &format);
-			wlr_drm_format_finish(&format);
-			if (!ok) {
-				return false;
-			}
-
-			local_buf = drm_surface_blit(&plane->mgpu_surf, buffer, NULL, 0);
-			if (local_buf == NULL) {
-				return false;
-			}
-		} else {
-			local_buf = wlr_buffer_lock(buffer);
-		}
+		struct wlr_buffer *local_buf = wlr_buffer_lock(buffer);
 
 		bool ok = drm_fb_import(&conn->cursor_pending_fb, drm, local_buf,
 			&plane->formats);
@@ -1209,9 +1120,6 @@ static const struct wlr_drm_format_set *drm_connector_get_cursor_formats(
 	if (!plane) {
 		return NULL;
 	}
-	if (conn->backend->parent) {
-		return &conn->backend->mgpu_formats;
-	}
 	return &plane->formats;
 }
 
@@ -1237,9 +1145,6 @@ static const struct wlr_drm_format_set *drm_connector_get_primary_formats(
 	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
 	if (!drm_connector_alloc_crtc(conn)) {
 		return NULL;
-	}
-	if (conn->backend->parent) {
-		return &conn->backend->mgpu_formats;
 	}
 	return &conn->crtc->primary->formats;
 }
@@ -1647,9 +1552,6 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	}
 
 	output->timeline = drm->iface != &legacy_iface;
-	if (drm->parent) {
-		output->timeline = output->timeline && drm->mgpu_renderer.wlr_rend->features.timeline;
-	}
 
 	memset(wlr_conn->max_bpc_bounds, 0, sizeof(wlr_conn->max_bpc_bounds));
 	if (wlr_conn->props.max_bpc != 0) {
@@ -2000,13 +1902,6 @@ bool commit_drm_device(struct wlr_drm_backend *drm,
 		modeset |= output_state->base.allow_reconfiguration;
 	}
 
-	if (test_only && drm->parent) {
-		// If we're running as a secondary GPU, we can't perform an atomic
-		// commit without blitting a buffer.
-		ok = true;
-		goto out;
-	}
-
 	uint32_t flags = 0;
 	if (!test_only) {
 		flags |= DRM_MODE_PAGE_FLIP_EVENT;
@@ -2039,7 +1934,8 @@ static void handle_page_flip(int fd, unsigned seq,
 		conn->pending_page_flip = NULL;
 	}
 
-	uint32_t present_flags = WLR_OUTPUT_PRESENT_HW_CLOCK | WLR_OUTPUT_PRESENT_HW_COMPLETION;
+	uint32_t present_flags = WLR_OUTPUT_PRESENT_HW_CLOCK | WLR_OUTPUT_PRESENT_HW_COMPLETION |
+		WLR_OUTPUT_PRESENT_ZERO_COPY;
 	if (!page_flip->async) {
 		present_flags |= WLR_OUTPUT_PRESENT_VSYNC;
 	}
@@ -2072,14 +1968,6 @@ static void handle_page_flip(int fd, unsigned seq,
 	struct wlr_drm_layer *layer;
 	wl_list_for_each(layer, &conn->crtc->layers, link) {
 		drm_fb_move(&layer->current_fb, &layer->queued_fb);
-	}
-
-	/* Don't report ZERO_COPY in multi-gpu situations, because we had to copy
-	 * data between the GPUs, even if we were using the direct scanout
-	 * interface.
-	 */
-	if (!drm->parent) {
-		present_flags |= WLR_OUTPUT_PRESENT_ZERO_COPY;
 	}
 
 	struct wlr_output_event_present present_event = {
