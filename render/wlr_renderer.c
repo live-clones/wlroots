@@ -84,7 +84,7 @@ bool wlr_renderer_init_wl_display(struct wlr_renderer *r,
 		return false;
 	}
 
-	if (wlr_renderer_get_texture_formats(r, WLR_BUFFER_CAP_DMABUF) != NULL &&
+	if (wlr_renderer_get_texture_formats(r, r->render_buffer_caps) != NULL &&
 			wlr_renderer_get_drm_fd(r) >= 0 &&
 			wlr_linux_dmabuf_v1_create_with_renderer(wl_display, 4, r) == NULL) {
 		return false;
