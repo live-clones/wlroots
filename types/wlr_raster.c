@@ -388,5 +388,6 @@ struct wlr_raster *wlr_raster_from_surface(struct wlr_surface *surface) {
 	wl_list_remove(&surface_raster->buffer_prerelease.link);
 	wl_signal_add(&surface->current.buffer->events.prerelease, &surface_raster->buffer_prerelease);
 
+	wlr_surface_consume(surface);
 	return raster;
 }
