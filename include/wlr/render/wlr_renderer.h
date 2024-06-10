@@ -55,6 +55,7 @@ struct wlr_renderer {
 
 	struct {
 		const struct wlr_renderer_impl *impl;
+		int drm_fd;
 	} WLR_PRIVATE;
 };
 
