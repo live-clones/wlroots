@@ -39,7 +39,9 @@
 //   might still be a good idea.
 
 static const VkDeviceSize min_stage_size = 1024 * 1024; // 1MB
+static const VkDeviceSize special_stage_size = 16 * min_stage_size; // 16MB
 static const VkDeviceSize max_stage_size = 256 * min_stage_size; // 256MB
+static const uint64_t max_stage_unused_frames = 1024;
 static const size_t start_descriptor_pool_size = 256u;
 static bool default_debug = true;
 
@@ -174,13 +176,21 @@ static void shared_buffer_destroy(struct wlr_vk_renderer *r,
 	if (!buffer) {
 		return;
 	}
+	wlr_log(WLR_DEBUG, "Destroying vk staging buffer of size %" PRIu64, buffer->buf_size);
 
-	if (buffer->allocs.size > 0) {
-		wlr_log(WLR_ERROR, "shared_buffer_finish: %zu allocations left",
-			buffer->allocs.size / sizeof(struct wlr_vk_allocation));
+	if (buffer->active > 0) {
+		wlr_log(WLR_ERROR, "shared_buffer_destroy: spans still in use");
+	}
+	struct wlr_vk_stage_span *span, *span_tmp;
+	wl_list_for_each_safe(span, span_tmp, &r->stage.spans, link) {
+		if (span->buffer != buffer) {
+			continue;
+		}
+		wl_list_remove(&span->usage_link);
+		wl_list_remove(&span->link);
+		free(span);
 	}
 
-	wl_array_release(&buffer->allocs);
 	if (buffer->cpu_mapping) {
 		vkUnmapMemory(r->dev->dev, buffer->memory);
 		buffer->cpu_mapping = NULL;
@@ -196,44 +206,71 @@ static void shared_buffer_destroy(struct wlr_vk_renderer *r,
 	free(buffer);
 }
 
-struct wlr_vk_buffer_span vulkan_get_stage_span(struct wlr_vk_renderer *r,
+void vulkan_return_stage_span(struct wlr_vk_renderer *r, struct wlr_vk_stage_span *span) {
+	span->buffer->active -= span->size;
+	span->free = true;
+
+	// Merge next free span into this one, if one exists
+	if (span->link.next != &r->stage.spans) {
+		struct wlr_vk_stage_span *next = wl_container_of(span->link.next, next, link);
+		if (next->free && next->buffer == span->buffer) {
+			span->size += next->size;
+			wl_list_remove(&next->link);
+			free(next);
+		}
+	}
+
+	// Merge this free span into the previous one, if one exists
+	if (span->link.prev != &r->stage.spans) {
+		struct wlr_vk_stage_span *prev = wl_container_of(span->link.prev, prev, link);
+		if (prev->free && prev->buffer == span->buffer) {
+			prev->size += span->size;
+			wl_list_remove(&span->link);
+			free(span);
+		}
+	}
+}
+
+struct wlr_vk_stage_span *vulkan_get_stage_span(struct wlr_vk_renderer *r,
 		VkDeviceSize size, VkDeviceSize alignment) {
 	// try to find free span
 	// simple greedy allocation algorithm - should be enough for this usecase
 	// since all allocations are freed together after the frame
-	struct wlr_vk_shared_buffer *buf;
-	wl_list_for_each_reverse(buf, &r->stage.buffers, link) {
-		VkDeviceSize start = 0u;
-		if (buf->allocs.size > 0) {
-			const struct wlr_vk_allocation *allocs = buf->allocs.data;
-			size_t allocs_len = buf->allocs.size / sizeof(struct wlr_vk_allocation);
-			const struct wlr_vk_allocation *last = &allocs[allocs_len - 1];
-			start = last->start + last->size;
-		}
-
-		assert(start <= buf->buf_size);
-
-		// ensure the proposed start is a multiple of alignment
-		start += alignment - 1 - ((start + alignment - 1) % alignment);
-
-		if (buf->buf_size - start < size) {
+	struct wlr_vk_stage_span *span;
+	wl_list_for_each_reverse(span, &r->stage.spans, link) {
+		if (!span->free || span->size < size) {
 			continue;
 		}
 
-		struct wlr_vk_allocation *a = wl_array_add(&buf->allocs, sizeof(*a));
-		if (a == NULL) {
-			wlr_log_errno(WLR_ERROR, "Allocation failed");
-			goto error_alloc;
+		if (size <= special_stage_size && span->buffer->buf_size > special_stage_size) {
+			// Avoid accidentally holding on to big buffers
+			continue;
 		}
 
-		*a = (struct wlr_vk_allocation){
-			.start = start,
-			.size = size,
+		span->free = false;
+		span->buffer->active += size;
+		if (span->size == size) {
+			// Perfect fit
+			return span;
+		}
+
+		// Cleave the span
+		struct wlr_vk_stage_span *free_span = malloc(sizeof(*free_span));
+		if (free_span == NULL) {
+			span->free = true;
+			span->buffer->active -= size;
+			return NULL;
+		}
+		*free_span = (struct wlr_vk_stage_span){
+			.buffer = span->buffer,
+			.size = span->size - size,
+			.start = span->start + size,
+			.free = true,
 		};
-		return (struct wlr_vk_buffer_span) {
-			.buffer = buf,
-			.alloc = *a,
-		};
+		wl_list_init(&free_span->usage_link);
+		wl_list_insert(&span->link, &free_span->link);
+		span->size = size;
+		return span;
 	}
 
 	if (size > max_stage_size) {
@@ -243,21 +280,28 @@ struct wlr_vk_buffer_span vulkan_get_stage_span(struct wlr_vk_renderer *r,
 		goto error_alloc;
 	}
 
-	// we didn't find a free buffer - create one
-	// size = clamp(max(size * 2, prev_size * 2), min_size, max_size)
-	VkDeviceSize bsize = size * 2;
-	bsize = bsize < min_stage_size ? min_stage_size : bsize;
-	if (!wl_list_empty(&r->stage.buffers)) {
-		struct wl_list *last_link = r->stage.buffers.prev;
-		struct wlr_vk_shared_buffer *prev = wl_container_of(
-			last_link, prev, link);
-		VkDeviceSize last_size = 2 * prev->buf_size;
-		bsize = bsize < last_size ? last_size : bsize;
-	}
+	// Pick the next bucket size. If the size is below our "special" threshold,
+	// double the last bucket size. Otherwise allocate the requested size
+	// directly.
+	VkDeviceSize bsize = min_stage_size;
+	struct wlr_vk_shared_buffer *buf;
 
-	if (bsize > max_stage_size) {
-		wlr_log(WLR_INFO, "vulkan stage buffers have reached max size");
-		bsize = max_stage_size;
+	if (size > special_stage_size) {
+		// The size is too big for our buckets, alloate directly
+		bsize = size;
+	} else {
+		bsize = min_stage_size;
+		// We start by picking the last bucket size * 2
+		wl_list_for_each_reverse(buf, &r->stage.buffers, link) {
+			if (buf->buf_size < special_stage_size && buf->buf_size * 2 > bsize) {
+				bsize = buf->buf_size * 2;
+			}
+		}
+		// If double the last bucket is not enough, keep doubling until we hit the
+		// size for dedicated allocations.
+		while (bsize < size && bsize < special_stage_size) {
+			bsize *= 2;
+		}
 	}
 
 	// create buffer
@@ -266,6 +310,8 @@ struct wlr_vk_buffer_span vulkan_get_stage_span(struct wlr_vk_renderer *r,
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
 		goto error_alloc;
 	}
+	buf->buf_size = bsize;
+	wl_list_insert(&r->stage.buffers, &buf->link);
 
 	VkResult res;
 	VkBufferCreateInfo buf_info = {
@@ -315,33 +361,41 @@ struct wlr_vk_buffer_span vulkan_get_stage_span(struct wlr_vk_renderer *r,
 		goto error;
 	}
 
-	struct wlr_vk_allocation *a = wl_array_add(&buf->allocs, sizeof(*a));
-	if (a == NULL) {
-		wlr_log_errno(WLR_ERROR, "Allocation failed");
+	span = malloc(sizeof(*span));
+	struct wlr_vk_stage_span *free_span = malloc(sizeof(*free_span));
+	if (span == NULL || free_span == NULL) {
+		free(span);
+		free(free_span);
 		goto error;
 	}
+	*free_span = (struct wlr_vk_stage_span){
+		.buffer = buf,
+		.start = size,
+		.size = bsize - size,
+		.free = true,
+	};
+	wl_list_init(&free_span->usage_link);
+	wl_list_insert(&r->stage.spans, &free_span->link);
 
-	wlr_log(WLR_DEBUG, "Created new vk staging buffer of size %" PRIu64, bsize);
-	buf->buf_size = bsize;
-	wl_list_insert(&r->stage.buffers, &buf->link);
-
-	*a = (struct wlr_vk_allocation){
+	*span = (struct wlr_vk_stage_span){
+		.buffer = buf,
 		.start = 0,
 		.size = size,
+		.free = false,
 	};
-	return (struct wlr_vk_buffer_span) {
-		.buffer = buf,
-		.alloc = *a,
-	};
+	wl_list_init(&span->usage_link);
+	wl_list_insert(&r->stage.spans, &span->link);
+	buf->active = size;
+
+	wlr_log(WLR_DEBUG, "Created new vk staging buffer of size %" PRIu64, bsize);
+
+	return span;
 
 error:
 	shared_buffer_destroy(r, buf);
 
 error_alloc:
-	return (struct wlr_vk_buffer_span) {
-		.buffer = NULL,
-		.alloc = (struct wlr_vk_allocation) {0, 0},
-	};
+	return NULL;
 }
 
 VkCommandBuffer vulkan_record_stage_cb(struct wlr_vk_renderer *renderer) {
@@ -429,7 +483,7 @@ static bool init_command_buffer(struct wlr_vk_command_buffer *cb,
 		.vk = vk_cb,
 	};
 	wl_list_init(&cb->destroy_textures);
-	wl_list_init(&cb->stage_buffers);
+	wl_list_init(&cb->stage_spans);
 	return true;
 }
 
@@ -463,12 +517,11 @@ static void release_command_buffer_resources(struct wlr_vk_command_buffer *cb,
 		wlr_texture_destroy(&texture->wlr_texture);
 	}
 
-	struct wlr_vk_shared_buffer *buf, *buf_tmp;
-	wl_list_for_each_safe(buf, buf_tmp, &cb->stage_buffers, link) {
-		buf->allocs.size = 0;
-
-		wl_list_remove(&buf->link);
-		wl_list_insert(&renderer->stage.buffers, &buf->link);
+	struct wlr_vk_stage_span *span, *span_tmp;
+	wl_list_for_each_safe(span, span_tmp, &cb->stage_spans, usage_link) {
+		wl_list_remove(&span->usage_link);
+		wl_list_init(&span->usage_link);
+		vulkan_return_stage_span(renderer, span);
 	}
 
 	if (cb->color_transform) {
@@ -487,6 +540,18 @@ static struct wlr_vk_command_buffer *get_command_buffer(
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkGetSemaphoreCounterValueKHR", res);
 		return NULL;
+	}
+
+	struct wlr_vk_shared_buffer *buf, *buf_tmp;
+	wl_list_for_each_safe(buf, buf_tmp, &renderer->stage.buffers, link) {
+		if (buf->active > 0) {
+			buf->unused_counter = 0;
+			continue;
+		}
+		buf->unused_counter++;
+		if (buf->unused_counter > max_stage_unused_frames) {
+			shared_buffer_destroy(renderer, buf);
+		}
 	}
 
 	// Destroy textures for completed command buffers
@@ -2414,6 +2479,7 @@ struct wlr_renderer *vulkan_renderer_create_for_device(struct wlr_vk_device *dev
 	wlr_renderer_init(&renderer->wlr_renderer, &renderer_impl, WLR_BUFFER_CAP_DMABUF);
 	renderer->wlr_renderer.features.output_color_transform = true;
 	wl_list_init(&renderer->stage.buffers);
+	wl_list_init(&renderer->stage.spans);
 	wl_list_init(&renderer->foreign_textures);
 	wl_list_init(&renderer->textures);
 	wl_list_init(&renderer->descriptor_pools);

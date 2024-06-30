@@ -247,7 +247,7 @@ struct wlr_vk_command_buffer {
 	// Textures to destroy after the command buffer completes
 	struct wl_list destroy_textures; // wlr_vk_texture.destroy_link
 	// Staging shared buffers to release after the command buffer completes
-	struct wl_list stage_buffers; // wlr_vk_shared_buffer.link
+	struct wl_list stage_spans; // wlr_vk_stage_span.link
 	// Color transform to unref after the command buffer completes
 	struct wlr_color_transform *color_transform;
 
@@ -313,6 +313,7 @@ struct wlr_vk_renderer {
 		struct wlr_vk_command_buffer *cb;
 		uint64_t last_timeline_point;
 		struct wl_list buffers; // wlr_vk_shared_buffer.link
+		struct wl_list spans;   // wlr_vk_stage_span.link
 	} stage;
 
 	struct {
@@ -387,9 +388,10 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 // and used as staging buffer. The allocation is implicitly released when the
 // stage cb has finished execution. The start of the span will be a multiple
 // of the given alignment.
-struct wlr_vk_buffer_span vulkan_get_stage_span(
+struct wlr_vk_stage_span *vulkan_get_stage_span(
 	struct wlr_vk_renderer *renderer, VkDeviceSize size,
 	VkDeviceSize alignment);
+void vulkan_return_stage_span(struct wlr_vk_renderer *r, struct wlr_vk_stage_span *span);
 
 // Tries to allocate a texture descriptor set. Will additionally
 // return the pool it was allocated from when successful (for freeing it later).
@@ -471,28 +473,31 @@ struct wlr_vk_descriptor_pool {
 	struct wl_list link; // wlr_vk_renderer.descriptor_pools
 };
 
-struct wlr_vk_allocation {
+struct wlr_vk_stage_span {
+	struct wl_list link; // wlr_vk_renderer.stage.spans
+
+	// usage_link is a reference from the command buffer using the span.
+	// Separate from the main link to not mess up ordering.
+	struct wl_list usage_link; // wlr_vk_command_buffer.stage_spans
+	struct wlr_vk_shared_buffer *buffer;
+
 	VkDeviceSize start;
 	VkDeviceSize size;
+	bool free;
 };
 
 // List of suballocated staging buffers.
 // Used to upload to/read from device local images.
 struct wlr_vk_shared_buffer {
-	struct wl_list link; // wlr_vk_renderer.stage.buffers or wlr_vk_command_buffer.stage_buffers
+	struct wl_list link; // wlr_vk_renderer.stage.buffers
 	VkBuffer buffer;
 	VkDeviceMemory memory;
 	VkDeviceSize buf_size;
 	void *cpu_mapping;
-	struct wl_array allocs; // struct wlr_vk_allocation
-};
 
-// Suballocated range on a buffer.
-struct wlr_vk_buffer_span {
-	struct wlr_vk_shared_buffer *buffer;
-	struct wlr_vk_allocation alloc;
+	VkDeviceSize active;
+	uint64_t unused_counter;
 };
-
 
 // Lookup table for a color transform
 struct wlr_vk_color_transform {
