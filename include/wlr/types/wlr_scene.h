@@ -134,10 +134,16 @@ struct wlr_scene_surface {
 struct wlr_scene_subsurface_tree_surface;
 struct wlr_scene_subsurface_tree {
 	struct wlr_scene_tree *tree;
+	bool is_visible;
+
+	struct {
+		struct wl_signal visibility;
+	} events;
 
 	// private state
 
 	struct wl_list surfaces;
+	uint16_t visible_surfaces;
 	struct wlr_scene_subsurface_tree_surface *root;
 };
 

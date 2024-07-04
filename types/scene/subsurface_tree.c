@@ -22,12 +22,14 @@ struct wlr_scene_subsurface_tree_surface {
 	struct wl_listener surface_map;
 	struct wl_listener surface_unmap;
 	struct wl_listener surface_new_subsurface;
+	struct wl_listener scene_outputs_update;
 	struct wl_listener scene_destroy;
 
 	struct wlr_scene_subsurface_tree_surface *parent; // NULL for the top-level surface
 
 	struct wlr_box clip;
 	struct wl_list link;
+	bool is_visible;
 
 	// Only valid if the surface is a sub-surface
 
@@ -36,9 +38,32 @@ struct wlr_scene_subsurface_tree_surface {
 	struct wl_listener subsurface_destroy;
 };
 
+static void subsurface_tree_handle_update_visibility(
+		struct wlr_scene_subsurface_tree_surface *tree, bool is_destroying) {
+	bool is_visible = tree->scene_surface->buffer->primary_output && !is_destroying;
+
+	if (is_visible && !tree->is_visible) {
+		tree->subsurface_tree->visible_surfaces++;
+	} else if (!is_visible && tree->is_visible) {
+		assert(tree->subsurface_tree->visible_surfaces > 0);
+		tree->subsurface_tree->visible_surfaces--;
+	}
+
+	tree->is_visible = is_visible;
+
+	bool is_tree_visible = tree->subsurface_tree->visible_surfaces > 0;
+	if (is_tree_visible != tree->subsurface_tree->is_visible) {
+		tree->subsurface_tree->is_visible = is_tree_visible;
+		wl_signal_emit_mutable(&tree->subsurface_tree->events.visibility, NULL);
+	}
+}
+
 static void subsurface_tree_handle_scene_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_scene_subsurface_tree_surface *subsurface_tree =
 		wl_container_of(listener, subsurface_tree, scene_destroy);
+
+	subsurface_tree_handle_update_visibility(subsurface_tree, true);
+
 	// tree and scene_surface will be cleaned up by scene_node_finish
 	if (subsurface_tree->parent) {
 		wlr_addon_finish(&subsurface_tree->surface_addon);
@@ -235,6 +260,13 @@ static void subsurface_tree_handle_surface_new_subsurface(
 	}
 }
 
+static void subsurface_tree_handle_scene_outputs_update(
+		struct wl_listener *listener, void *data) {
+	struct wlr_scene_subsurface_tree_surface *subsurface_tree =
+		wl_container_of(listener, subsurface_tree, scene_outputs_update);
+	subsurface_tree_handle_update_visibility(subsurface_tree, false);
+}
+
 static struct wlr_scene_subsurface_tree_surface *scene_surface_tree_create_surface(
 		struct wlr_scene_subsurface_tree *tree,
 		struct wlr_scene_tree *parent, struct wlr_surface *surface) {
@@ -278,6 +310,10 @@ static struct wlr_scene_subsurface_tree_surface *scene_surface_tree_create_surfa
 	subsurface_tree->scene_destroy.notify = subsurface_tree_handle_scene_destroy;
 	wl_signal_add(&subsurface_tree->tree->node.events.destroy, &subsurface_tree->scene_destroy);
 
+	subsurface_tree->scene_outputs_update.notify = subsurface_tree_handle_scene_outputs_update;
+	wl_signal_add(&subsurface_tree->scene_surface->buffer->events.outputs_update,
+		&subsurface_tree->scene_outputs_update);
+
 	subsurface_tree->surface_destroy.notify = subsurface_tree_handle_surface_destroy;
 	wl_signal_add(&surface->events.destroy, &subsurface_tree->surface_destroy);
 
@@ -296,6 +332,7 @@ static struct wlr_scene_subsurface_tree_surface *scene_surface_tree_create_surfa
 		&subsurface_tree->surface_new_subsurface);
 
 	wlr_scene_node_set_enabled(&subsurface_tree->tree->node, surface->mapped);
+	subsurface_tree_handle_update_visibility(subsurface_tree, false);
 
 	return subsurface_tree;
 
@@ -314,6 +351,7 @@ struct wlr_scene_subsurface_tree *wlr_scene_subsurface_tree_create(
 	}
 
 	wl_list_init(&subsurface_tree->surfaces);
+	wl_signal_init(&subsurface_tree->events.visibility);
 
 	struct wlr_scene_subsurface_tree_surface *subsurface_tree_surface =
 		scene_surface_tree_create_surface(subsurface_tree, parent, surface);
