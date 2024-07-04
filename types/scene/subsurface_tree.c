@@ -28,6 +28,7 @@ struct wlr_scene_subsurface_tree_surface {
 	struct wlr_addon scene_addon;
 
 	struct wlr_box clip;
+	struct wl_list link;
 
 	// Only valid if the surface is a sub-surface
 
@@ -52,6 +53,7 @@ static void subsurface_tree_addon_destroy(struct wlr_addon *addon) {
 	wl_list_remove(&subsurface_tree->surface_map.link);
 	wl_list_remove(&subsurface_tree->surface_unmap.link);
 	wl_list_remove(&subsurface_tree->surface_new_subsurface.link);
+	wl_list_remove(&subsurface_tree->link);
 	free(subsurface_tree);
 }
 
@@ -276,6 +278,7 @@ static struct wlr_scene_subsurface_tree_surface *scene_surface_tree_create_surfa
 		}
 	}
 
+	wl_list_insert(&tree->surfaces, &subsurface_tree->link);
 	subsurface_tree_reconfigure(subsurface_tree);
 
 	wlr_addon_init(&subsurface_tree->scene_addon, &subsurface_tree->tree->node.addons,
@@ -315,6 +318,8 @@ struct wlr_scene_subsurface_tree *wlr_scene_subsurface_tree_create(
 	if (!subsurface_tree) {
 		return NULL;
 	}
+
+	wl_list_init(&subsurface_tree->surfaces);
 
 	struct wlr_scene_subsurface_tree_surface *subsurface_tree_surface =
 		scene_surface_tree_create_surface(subsurface_tree, parent, surface);

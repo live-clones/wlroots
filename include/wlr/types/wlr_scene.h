@@ -133,6 +133,10 @@ struct wlr_scene_surface {
 
 struct wlr_scene_subsurface_tree {
 	struct wlr_scene_tree *tree;
+
+	// private state
+
+	struct wl_list surfaces;
 };
 
 /** A scene-graph node displaying a solid-colored rectangle */
