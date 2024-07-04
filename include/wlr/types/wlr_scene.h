@@ -250,6 +250,7 @@ struct wlr_scene_timer {
 /** A layer shell scene helper */
 struct wlr_scene_layer_surface_v1 {
 	struct wlr_scene_tree *tree;
+	struct wlr_scene_subsurface_tree *surface_tree;
 	struct wlr_layer_surface_v1 *layer_surface;
 
 	// private state
