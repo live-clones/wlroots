@@ -142,7 +142,7 @@ struct wlr_scene_layer_surface_v1 *wlr_scene_layer_surface_v1_create(
 		return NULL;
 	}
 
-	struct wlr_scene_tree *surface_tree = wlr_scene_subsurface_tree_create(
+	struct wlr_scene_subsurface_tree *surface_tree = wlr_scene_subsurface_tree_create(
 		scene_layer_surface->tree, layer_surface->surface);
 	if (surface_tree == NULL) {
 		wlr_scene_node_destroy(&scene_layer_surface->tree->node);

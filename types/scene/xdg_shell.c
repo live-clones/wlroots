@@ -5,7 +5,7 @@
 struct wlr_scene_xdg_surface {
 	struct wlr_scene_tree *tree;
 	struct wlr_xdg_surface *xdg_surface;
-	struct wlr_scene_tree *surface_tree;
+	struct wlr_scene_subsurface_tree *surface_tree;
 
 	struct wl_listener tree_destroy;
 	struct wl_listener xdg_surface_destroy;
@@ -36,7 +36,7 @@ static void scene_xdg_surface_update_position(
 
 	struct wlr_box geo = {0};
 	wlr_xdg_surface_get_geometry(xdg_surface, &geo);
-	wlr_scene_node_set_position(&scene_xdg_surface->surface_tree->node,
+	wlr_scene_node_set_position(&scene_xdg_surface->surface_tree->tree->node,
 		-geo.x, -geo.y);
 
 	if (xdg_surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {

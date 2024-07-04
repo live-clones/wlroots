@@ -131,6 +131,10 @@ struct wlr_scene_surface {
 	struct wl_listener surface_commit;
 };
 
+struct wlr_scene_subsurface_tree {
+	struct wlr_scene_tree *tree;
+};
+
 /** A scene-graph node displaying a solid-colored rectangle */
 struct wlr_scene_rect {
 	struct wlr_scene_node node;
@@ -547,7 +551,7 @@ void wlr_scene_output_layout_add_output(struct wlr_scene_output_layout *sol,
  * Add a node displaying a surface and all of its sub-surfaces to the
  * scene-graph.
  */
-struct wlr_scene_tree *wlr_scene_subsurface_tree_create(
+struct wlr_scene_subsurface_tree *wlr_scene_subsurface_tree_create(
 	struct wlr_scene_tree *parent, struct wlr_surface *surface);
 
 /**
