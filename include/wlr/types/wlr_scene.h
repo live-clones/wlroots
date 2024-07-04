@@ -131,12 +131,14 @@ struct wlr_scene_surface {
 	struct wl_listener surface_commit;
 };
 
+struct wlr_scene_subsurface_tree_surface;
 struct wlr_scene_subsurface_tree {
 	struct wlr_scene_tree *tree;
 
 	// private state
 
 	struct wl_list surfaces;
+	struct wlr_scene_subsurface_tree_surface *root;
 };
 
 /** A scene-graph node displaying a solid-colored rectangle */
@@ -565,7 +567,7 @@ struct wlr_scene_subsurface_tree *wlr_scene_subsurface_tree_create(
  *
  * A NULL or empty clip will disable clipping
  */
-void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_node *node,
+void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_subsurface_tree *tree,
 	const struct wlr_box *clip);
 
 /**

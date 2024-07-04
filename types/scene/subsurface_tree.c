@@ -328,62 +328,27 @@ struct wlr_scene_subsurface_tree *wlr_scene_subsurface_tree_create(
 		return NULL;
 	}
 
+	subsurface_tree->root = subsurface_tree_surface;
 	subsurface_tree->tree = subsurface_tree_surface->tree;
 	return subsurface_tree;
 }
 
-static struct wlr_scene_subsurface_tree_surface *get_subsurface_tree_from_node(
-		struct wlr_scene_node *node) {
-	struct wlr_addon *addon = wlr_addon_find(&node->addons, NULL, &subsurface_tree_addon_impl);
-	if (!addon) {
-		return NULL;
-	}
-
-	struct wlr_scene_subsurface_tree_surface *tree =
-		wl_container_of(addon, tree, scene_addon);
-	return tree;
-}
-
-static bool subsurface_tree_set_clip(struct wlr_scene_node *node,
+void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_subsurface_tree *tree,
 		const struct wlr_box *clip) {
-	if (node->type != WLR_SCENE_NODE_TREE) {
-		return false;
+	if (wlr_box_equal(&tree->root->clip, clip)) {
+		return;
 	}
 
-	bool discovered_subsurface_tree = false;
-	struct wlr_scene_subsurface_tree_surface *tree = get_subsurface_tree_from_node(node);
-	if (tree) {
-		if (tree->parent == NULL) {
-			if (wlr_box_equal(&tree->clip, clip)) {
-				return true;
-			}
-
-			if (clip) {
-				tree->clip = *clip;
-			} else {
-				tree->clip = (struct wlr_box){0};
-			}
-		}
-
-		discovered_subsurface_tree = true;
-		subsurface_tree_reconfigure_clip(tree);
+	if (clip) {
+		tree->root->clip = *clip;
+	} else {
+		tree->root->clip = (struct wlr_box){0};
 	}
 
-	struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
-	struct wlr_scene_node *child;
-	wl_list_for_each(child, &scene_tree->children, link) {
-		discovered_subsurface_tree |= subsurface_tree_set_clip(child, clip);
+	// iterate in reverse because children of parent subsurface will appear
+	// earlier in the list.
+	struct wlr_scene_subsurface_tree_surface *surface;
+	wl_list_for_each_reverse(surface, &tree->surfaces, link) {
+		subsurface_tree_reconfigure_clip(surface);
 	}
-
-	return discovered_subsurface_tree;
-}
-
-void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_node *node,
-		const struct wlr_box *clip) {
-#ifndef NDEBUG
-	bool found =
-#endif
-		subsurface_tree_set_clip(node, clip);
-
-	assert(found);
 }
