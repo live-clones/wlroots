@@ -2,16 +2,6 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
 
-struct wlr_scene_xdg_surface {
-	struct wlr_scene_tree *tree;
-	struct wlr_xdg_surface *xdg_surface;
-	struct wlr_scene_subsurface_tree *surface_tree;
-
-	struct wl_listener tree_destroy;
-	struct wl_listener xdg_surface_destroy;
-	struct wl_listener xdg_surface_commit;
-};
-
 static void scene_xdg_surface_handle_tree_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_scene_xdg_surface *scene_xdg_surface =
@@ -55,7 +45,7 @@ static void scene_xdg_surface_handle_xdg_surface_commit(struct wl_listener *list
 	scene_xdg_surface_update_position(scene_xdg_surface);
 }
 
-struct wlr_scene_tree *wlr_scene_xdg_surface_create(
+struct wlr_scene_xdg_surface *wlr_scene_xdg_surface_create(
 		struct wlr_scene_tree *parent, struct wlr_xdg_surface *xdg_surface) {
 	struct wlr_scene_xdg_surface *scene_xdg_surface =
 		calloc(1, sizeof(*scene_xdg_surface));
@@ -95,5 +85,5 @@ struct wlr_scene_tree *wlr_scene_xdg_surface_create(
 
 	scene_xdg_surface_update_position(scene_xdg_surface);
 
-	return scene_xdg_surface->tree;
+	return scene_xdg_surface;
 }

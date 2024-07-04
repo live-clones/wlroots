@@ -82,7 +82,7 @@ struct tinywl_toplevel {
 	struct wl_list link;
 	struct tinywl_server *server;
 	struct wlr_xdg_toplevel *xdg_toplevel;
-	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_xdg_surface *scene;
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
@@ -135,7 +135,7 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel, struct wlr_surface 
 	}
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
 	/* Move the toplevel to the front */
-	wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+	wlr_scene_node_raise_to_top(&toplevel->scene->tree->node);
 	wl_list_remove(&toplevel->link);
 	wl_list_insert(&server->toplevels, &toplevel->link);
 	/* Activate the new surface */
@@ -380,7 +380,7 @@ static void reset_cursor_mode(struct tinywl_server *server) {
 static void process_cursor_move(struct tinywl_server *server, uint32_t time) {
 	/* Move the grabbed toplevel to the new position. */
 	struct tinywl_toplevel *toplevel = server->grabbed_toplevel;
-	wlr_scene_node_set_position(&toplevel->scene_tree->node,
+	wlr_scene_node_set_position(&toplevel->scene->tree->node,
 		server->cursor->x - server->grab_x,
 		server->cursor->y - server->grab_y);
 }
@@ -429,7 +429,7 @@ static void process_cursor_resize(struct tinywl_server *server, uint32_t time) {
 
 	struct wlr_box geo_box;
 	wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geo_box);
-	wlr_scene_node_set_position(&toplevel->scene_tree->node,
+	wlr_scene_node_set_position(&toplevel->scene->tree->node,
 		new_left - geo_box.x, new_top - geo_box.y);
 
 	int new_width = new_right - new_left;
@@ -724,22 +724,22 @@ static void begin_interactive(struct tinywl_toplevel *toplevel,
 	server->cursor_mode = mode;
 
 	if (mode == TINYWL_CURSOR_MOVE) {
-		server->grab_x = server->cursor->x - toplevel->scene_tree->node.x;
-		server->grab_y = server->cursor->y - toplevel->scene_tree->node.y;
+		server->grab_x = server->cursor->x - toplevel->scene->tree->node.x;
+		server->grab_y = server->cursor->y - toplevel->scene->tree->node.y;
 	} else {
 		struct wlr_box geo_box;
 		wlr_xdg_surface_get_geometry(toplevel->xdg_toplevel->base, &geo_box);
 
-		double border_x = (toplevel->scene_tree->node.x + geo_box.x) +
+		double border_x = (toplevel->scene->tree->node.x + geo_box.x) +
 			((edges & WLR_EDGE_RIGHT) ? geo_box.width : 0);
-		double border_y = (toplevel->scene_tree->node.y + geo_box.y) +
+		double border_y = (toplevel->scene->tree->node.y + geo_box.y) +
 			((edges & WLR_EDGE_BOTTOM) ? geo_box.height : 0);
 		server->grab_x = server->cursor->x - border_x;
 		server->grab_y = server->cursor->y - border_y;
 
 		server->grab_geobox = geo_box;
-		server->grab_geobox.x += toplevel->scene_tree->node.x;
-		server->grab_geobox.y += toplevel->scene_tree->node.y;
+		server->grab_geobox.x += toplevel->scene->tree->node.x;
+		server->grab_geobox.y += toplevel->scene->tree->node.y;
 
 		server->resize_edges = edges;
 	}
@@ -803,10 +803,10 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	struct tinywl_toplevel *toplevel = calloc(1, sizeof(*toplevel));
 	toplevel->server = server;
 	toplevel->xdg_toplevel = xdg_toplevel;
-	toplevel->scene_tree =
+	toplevel->scene =
 		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
-	toplevel->scene_tree->node.data = toplevel;
-	xdg_toplevel->base->data = toplevel->scene_tree;
+	toplevel->scene->tree->node.data = toplevel;
+	xdg_toplevel->base->data = toplevel->scene->tree;
 
 	/* Listen to the various events it can emit */
 	toplevel->map.notify = xdg_toplevel_map;

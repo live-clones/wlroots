@@ -261,6 +261,18 @@ struct wlr_scene_layer_surface_v1 {
 	struct wl_listener layer_surface_unmap;
 };
 
+struct wlr_scene_xdg_surface {
+	struct wlr_scene_tree *tree;
+	struct wlr_xdg_surface *xdg_surface;
+	struct wlr_scene_subsurface_tree *surface_tree;
+
+	// private state
+
+	struct wl_listener tree_destroy;
+	struct wl_listener xdg_surface_destroy;
+	struct wl_listener xdg_surface_commit;
+};
+
 /**
  * Immediately destroy the scene-graph node.
  */
@@ -584,7 +596,7 @@ void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_subsurface_tree *tree,
  * The origin of the returned scene-graph node will match the top-left corner
  * of the xdg_surface window geometry.
  */
-struct wlr_scene_tree *wlr_scene_xdg_surface_create(
+struct wlr_scene_xdg_surface *wlr_scene_xdg_surface_create(
 	struct wlr_scene_tree *parent, struct wlr_xdg_surface *xdg_surface);
 
 /**
