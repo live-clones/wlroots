@@ -267,7 +267,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-			.image = render_buffer->plain.blend_image,
+			.image = render_buffer->plain.blend_buffer->blend_image,
 			.oldLayout = blend_src_layout,
 			.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			.srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
