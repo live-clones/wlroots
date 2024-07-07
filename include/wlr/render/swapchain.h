@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <wayland-server-core.h>
 #include <wlr/render/drm_format_set.h>
+#include <wlr/util/addon.h>
 
 #define WLR_SWAPCHAIN_CAP 4
 
@@ -23,6 +24,8 @@ struct wlr_swapchain {
 	struct wlr_swapchain_slot slots[WLR_SWAPCHAIN_CAP];
 
 	struct wl_listener allocator_destroy;
+
+	struct wlr_addon_set addons;
 };
 
 struct wlr_swapchain *wlr_swapchain_create(
@@ -41,6 +44,9 @@ struct wlr_buffer *wlr_swapchain_acquire(struct wlr_swapchain *swapchain);
  * otherwise.
  */
 bool wlr_swapchain_has_buffer(struct wlr_swapchain *swapchain,
+	struct wlr_buffer *buffer);
+
+struct wlr_swapchain *wlr_swapchain_try_from_wlr_buffer(
 	struct wlr_buffer *buffer);
 
 #endif
