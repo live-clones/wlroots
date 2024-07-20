@@ -495,10 +495,8 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	free(shm);
 }
 
-struct wlr_shm *wlr_shm_create(struct wl_display *display, uint32_t version,
+static bool __attribute__((unused)) has_argb8888_and_xrgb8888(
 		const uint32_t *formats, size_t formats_len) {
-	assert(version <= SHM_VERSION);
-
 	// ARGB8888 and XRGB8888 must be supported per the wl_shm spec
 	bool has_argb8888 = false, has_xrgb8888 = false;
 	for (size_t i = 0; i < formats_len; i++) {
@@ -511,7 +509,13 @@ struct wlr_shm *wlr_shm_create(struct wl_display *display, uint32_t version,
 			break;
 		}
 	}
-	assert(has_argb8888 && has_xrgb8888);
+	return has_argb8888 && has_xrgb8888;
+}
+
+struct wlr_shm *wlr_shm_create(struct wl_display *display, uint32_t version,
+		const uint32_t *formats, size_t formats_len) {
+	assert(version <= SHM_VERSION);
+	assert(has_argb8888_and_xrgb8888(formats, formats_len));
 
 	struct wlr_shm *shm = calloc(1, sizeof(*shm));
 	if (shm == NULL) {
