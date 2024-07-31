@@ -14,6 +14,7 @@
 #include <time.h>
 #include <wayland-server-protocol.h>
 #include <wayland-util.h>
+#include <wlr/render/swapchain.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/util/addon.h>
@@ -36,6 +37,7 @@ struct wlr_output_mode {
 
 struct wlr_output_cursor {
 	struct wlr_output *output;
+	struct wlr_swapchain *swapchain;
 	double x, y;
 	bool enabled;
 	bool visible;
@@ -196,7 +198,6 @@ struct wlr_output {
 
 	struct wl_list cursors; // wlr_output_cursor.link
 	struct wlr_output_cursor *hardware_cursor;
-	struct wlr_swapchain *cursor_swapchain;
 	struct wlr_buffer *cursor_front_buffer;
 	int software_cursor_locks; // number of locks forcing software cursors
 

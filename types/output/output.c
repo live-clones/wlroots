@@ -252,8 +252,6 @@ static void output_apply_state(struct wlr_output *output,
 	if ((state->committed & WLR_OUTPUT_STATE_ENABLED) && !state->enabled) {
 		wlr_swapchain_destroy(output->swapchain);
 		output->swapchain = NULL;
-		wlr_swapchain_destroy(output->cursor_swapchain);
-		output->cursor_swapchain = NULL;
 	}
 
 	if (state->committed & WLR_OUTPUT_STATE_LAYERS) {
@@ -405,7 +403,6 @@ void wlr_output_destroy(struct wlr_output *output) {
 		wlr_output_layer_destroy(layer);
 	}
 
-	wlr_swapchain_destroy(output->cursor_swapchain);
 	wlr_buffer_unlock(output->cursor_front_buffer);
 
 	wlr_swapchain_destroy(output->swapchain);

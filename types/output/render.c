@@ -33,9 +33,6 @@ bool wlr_output_init_render(struct wlr_output *output,
 	wlr_swapchain_destroy(output->swapchain);
 	output->swapchain = NULL;
 
-	wlr_swapchain_destroy(output->cursor_swapchain);
-	output->cursor_swapchain = NULL;
-
 	output->allocator = allocator;
 	output->renderer = renderer;
 

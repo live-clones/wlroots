@@ -221,27 +221,28 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 		}
 	}
 
-	if (output->cursor_swapchain == NULL ||
-			output->cursor_swapchain->width != width ||
-			output->cursor_swapchain->height != height) {
+	if (cursor->swapchain == NULL ||
+			cursor->swapchain->allocator != allocator ||
+			cursor->swapchain->width != width ||
+			cursor->swapchain->height != height) {
 		struct wlr_drm_format format = {0};
 		if (!output_pick_cursor_format(output, &format)) {
 			wlr_log(WLR_DEBUG, "Failed to pick cursor format");
 			return NULL;
 		}
 
-		wlr_swapchain_destroy(output->cursor_swapchain);
-		output->cursor_swapchain = wlr_swapchain_create(allocator,
+		wlr_swapchain_destroy(cursor->swapchain);
+		cursor->swapchain = wlr_swapchain_create(allocator,
 			width, height, &format);
 		wlr_drm_format_finish(&format);
-		if (output->cursor_swapchain == NULL) {
+		if (cursor->swapchain == NULL) {
 			wlr_log(WLR_ERROR, "Failed to create cursor swapchain");
 			return NULL;
 		}
 	}
 
 	struct wlr_buffer *buffer =
-		wlr_swapchain_acquire(output->cursor_swapchain, NULL);
+		wlr_swapchain_acquire(cursor->swapchain, NULL);
 	if (buffer == NULL) {
 		return NULL;
 	}
@@ -471,6 +472,7 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	if (cursor->own_texture) {
 		wlr_texture_destroy(cursor->texture);
 	}
+	wlr_swapchain_destroy(cursor->swapchain);
 	wl_list_remove(&cursor->link);
 	free(cursor);
 }

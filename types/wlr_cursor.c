@@ -602,6 +602,11 @@ static void output_cursor_output_handle_output_commit(
 			(event->state->committed & WLR_OUTPUT_STATE_BUFFER)) {
 		wlr_surface_send_frame_done(surface, event->when);
 	}
+
+	if (event->committed & WLR_OUTPUT_STATE_ENABLED) {
+		wlr_swapchain_destroy(output_cursor->output_cursor->swapchain);
+		output_cursor->output_cursor->swapchain = NULL;
+	}
 }
 
 static void cursor_update_outputs(struct wlr_cursor *cur) {
