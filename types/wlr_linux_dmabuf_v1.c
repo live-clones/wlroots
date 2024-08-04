@@ -1087,16 +1087,11 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
 
 	*feedback = (struct wlr_linux_dmabuf_feedback_v1){0};
 
-	int renderer_drm_fd = wlr_renderer_get_drm_fd(options->main_renderer);
-	if (renderer_drm_fd < 0) {
-		wlr_log(WLR_ERROR, "Failed to get renderer DRM FD");
-		goto error;
-	}
-	dev_t renderer_dev;
-	if (!devid_from_fd(renderer_drm_fd, &renderer_dev)) {
+	if (options->main_renderer->drm_dev_id == NULL) {
 		goto error;
 	}
 
+	dev_t renderer_dev = *options->main_renderer->drm_dev_id;
 	feedback->main_device = renderer_dev;
 
 	const struct wlr_drm_format_set *renderer_formats =

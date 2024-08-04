@@ -2,7 +2,6 @@
 #undef _POSIX_C_SOURCE
 #endif
 #include <assert.h>
-#include <fcntl.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -256,7 +255,7 @@ static void log_phdev(const VkPhysicalDeviceProperties *props) {
 	wlr_log(WLR_INFO, "  Driver version: %u.%u.%u", dv_major, dv_minor, dv_patch);
 }
 
-VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) {
+VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, dev_t devid) {
 	VkResult res;
 	uint32_t num_phdevs;
 
@@ -270,12 +269,6 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 	res = vkEnumeratePhysicalDevices(ini->instance, &num_phdevs, phdevs);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("Could not retrieve physical devices", res);
-		return VK_NULL_HANDLE;
-	}
-
-	struct stat drm_stat = {0};
-	if (fstat(drm_fd, &drm_stat) != 0) {
-		wlr_log_errno(WLR_ERROR, "fstat failed");
 		return VK_NULL_HANDLE;
 	}
 
@@ -353,8 +346,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 
 		dev_t primary_devid = makedev(drm_props.primaryMajor, drm_props.primaryMinor);
 		dev_t render_devid = makedev(drm_props.renderMajor, drm_props.renderMinor);
-		if (primary_devid == drm_stat.st_rdev ||
-				render_devid == drm_stat.st_rdev) {
+		if (primary_devid == devid || render_devid == devid) {
 			wlr_log(WLR_INFO, "Found matching Vulkan physical device: %s",
 				phdev_props.deviceName);
 			return phdev;
@@ -364,7 +356,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 	return VK_NULL_HANDLE;
 }
 
-int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
+bool vulkan_get_phdev_drm_dev_id(VkPhysicalDevice phdev, dev_t *dev_id) {
 	// vulkan_find_drm_phdev() already checks that VK_EXT_physical_device_drm
 	// is supported
 	VkPhysicalDeviceDrmPropertiesEXT drm_props = {
@@ -376,38 +368,16 @@ int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
 	};
 	vkGetPhysicalDeviceProperties2(phdev, &props);
 
-	dev_t devid;
 	if (drm_props.hasRender) {
-		devid = makedev(drm_props.renderMajor, drm_props.renderMinor);
+		*dev_id = makedev(drm_props.renderMajor, drm_props.renderMinor);
 	} else if (drm_props.hasPrimary) {
-		devid = makedev(drm_props.primaryMajor, drm_props.primaryMinor);
+		*dev_id = makedev(drm_props.primaryMajor, drm_props.primaryMinor);
 	} else {
 		wlr_log(WLR_ERROR, "Physical device is missing both render and primary nodes");
-		return -1;
+		return false;
 	}
 
-	drmDevice *device = NULL;
-	if (drmGetDeviceFromDevId(devid, 0, &device) != 0) {
-		wlr_log_errno(WLR_ERROR, "drmGetDeviceFromDevId failed");
-		return -1;
-	}
-
-	const char *name = NULL;
-	if (device->available_nodes & (1 << DRM_NODE_RENDER)) {
-		name = device->nodes[DRM_NODE_RENDER];
-	} else {
-		assert(device->available_nodes & (1 << DRM_NODE_PRIMARY));
-		name = device->nodes[DRM_NODE_PRIMARY];
-		wlr_log(WLR_DEBUG, "DRM device %s has no render node, "
-			"falling back to primary node", name);
-	}
-
-	int drm_fd = open(name, O_RDWR | O_NONBLOCK | O_CLOEXEC);
-	if (drm_fd < 0) {
-		wlr_log_errno(WLR_ERROR, "Failed to open DRM node %s", name);
-	}
-	drmFreeDevice(&device);
-	return drm_fd;
+	return true;
 }
 
 static void load_device_proc(struct wlr_vk_device *dev, const char *name,
@@ -452,7 +422,6 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 
 	dev->phdev = phdev;
 	dev->instance = ini;
-	dev->drm_fd = -1;
 
 	// For dmabuf import we require at least the external_memory_fd,
 	// external_memory_dma_buf, queue_family_foreign,
@@ -648,10 +617,6 @@ void vulkan_device_destroy(struct wlr_vk_device *dev) {
 
 	if (dev->dev) {
 		vkDestroyDevice(dev->dev, NULL);
-	}
-
-	if (dev->drm_fd > 0) {
-		close(dev->drm_fd);
 	}
 
 	wlr_drm_format_set_finish(&dev->dmabuf_render_formats);

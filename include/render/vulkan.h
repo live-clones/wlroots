@@ -38,8 +38,6 @@ struct wlr_vk_device {
 	VkPhysicalDevice phdev;
 	VkDevice dev;
 
-	int drm_fd;
-
 	bool implicit_sync_interop;
 	bool sampler_ycbcr_conversion;
 
@@ -63,10 +61,10 @@ struct wlr_vk_device {
 	struct wlr_drm_format_set shm_texture_formats;
 };
 
-// Tries to find the VkPhysicalDevice for the given drm fd.
+// Tries to find the VkPhysicalDevice for the given DRM device ID.
 // Might find none and return VK_NULL_HANDLE.
-VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd);
-int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev);
+VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, dev_t dev_id);
+bool vulkan_get_phdev_drm_dev_id(VkPhysicalDevice phdev, dev_t *dev_id);
 
 // Creates a device for the given instance and physical device.
 struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
@@ -262,6 +260,7 @@ struct wlr_vk_renderer {
 	struct wlr_renderer wlr_renderer;
 	struct wlr_backend *backend;
 	struct wlr_vk_device *dev;
+	dev_t drm_dev_id;
 
 	VkCommandPool command_pool;
 

@@ -41,8 +41,8 @@ struct wlr_gles2_tex_shader {
 struct wlr_gles2_renderer {
 	struct wlr_renderer wlr_renderer;
 
+	dev_t drm_dev_id;
 	struct wlr_egl *egl;
-	int drm_fd;
 
 	struct wlr_drm_format_set shm_texture_formats;
 

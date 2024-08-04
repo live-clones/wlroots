@@ -53,11 +53,11 @@ struct wlr_egl_context {
 };
 
 /**
- * Initializes an EGL context for the given DRM FD.
+ * Initializes an EGL context for the given DRM device ID.
  *
  * Will attempt to load all possibly required API functions.
  */
-struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd);
+struct wlr_egl *wlr_egl_create_with_drm_dev_id(dev_t dev_id);
 
 /**
  * Frees all related EGL resources, makes the context not-current and
@@ -88,7 +88,10 @@ const struct wlr_drm_format_set *wlr_egl_get_dmabuf_render_formats(
  */
 bool wlr_egl_destroy_image(struct wlr_egl *egl, EGLImageKHR image);
 
-int wlr_egl_dup_drm_fd(struct wlr_egl *egl);
+/**
+ * Get the DRM device ID used by EGL.
+ */
+bool wlr_egl_get_drm_dev_id(struct wlr_egl *egl, dev_t *devid);
 
 /**
  * Restore EGL context that was previously saved using wlr_egl_save_current().

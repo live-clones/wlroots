@@ -18,7 +18,7 @@ struct wlr_vk_image_attribs {
 	VkFormat format;
 };
 
-struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd);
+struct wlr_renderer *wlr_vk_renderer_create_with_drm_dev_id(dev_t dev_id);
 
 VkInstance wlr_vk_renderer_get_instance(struct wlr_renderer *renderer);
 VkPhysicalDevice wlr_vk_renderer_get_physical_device(struct wlr_renderer *renderer);

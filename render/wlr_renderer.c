@@ -83,7 +83,7 @@ bool wlr_renderer_init_wl_display(struct wlr_renderer *r,
 	}
 
 	if (wlr_renderer_get_texture_formats(r, WLR_BUFFER_CAP_DMABUF) != NULL &&
-			wlr_renderer_get_drm_fd(r) >= 0 &&
+			r->drm_dev_id != NULL &&
 			wlr_linux_dmabuf_v1_create_with_renderer(wl_display, 4, r) == NULL) {
 		return false;
 	}
@@ -91,40 +91,41 @@ bool wlr_renderer_init_wl_display(struct wlr_renderer *r,
 	return true;
 }
 
-static int open_drm_render_node(void) {
+static bool pick_drm_render_node(dev_t *dev_id) {
 	uint32_t flags = 0;
 	int devices_len = drmGetDevices2(flags, NULL, 0);
 	if (devices_len < 0) {
 		wlr_log(WLR_ERROR, "drmGetDevices2 failed: %s", strerror(-devices_len));
-		return -1;
+		return false;
 	}
 	drmDevice **devices = calloc(devices_len, sizeof(*devices));
 	if (devices == NULL) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
-		return -1;
+		return false;
 	}
 	devices_len = drmGetDevices2(flags, devices, devices_len);
 	if (devices_len < 0) {
 		free(devices);
 		wlr_log(WLR_ERROR, "drmGetDevices2 failed: %s", strerror(-devices_len));
-		return -1;
+		return false;
 	}
 
-	int fd = -1;
+	bool ok = false;
 	for (int i = 0; i < devices_len; i++) {
 		drmDevice *dev = devices[i];
 		if (dev->available_nodes & (1 << DRM_NODE_RENDER)) {
 			const char *name = dev->nodes[DRM_NODE_RENDER];
-			wlr_log(WLR_DEBUG, "Opening DRM render node '%s'", name);
-			fd = open(name, O_RDWR | O_CLOEXEC);
-			if (fd < 0) {
-				wlr_log_errno(WLR_ERROR, "Failed to open '%s'", name);
+			wlr_log(WLR_DEBUG, "Picking DRM render node '%s'", name);
+			struct stat st;
+			if (stat(name, &st) != 0) {
+				wlr_log_errno(WLR_ERROR, "stat() failed for %s", name);
 				goto out;
 			}
+			*dev_id = st.st_rdev;
 			break;
 		}
 	}
-	if (fd < 0) {
+	if (!ok) {
 		wlr_log(WLR_ERROR, "Failed to find any DRM render node");
 	}
 
@@ -134,13 +135,29 @@ out:
 	}
 	free(devices);
 
-	return fd;
+	return ok;
 }
 
-static bool open_preferred_drm_fd(struct wlr_backend *backend, int *drm_fd_ptr,
-		bool *own_drm_fd) {
-	if (*drm_fd_ptr >= 0) {
+static bool dev_id_from_fd(int fd, dev_t *dev_id, bool *has_dev_id) {
+	struct stat st;
+	if (fstat(fd, &st) != 0) {
+		wlr_log_errno(WLR_ERROR, "fstat() failed");
+		return false;
+	}
+	*dev_id = st.st_rdev;
+	*has_dev_id = true;
+	return true;
+}
+
+static bool get_preferred_drm_dev_id(struct wlr_backend *backend, int drm_fd,
+		dev_t *dev_id, bool *has_dev_id) {
+	if (*has_dev_id) {
 		return true;
+	}
+
+	// If the caller passed in a DRM FD, use that
+	if (drm_fd >= 0) {
+		return dev_id_from_fd(drm_fd, dev_id, has_dev_id);
 	}
 
 	// Allow the user to override the render node
@@ -159,29 +176,25 @@ static bool open_preferred_drm_fd(struct wlr_backend *backend, int *drm_fd_ptr,
 			close(drm_fd);
 			return false;
 		}
-		*drm_fd_ptr = drm_fd;
-		*own_drm_fd = true;
-		return true;
+		bool ok = dev_id_from_fd(drm_fd, dev_id, has_dev_id);
+		close(drm_fd);
+		return ok;
 	}
 
 	// Prefer the backend's DRM node, if any
 	int backend_drm_fd = wlr_backend_get_drm_fd(backend);
 	if (backend_drm_fd >= 0) {
-		*drm_fd_ptr = backend_drm_fd;
-		*own_drm_fd = false;
-		return true;
+		return dev_id_from_fd(backend_drm_fd, dev_id, has_dev_id);
 	}
 
 	// If the backend hasn't picked a DRM FD, but accepts DMA-BUFs, pick an
 	// arbitrary render node
 	uint32_t backend_caps = backend_get_buffer_caps(backend);
 	if (backend_caps & WLR_BUFFER_CAP_DMABUF) {
-		int drm_fd = open_drm_render_node();
-		if (drm_fd < 0) {
+		if (!pick_drm_render_node(dev_id)) {
 			return false;
 		}
-		*drm_fd_ptr = drm_fd;
-		*own_drm_fd = true;
+		*has_dev_id = true;
 		return true;
 	}
 
@@ -222,14 +235,18 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 	bool is_auto = strcmp(renderer_name, "auto") == 0;
 	struct wlr_renderer *renderer = NULL;
 
-	bool own_drm_fd = false;
+	dev_t drm_dev_id;
+	bool has_drm_dev_id = false;
+	(void)drm_dev_id;
+	(void)has_drm_dev_id;
+	(void)get_preferred_drm_dev_id;
 
-	if ((is_auto && WLR_HAS_GLES2_RENDERER) || strcmp(renderer_name, "gles2") == 0) {
-		if (!open_preferred_drm_fd(backend, &drm_fd, &own_drm_fd)) {
-			log_creation_failure(is_auto, "Cannot create GLES2 renderer: no DRM FD available");
+	if (is_auto || strcmp(renderer_name, "gles2") == 0) {
+		if (!get_preferred_drm_dev_id(backend, drm_fd, &drm_dev_id, &has_drm_dev_id)) {
+			log_creation_failure(is_auto, "Cannot create GLES2 renderer: no DRM device available");
 		} else {
 #if WLR_HAS_GLES2_RENDERER
-			renderer = wlr_gles2_renderer_create_with_drm_fd(drm_fd);
+			renderer = wlr_gles2_renderer_create_with_drm_dev_id(drm_dev_id);
 #else
 			wlr_log(WLR_ERROR, "Cannot create GLES renderer: disabled at compile-time");
 #endif
@@ -242,11 +259,11 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 	}
 
 	if (strcmp(renderer_name, "vulkan") == 0) {
-		if (!open_preferred_drm_fd(backend, &drm_fd, &own_drm_fd)) {
-			log_creation_failure(is_auto, "Cannot create Vulkan renderer: no DRM FD available");
+		if (!get_preferred_drm_dev_id(backend, drm_fd, &drm_dev_id, &has_drm_dev_id)) {
+			log_creation_failure(is_auto, "Cannot create Vulkan renderer: no DRM device available");
 		} else {
 #if WLR_HAS_VULKAN_RENDERER
-			renderer = wlr_vk_renderer_create_with_drm_fd(drm_fd);
+			renderer = wlr_vk_renderer_create_with_drm_dev_id(drm_dev_id);
 #else
 			wlr_log(WLR_ERROR, "Cannot create Vulkan renderer: disabled at compile-time");
 #endif
@@ -271,9 +288,6 @@ out:
 	if (renderer == NULL) {
 		wlr_log(WLR_ERROR, "Could not initialize renderer");
 	}
-	if (own_drm_fd && drm_fd >= 0) {
-		close(drm_fd);
-	}
 	return renderer;
 }
 
@@ -285,13 +299,6 @@ struct wlr_renderer *renderer_autocreate_with_drm_fd(int drm_fd) {
 
 struct wlr_renderer *wlr_renderer_autocreate(struct wlr_backend *backend) {
 	return renderer_autocreate(backend, -1);
-}
-
-int wlr_renderer_get_drm_fd(struct wlr_renderer *r) {
-	if (!r->impl->get_drm_fd) {
-		return -1;
-	}
-	return r->impl->get_drm_fd(r);
 }
 
 struct wlr_render_pass *wlr_renderer_begin_buffer_pass(struct wlr_renderer *renderer,

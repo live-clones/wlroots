@@ -150,11 +150,40 @@ struct wlr_allocator *wlr_allocator_autocreate(struct wlr_backend *backend,
 	uint32_t backend_caps = backend_get_buffer_caps(backend);
 	// Note, drm_fd may be negative if unavailable
 	int drm_fd = wlr_backend_get_drm_fd(backend);
-	if (drm_fd < 0) {
-		drm_fd = wlr_renderer_get_drm_fd(renderer);
+
+	int render_drm_fd = -1;
+	if (drm_fd < 0 && renderer->drm_dev_id != NULL) {
+		drmDevice *dev = NULL;
+		if (drmGetDeviceFromDevId(*renderer->drm_dev_id, 0, &dev) != 0) {
+			wlr_log(WLR_ERROR, "drmGetDeviceFromDevId failed");
+			return NULL;
+		}
+
+		const char *node_name = NULL;
+		if (dev->available_nodes & (1 << DRM_NODE_RENDER)) {
+			node_name = dev->nodes[DRM_NODE_RENDER];
+		} else {
+			assert(dev->available_nodes & (1 << DRM_NODE_PRIMARY));
+			wlr_log(WLR_DEBUG, "No DRM render node available, "
+				"falling back to primary node '%s'", dev->nodes[DRM_NODE_PRIMARY]);
+			node_name = dev->nodes[DRM_NODE_PRIMARY];
+		}
+		render_drm_fd = open(node_name, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+		drmFreeDevice(&dev);
+		if (render_drm_fd < 0) {
+			wlr_log_errno(WLR_ERROR, "Failed to open DRM node %s", node_name);
+			return NULL;
+		}
+
+		drm_fd = render_drm_fd;
 	}
 
-	return allocator_autocreate_with_drm_fd(backend_caps, renderer, drm_fd);
+	struct wlr_allocator *alloc =
+		allocator_autocreate_with_drm_fd(backend_caps, renderer, drm_fd);
+	if (render_drm_fd >= 0) {
+		close(render_drm_fd);
+	}
+	return alloc;
 }
 
 void wlr_allocator_destroy(struct wlr_allocator *alloc) {

@@ -10,7 +10,6 @@
 #define WLR_RENDER_GLES2_H
 
 #include <GLES2/gl2.h>
-
 #include <wlr/render/wlr_renderer.h>
 
 struct wlr_egl;
@@ -28,7 +27,7 @@ struct wlr_egl;
  * render pass can't be used before the nested render pass is submitted.
  */
 
-struct wlr_renderer *wlr_gles2_renderer_create_with_drm_fd(int drm_fd);
+struct wlr_renderer *wlr_gles2_renderer_create_with_drm_dev_id(dev_t dev_id);
 struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl);
 
 struct wlr_egl *wlr_gles2_renderer_get_egl(struct wlr_renderer *renderer);

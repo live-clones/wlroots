@@ -29,6 +29,8 @@ struct wlr_renderer {
 	// Capabilities required for the buffer used as a render target (bitmask of
 	// enum wlr_buffer_cap)
 	uint32_t render_buffer_caps;
+	// DRM device used for rendering, if any
+	const dev_t *drm_dev_id;
 
 	struct {
 		struct wl_signal destroy;
@@ -84,13 +86,6 @@ bool wlr_renderer_init_wl_display(struct wlr_renderer *r,
  */
 bool wlr_renderer_init_wl_shm(struct wlr_renderer *r,
 	struct wl_display *wl_display);
-
-/**
- * Obtains the FD of the DRM device used for rendering, or -1 if unavailable.
- *
- * The caller doesn't have ownership of the FD, it must not close it.
- */
-int wlr_renderer_get_drm_fd(struct wlr_renderer *r);
 
 /**
  * Destroys the renderer.

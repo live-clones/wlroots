@@ -183,17 +183,6 @@ static const struct wlr_drm_format_set *gles2_get_render_formats(
 	return wlr_egl_get_dmabuf_render_formats(renderer->egl);
 }
 
-static int gles2_get_drm_fd(struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer =
-		gles2_get_renderer(wlr_renderer);
-
-	if (renderer->drm_fd < 0) {
-		renderer->drm_fd = wlr_egl_dup_drm_fd(renderer->egl);
-	}
-
-	return renderer->drm_fd;
-}
-
 struct wlr_egl *wlr_gles2_renderer_get_egl(struct wlr_renderer *wlr_renderer) {
 	struct wlr_gles2_renderer *renderer =
 		gles2_get_renderer(wlr_renderer);
@@ -231,11 +220,6 @@ static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
 	wlr_egl_destroy(renderer->egl);
 
 	wlr_drm_format_set_finish(&renderer->shm_texture_formats);
-
-	if (renderer->drm_fd >= 0) {
-		close(renderer->drm_fd);
-	}
-
 	free(renderer);
 }
 
@@ -356,7 +340,6 @@ static const struct wlr_renderer_impl renderer_impl = {
 	.destroy = gles2_destroy,
 	.get_texture_formats = gles2_get_texture_formats,
 	.get_render_formats = gles2_get_render_formats,
-	.get_drm_fd = gles2_get_drm_fd,
 	.texture_from_buffer = gles2_texture_from_buffer,
 	.begin_buffer_pass = gles2_begin_buffer_pass,
 	.render_timer_create = gles2_render_timer_create,
@@ -493,8 +476,8 @@ static void load_gl_proc(void *proc_ptr, const char *name) {
 	*(void **)proc_ptr = proc;
 }
 
-struct wlr_renderer *wlr_gles2_renderer_create_with_drm_fd(int drm_fd) {
-	struct wlr_egl *egl = wlr_egl_create_with_drm_fd(drm_fd);
+struct wlr_renderer *wlr_gles2_renderer_create_with_drm_dev_id(dev_t dev_id) {
+	struct wlr_egl *egl = wlr_egl_create_with_drm_dev_id(dev_id);
 	if (egl == NULL) {
 		wlr_log(WLR_ERROR, "Could not initialize EGL");
 		return NULL;
@@ -533,7 +516,6 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 
 	renderer->egl = egl;
 	renderer->exts_str = exts_str;
-	renderer->drm_fd = -1;
 
 	wlr_log(WLR_INFO, "Creating GLES2 renderer");
 	wlr_log(WLR_INFO, "Using %s", glGetString(GL_VERSION));
@@ -628,6 +610,10 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 			GL_DEBUG_TYPE_POP_GROUP_KHR, GL_DONT_CARE, 0, NULL, GL_FALSE);
 		renderer->procs.glDebugMessageControlKHR(GL_DONT_CARE,
 			GL_DEBUG_TYPE_PUSH_GROUP_KHR, GL_DONT_CARE, 0, NULL, GL_FALSE);
+	}
+
+	if (wlr_egl_get_drm_dev_id(renderer->egl, &renderer->drm_dev_id)) {
+		renderer->wlr_renderer.drm_dev_id = &renderer->drm_dev_id;
 	}
 
 	push_gles2_debug(renderer);

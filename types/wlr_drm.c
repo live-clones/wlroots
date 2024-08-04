@@ -201,15 +201,14 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 
 struct wlr_drm *wlr_drm_create(struct wl_display *display,
 		struct wlr_renderer *renderer) {
-	int drm_fd = wlr_renderer_get_drm_fd(renderer);
-	if (drm_fd < 0) {
-		wlr_log(WLR_ERROR, "Failed to get DRM FD from renderer");
+	if (renderer->drm_dev_id == NULL) {
+		wlr_log(WLR_ERROR, "Failed to get DRM device from renderer");
 		return NULL;
 	}
 
 	drmDevice *dev = NULL;
-	if (drmGetDevice2(drm_fd, 0, &dev) != 0) {
-		wlr_log(WLR_ERROR, "drmGetDevice2 failed");
+	if (drmGetDeviceFromDevId(*renderer->drm_dev_id, 0, &dev) != 0) {
+		wlr_log(WLR_ERROR, "drmGetDeviceFromDevId failed");
 		return NULL;
 	}
 
