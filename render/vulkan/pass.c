@@ -79,6 +79,12 @@ static void mat3_to_mat4(const float mat3[9], float mat4[4][4]) {
 	mat4[3][3] = 1.f;
 }
 
+static void render_pass_destroy(struct wlr_vk_render_pass *pass) {
+	wlr_color_transform_unref(pass->color_transform);
+	rect_union_finish(&pass->updated_region);
+	free(pass);
+}
+
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
@@ -450,10 +456,8 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		wlr_log(WLR_ERROR, "Failed to sync render buffer");
 	}
 
-	wlr_color_transform_unref(pass->color_transform);
+	render_pass_destroy(pass);
 	wlr_buffer_unlock(render_buffer->wlr_buffer);
-	rect_union_finish(&pass->updated_region);
-	free(pass);
 	return true;
 
 error:
@@ -461,8 +465,7 @@ error:
 	vulkan_reset_command_buffer(stage_cb);
 	vulkan_reset_command_buffer(render_cb);
 	wlr_buffer_unlock(render_buffer->wlr_buffer);
-	rect_union_finish(&pass->updated_region);
-	free(pass);
+	render_pass_destroy(pass);
 
 	if (device_lost) {
 		wl_signal_emit_mutable(&renderer->wlr_renderer.events.lost, NULL);
