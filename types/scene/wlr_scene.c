@@ -20,6 +20,7 @@
 #include "util/time.h"
 
 #define HIGHLIGHT_DAMAGE_FADEOUT_TIME 250
+#define SCENE_OUTPUT_IDLE_DELAY_MS 10000
 
 struct wlr_scene_tree *wlr_scene_tree_from_node(struct wlr_scene_node *node) {
 	assert(node->type == WLR_SCENE_NODE_TREE);
@@ -1362,6 +1363,11 @@ static void scene_output_handle_commit(struct wl_listener *listener, void *data)
 			!wl_list_empty(&scene_output->damage_highlight_regions)) {
 		wlr_output_schedule_frame(scene_output->output);
 	}
+
+	if (event->committed & WLR_OUTPUT_STATE_BUFFER) {
+		wl_event_source_timer_update(scene_output->idle_timer,
+			SCENE_OUTPUT_IDLE_DELAY_MS);
+	}
 }
 
 static void scene_output_handle_damage(struct wl_listener *listener, void *data) {
@@ -1379,10 +1385,34 @@ static void scene_output_handle_needs_frame(struct wl_listener *listener, void *
 	wlr_output_schedule_frame(scene_output->output);
 }
 
+static int scene_output_handle_idle(void *data) {
+	struct wlr_scene_output *scene_output = data;
+
+	if (scene_output->output->hardware_cursor == NULL) {
+		return 0;
+	}
+
+	// Paint one frame with hardware cursors disabled. This reduces the
+	// bandwidth used by the hardware and brings down power usage.
+	wlr_output_lock_software_cursors(scene_output->output, true);
+	wlr_output_schedule_frame(scene_output->output);
+	wlr_scene_output_commit(scene_output);
+	wlr_output_lock_software_cursors(scene_output->output, false);
+	return 0;
+}
+
 struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 		struct wlr_output *output) {
 	struct wlr_scene_output *scene_output = calloc(1, sizeof(*scene_output));
 	if (scene_output == NULL) {
+		return NULL;
+	}
+
+	struct wl_event_loop *loop = wl_display_get_event_loop(output->display);
+	scene_output->idle_timer =
+		wl_event_loop_add_timer(loop, scene_output_handle_idle, scene_output);
+	if (scene_output->idle_timer == NULL) {
+		free(scene_output);
 		return NULL;
 	}
 
@@ -1457,6 +1487,7 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
 	wl_list_remove(&scene_output->output_needs_frame.link);
 
 	wl_array_release(&scene_output->render_list);
+	wl_event_source_remove(scene_output->idle_timer);
 	free(scene_output);
 }
 
