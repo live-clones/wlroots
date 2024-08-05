@@ -1,8 +1,10 @@
 #include <assert.h>
 #include <drm_fourcc.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <wlr/util/log.h>
 #include <wlr/render/color.h>
+#include <wlr/render/drm_syncobj.h>
 
 #include "render/color.h"
 #include "render/vulkan.h"
@@ -80,9 +82,63 @@ static void mat3_to_mat4(const float mat3[9], float mat4[4][4]) {
 }
 
 static void render_pass_destroy(struct wlr_vk_render_pass *pass) {
+	struct wlr_vk_render_pass_texture *pass_texture;
+	wl_array_for_each(pass_texture, &pass->textures) {
+		wlr_drm_syncobj_timeline_unref(pass_texture->wait_timeline);
+	}
+
 	wlr_color_transform_unref(pass->color_transform);
+	wlr_drm_syncobj_timeline_unref(pass->signal_timeline);
 	rect_union_finish(&pass->updated_region);
+	wl_array_release(&pass->textures);
 	free(pass);
+}
+
+static VkSemaphore render_pass_wait_sync_file(struct wlr_vk_render_pass *pass,
+		size_t sem_index, int sync_file_fd) {
+	struct wlr_vk_renderer *renderer = pass->renderer;
+	struct wlr_vk_command_buffer *render_cb = pass->command_buffer;
+	VkResult res;
+
+	VkSemaphore *wait_semaphores = render_cb->wait_semaphores.data;
+	size_t wait_semaphores_len = render_cb->wait_semaphores.size / sizeof(wait_semaphores[0]);
+
+	VkSemaphore *sem_ptr;
+	if (sem_index >= wait_semaphores_len) {
+		sem_ptr = wl_array_add(&render_cb->wait_semaphores, sizeof(*sem_ptr));
+		if (sem_ptr == NULL) {
+			return VK_NULL_HANDLE;
+		}
+		*sem_ptr = VK_NULL_HANDLE;
+	} else {
+		sem_ptr = &wait_semaphores[sem_index];
+	}
+
+	if (*sem_ptr == VK_NULL_HANDLE) {
+		VkSemaphoreCreateInfo semaphore_info = {
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		};
+		res = vkCreateSemaphore(renderer->dev->dev, &semaphore_info, NULL, sem_ptr);
+		if (res != VK_SUCCESS) {
+			wlr_vk_error("vkCreateSemaphore", res);
+			return VK_NULL_HANDLE;
+		}
+	}
+
+	VkImportSemaphoreFdInfoKHR import_info = {
+		.sType = VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR,
+		.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
+		.flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT,
+		.semaphore = *sem_ptr,
+		.fd = sync_file_fd,
+	};
+	res = renderer->dev->api.vkImportSemaphoreFdKHR(renderer->dev->dev, &import_info);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkImportSemaphoreFdKHR", res);
+		return VK_NULL_HANDLE;
+	}
+
+	return *sem_ptr;
 }
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
@@ -179,14 +235,15 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 
 	vkCmdEndRenderPass(render_cb->vk);
 
-	// insert acquire and release barriers for dmabuf-images
-	uint32_t barrier_count = wl_list_length(&renderer->foreign_textures) + 1;
-	render_wait = calloc(barrier_count * WLR_DMABUF_MAX_PLANES, sizeof(*render_wait));
+	size_t pass_textures_len = pass->textures.size / sizeof(struct wlr_vk_render_pass_texture);
+	size_t render_wait_cap = pass_textures_len * WLR_DMABUF_MAX_PLANES;
+	render_wait = calloc(render_wait_cap, sizeof(*render_wait));
 	if (render_wait == NULL) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
 		goto error;
 	}
 
+	uint32_t barrier_count = wl_list_length(&renderer->foreign_textures) + 1;
 	VkImageMemoryBarrier *acquire_barriers = calloc(barrier_count, sizeof(*acquire_barriers));
 	VkImageMemoryBarrier *release_barriers = calloc(barrier_count, sizeof(*release_barriers));
 	if (acquire_barriers == NULL || release_barriers == NULL) {
@@ -198,7 +255,6 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 
 	struct wlr_vk_texture *texture, *tmp_tex;
 	size_t idx = 0;
-	uint32_t render_wait_len = 0;
 	wl_list_for_each_safe(texture, tmp_tex, &renderer->foreign_textures, foreign_link) {
 		if (!texture->transitioned) {
 			texture->transitioned = true;
@@ -236,23 +292,53 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 
 		++idx;
 
-		if (!vulkan_sync_foreign_texture(texture)) {
-			wlr_log(WLR_ERROR, "Failed to wait for foreign texture DMA-BUF fence");
+		wl_list_remove(&texture->foreign_link);
+		texture->owned = false;
+	}
+
+	uint32_t render_wait_len = 0;
+	struct wlr_vk_render_pass_texture *pass_texture;
+	wl_array_for_each(pass_texture, &pass->textures) {
+		int sync_file_fds[WLR_DMABUF_MAX_PLANES];
+		for (size_t i = 0; i < WLR_DMABUF_MAX_PLANES; i++) {
+			sync_file_fds[i] = -1;
+		}
+
+		if (pass_texture->wait_timeline) {
+			int sync_file_fd = wlr_drm_syncobj_timeline_export_sync_file(pass_texture->wait_timeline, pass_texture->wait_point);
+			if (sync_file_fd < 0) {
+				wlr_log(WLR_ERROR, "Failed to export wait timeline point as sync_file");
+				continue;
+			}
+
+			sync_file_fds[0] = sync_file_fd;
 		} else {
-			for (size_t i = 0; i < WLR_DMABUF_MAX_PLANES; i++) {
-				if (texture->foreign_semaphores[i] != VK_NULL_HANDLE) {
-					assert(render_wait_len < barrier_count * WLR_DMABUF_MAX_PLANES);
-					render_wait[render_wait_len++] = (VkSemaphoreSubmitInfoKHR){
-						.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO_KHR,
-						.semaphore = texture->foreign_semaphores[i],
-						.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR,
-					};
-				}
+			struct wlr_vk_texture *texture = pass_texture->texture;
+			if (!vulkan_sync_foreign_texture(texture, sync_file_fds)) {
+				wlr_log(WLR_ERROR, "Failed to wait for foreign texture DMA-BUF fence");
+				continue;
 			}
 		}
 
-		wl_list_remove(&texture->foreign_link);
-		texture->owned = false;
+		for (size_t i = 0; i < WLR_DMABUF_MAX_PLANES; i++) {
+			if (sync_file_fds[i] < 0) {
+				continue;
+			}
+
+			VkSemaphore sem = render_pass_wait_sync_file(pass, render_wait_len, sync_file_fds[i]);
+			if (sem == VK_NULL_HANDLE) {
+				close(sync_file_fds[i]);
+				continue;
+			}
+
+			render_wait[render_wait_len] = (VkSemaphoreSubmitInfoKHR){
+				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO_KHR,
+				.semaphore = sem,
+				.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT_KHR,
+			};
+
+			render_wait_len++;
+		}
 	}
 
 	// also add acquire/release barriers for the current render buffer
@@ -452,7 +538,8 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		wl_list_insert(&stage_cb->stage_buffers, &stage_buf->link);
 	}
 
-	if (!vulkan_sync_render_buffer(renderer, render_buffer, render_cb)) {
+	if (!vulkan_sync_render_buffer(renderer, render_buffer, render_cb,
+			pass->signal_timeline, pass->signal_point)) {
 		wlr_log(WLR_ERROR, "Failed to sync render buffer");
 	}
 
@@ -704,6 +791,28 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	texture->last_used_cb = pass->command_buffer;
 
 	pixman_region32_fini(&clip);
+
+	if (texture->dmabuf_imported || (options != NULL && options->wait_timeline != NULL)) {
+		struct wlr_vk_render_pass_texture *pass_texture =
+			wl_array_add(&pass->textures, sizeof(*pass_texture));
+		if (pass_texture == NULL) {
+			pass->failed = true;
+			return;
+		}
+
+		struct wlr_drm_syncobj_timeline *wait_timeline = NULL;
+		uint64_t wait_point = 0;
+		if (options != NULL && options->wait_timeline != NULL) {
+			wait_timeline = wlr_drm_syncobj_timeline_ref(options->wait_timeline);
+			wait_point = options->wait_point;
+		}
+
+		*pass_texture = (struct wlr_vk_render_pass_texture){
+			.texture = texture,
+			.wait_timeline = wait_timeline,
+			.wait_point = wait_point,
+		};
+	}
 }
 
 static const struct wlr_render_pass_impl render_pass_impl = {
@@ -966,6 +1075,10 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	pass->srgb_pathway = using_srgb_pathway;
 	if (options != NULL && options->color_transform != NULL) {
 		pass->color_transform = wlr_color_transform_ref(options->color_transform);
+	}
+	if (options != NULL && options->signal_timeline != NULL) {
+		pass->signal_timeline = wlr_drm_syncobj_timeline_ref(options->signal_timeline);
+		pass->signal_point = options->signal_point;
 	}
 
 	rect_union_init(&pass->updated_region);
