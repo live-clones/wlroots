@@ -1710,6 +1710,10 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 			}
 		}
 
+		if (wlr_conn && wlr_conn->lease) {
+			continue;
+		}
+
 		// If the hotplug event contains a connector ID, ignore any other
 		// connector.
 		if (event != NULL && event->connector_id != 0 &&
@@ -2199,6 +2203,7 @@ struct wlr_drm_lease *wlr_drm_create_lease(struct wlr_output **outputs,
 				get_drm_connector_from_output(outputs[i]);
 		conn->lease = lease;
 		conn->crtc->lease = lease;
+		disconnect_drm_connector(conn);
 	}
 
 	return lease;
@@ -2235,4 +2240,5 @@ void drm_lease_destroy(struct wlr_drm_lease *lease) {
 	}
 
 	free(lease);
+	scan_drm_connectors(drm, NULL);
 }
