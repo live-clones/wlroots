@@ -5,7 +5,7 @@ project(
 	license: 'MIT',
 	meson_version: '>=0.59.0',
 	default_options: [
-		'c_std=' + (meson.version().version_compare('>=1.3.0') ? 'c23,c11' : 'c11'),
+		'c_std=' + (meson.version().version_compare('>=1.4.0') ? 'c23,c11' : 'c11'),
 		'warning_level=2',
 		'werror=true',
 	],
