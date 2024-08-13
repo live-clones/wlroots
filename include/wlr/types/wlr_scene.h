@@ -131,6 +131,22 @@ struct wlr_scene_surface {
 	struct wl_listener surface_commit;
 };
 
+struct wlr_scene_subsurface_tree_surface;
+struct wlr_scene_subsurface_tree {
+	struct wlr_scene_tree *tree;
+	bool is_visible;
+
+	struct {
+		struct wl_signal visibility;
+	} events;
+
+	// private state
+
+	struct wl_list surfaces;
+	uint16_t visible_surfaces;
+	struct wlr_scene_subsurface_tree_surface *root;
+};
+
 /** A scene-graph node displaying a solid-colored rectangle */
 struct wlr_scene_rect {
 	struct wlr_scene_node node;
@@ -240,6 +256,7 @@ struct wlr_scene_timer {
 /** A layer shell scene helper */
 struct wlr_scene_layer_surface_v1 {
 	struct wlr_scene_tree *tree;
+	struct wlr_scene_subsurface_tree *surface_tree;
 	struct wlr_layer_surface_v1 *layer_surface;
 
 	// private state
@@ -248,6 +265,18 @@ struct wlr_scene_layer_surface_v1 {
 	struct wl_listener layer_surface_destroy;
 	struct wl_listener layer_surface_map;
 	struct wl_listener layer_surface_unmap;
+};
+
+struct wlr_scene_xdg_surface {
+	struct wlr_scene_tree *tree;
+	struct wlr_xdg_surface *xdg_surface;
+	struct wlr_scene_subsurface_tree *surface_tree;
+
+	// private state
+
+	struct wl_listener tree_destroy;
+	struct wl_listener xdg_surface_destroy;
+	struct wl_listener xdg_surface_commit;
 };
 
 /**
@@ -596,7 +625,7 @@ void wlr_scene_output_layout_add_output(struct wlr_scene_output_layout *sol,
  * Add a node displaying a surface and all of its sub-surfaces to the
  * scene-graph.
  */
-struct wlr_scene_tree *wlr_scene_subsurface_tree_create(
+struct wlr_scene_subsurface_tree *wlr_scene_subsurface_tree_create(
 	struct wlr_scene_tree *parent, struct wlr_surface *surface);
 
 /**
@@ -606,7 +635,7 @@ struct wlr_scene_tree *wlr_scene_subsurface_tree_create(
  *
  * A NULL or empty clip will disable clipping
  */
-void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_node *node,
+void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_subsurface_tree *tree,
 	const struct wlr_box *clip);
 
 /**
@@ -616,7 +645,7 @@ void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_node *node,
  * The origin of the returned scene-graph node will match the top-left corner
  * of the xdg_surface window geometry.
  */
-struct wlr_scene_tree *wlr_scene_xdg_surface_create(
+struct wlr_scene_xdg_surface *wlr_scene_xdg_surface_create(
 	struct wlr_scene_tree *parent, struct wlr_xdg_surface *xdg_surface);
 
 /**

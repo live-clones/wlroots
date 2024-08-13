@@ -5,7 +5,7 @@
 
 struct wlr_scene_drag_icon {
 	struct wlr_scene_tree *tree;
-	struct wlr_scene_tree *surface_tree;
+	struct wlr_scene_subsurface_tree *surface_tree;
 	struct wlr_drag_icon *drag_icon;
 
 	struct wl_listener tree_destroy;
@@ -17,7 +17,7 @@ static void drag_icon_handle_surface_commit(struct wl_listener *listener, void *
 	struct wlr_scene_drag_icon *icon =
 		wl_container_of(listener, icon, drag_icon_surface_commit);
 	struct wlr_surface *surface = icon->drag_icon->surface;
-	struct wlr_scene_node *node = &icon->surface_tree->node;
+	struct wlr_scene_node *node = &icon->surface_tree->tree->node;
 	wlr_scene_node_set_position(node,
 		node->x + surface->current.dx, node->y + surface->current.dy);
 }
