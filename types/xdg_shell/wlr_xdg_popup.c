@@ -402,8 +402,6 @@ void create_xdg_popup(struct wlr_xdg_surface *surface, struct wlr_xdg_surface *p
 	wl_resource_set_implementation(surface->popup->resource,
 		&xdg_popup_implementation, surface->popup, NULL);
 
-	surface->role = WLR_XDG_SURFACE_ROLE_POPUP;
-
 	wlr_xdg_positioner_rules_get_geometry(
 		&positioner->rules, &surface->popup->scheduled.geometry);
 	surface->popup->scheduled.rules = positioner->rules;
