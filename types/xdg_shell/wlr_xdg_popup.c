@@ -248,8 +248,7 @@ void handle_xdg_popup_client_commit(struct wlr_xdg_popup *popup) {
 
 static const struct xdg_popup_interface xdg_popup_implementation;
 
-struct wlr_xdg_popup *wlr_xdg_popup_from_resource(
-		struct wl_resource *resource) {
+struct wlr_xdg_popup *wlr_xdg_popup_from_resource(struct wl_resource *resource) {
 	assert(wl_resource_instance_of(resource, &xdg_popup_interface,
 		&xdg_popup_implementation));
 	return wl_resource_get_user_data(resource);
@@ -257,10 +256,18 @@ struct wlr_xdg_popup *wlr_xdg_popup_from_resource(
 
 struct wlr_xdg_popup *wlr_xdg_popup_try_from_wlr_surface(struct wlr_surface *surface) {
 	struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(surface);
-	if (xdg_surface == NULL || xdg_surface->role != WLR_XDG_SURFACE_ROLE_POPUP) {
+	if (xdg_surface == NULL) {
 		return NULL;
 	}
-	return xdg_surface->popup;
+	return wlr_xdg_popup_try_from_wlr_xdg_surface(xdg_surface);
+}
+
+struct wlr_xdg_popup *wlr_xdg_popup_try_from_wlr_xdg_surface(
+		struct wlr_xdg_surface *xdg_surface) {
+	if (xdg_surface->role != WLR_XDG_SURFACE_ROLE_POPUP) {
+		return NULL;
+	}
+	return wlr_xdg_popup_from_resource(xdg_surface->role_resource);
 }
 
 static void xdg_popup_handle_grab(struct wl_client *client,
@@ -402,8 +409,6 @@ void create_xdg_popup(struct wlr_xdg_surface *surface, struct wlr_xdg_surface *p
 	wl_resource_set_implementation(surface->popup->resource,
 		&xdg_popup_implementation, surface->popup, NULL);
 
-	surface->role = WLR_XDG_SURFACE_ROLE_POPUP;
-
 	wlr_xdg_positioner_rules_get_geometry(
 		&positioner->rules, &surface->popup->scheduled.geometry);
 	surface->popup->scheduled.rules = positioner->rules;
@@ -491,15 +496,17 @@ void wlr_xdg_popup_destroy(struct wlr_xdg_popup *popup) {
 void wlr_xdg_popup_get_toplevel_coords(struct wlr_xdg_popup *popup,
 		int popup_sx, int popup_sy, int *toplevel_sx, int *toplevel_sy) {
 	struct wlr_surface *parent = popup->parent;
-	struct wlr_xdg_surface *xdg_surface;
-	while ((xdg_surface = wlr_xdg_surface_try_from_wlr_surface(parent))) {
-		if (xdg_surface->role == WLR_XDG_SURFACE_ROLE_POPUP && xdg_surface->popup != NULL) {
-			popup_sx += xdg_surface->popup->current.geometry.x;
-			popup_sy += xdg_surface->popup->current.geometry.y;
-			parent = xdg_surface->popup->parent;
+	struct wlr_xdg_surface *parent_xdg_surface;
+	while ((parent_xdg_surface = wlr_xdg_surface_try_from_wlr_surface(parent))) {
+		struct wlr_xdg_popup *parent_popup =
+			wlr_xdg_popup_try_from_wlr_xdg_surface(parent_xdg_surface);
+		if (parent_popup != NULL) {
+			popup_sx += parent_popup->current.geometry.x;
+			popup_sy += parent_popup->current.geometry.y;
+			parent = parent_popup->parent;
 		} else {
-			popup_sx += xdg_surface->current.geometry.x;
-			popup_sy += xdg_surface->current.geometry.y;
+			popup_sx += parent_xdg_surface->current.geometry.x;
+			popup_sy += parent_xdg_surface->current.geometry.y;
 			break;
 		}
 	}
