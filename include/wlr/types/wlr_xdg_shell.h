@@ -515,6 +515,15 @@ struct wlr_xdg_surface *wlr_xdg_surface_try_from_wlr_surface(struct wlr_surface 
 struct wlr_xdg_toplevel *wlr_xdg_toplevel_try_from_wlr_surface(struct wlr_surface *surface);
 
 /**
+ * Get a struct wlr_xdg_toplevel from a struct wlr_xdg_surface.
+ *
+ * Returns NULL if the xdg_surface doesn't have the xdg_toplevel role or if the
+ * xdg_toplevel has been destroyed.
+ */
+struct wlr_xdg_toplevel *wlr_xdg_toplevel_try_from_wlr_xdg_surface(
+		struct wlr_xdg_surface *xdg_surface);
+
+/**
  * Get a struct wlr_xdg_popup from a struct wlr_surface.
  *
  * Returns NULL if the surface doesn't have the xdg_surface role, the
@@ -522,6 +531,15 @@ struct wlr_xdg_toplevel *wlr_xdg_toplevel_try_from_wlr_surface(struct wlr_surfac
  * been destroyed.
  */
 struct wlr_xdg_popup *wlr_xdg_popup_try_from_wlr_surface(struct wlr_surface *surface);
+
+/**
+ * Get a struct wlr_xdg_popup from a struct wlr_xdg_surface.
+ *
+ * Returns NULL if the xdg_surface doesn't have the xdg_popup role or if the
+ * xdg_popup has been destroyed.
+ */
+struct wlr_xdg_popup *wlr_xdg_popup_try_from_wlr_xdg_surface(
+		struct wlr_xdg_surface *xdg_surface);
 
 /**
  * Get the surface geometry.

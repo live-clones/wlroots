@@ -141,10 +141,18 @@ struct wlr_xdg_toplevel *wlr_xdg_toplevel_from_resource(
 
 struct wlr_xdg_toplevel *wlr_xdg_toplevel_try_from_wlr_surface(struct wlr_surface *surface) {
 	struct wlr_xdg_surface *xdg_surface = wlr_xdg_surface_try_from_wlr_surface(surface);
-	if (xdg_surface == NULL || xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+	if (xdg_surface == NULL) {
 		return NULL;
 	}
-	return xdg_surface->toplevel;
+	return wlr_xdg_toplevel_try_from_wlr_xdg_surface(xdg_surface);
+}
+
+struct wlr_xdg_toplevel *wlr_xdg_toplevel_try_from_wlr_xdg_surface(
+		struct wlr_xdg_surface *xdg_surface) {
+	if (xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL) {
+		return NULL;
+	}
+	return wlr_xdg_toplevel_from_resource(xdg_surface->role_resource);
 }
 
 static void handle_parent_unmap(struct wl_listener *listener, void *data) {
