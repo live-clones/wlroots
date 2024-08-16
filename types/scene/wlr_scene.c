@@ -2319,6 +2319,10 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	wlr_output_state_set_damage(state, &scene_output->pending_commit_damage);
 
+	// before scanout early return,
+	// update cursor if deferred
+	wlr_output_cursor_move_all_deferred(output);
+
 	// We only want to try direct scanout if:
 	// - There is only one entry in the render list
 	// - There are no color transforms that need to be applied
