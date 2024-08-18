@@ -96,20 +96,26 @@ static struct wlr_gbm_buffer *create_buffer(struct wlr_gbm_allocator *alloc,
 
 	bool has_modifier = true;
 	uint64_t fallback_modifier = DRM_FORMAT_MOD_INVALID;
-	struct gbm_bo *bo = gbm_bo_create_with_modifiers(gbm_device, width, height,
+	uint32_t flags = alloc->bo_flags;
+	struct gbm_bo *bo;
+#if HAVE_GBM_BO_CREATE_WITH_MODIFIERS2
+	bo = gbm_bo_create_with_modifiers2(gbm_device, width, height,
+		format->format, format->modifiers, format->len, flags);
+#else
+	bo = gbm_bo_create_with_modifiers(gbm_device, width, height,
 		format->format, format->modifiers, format->len);
+#endif
 	if (bo == NULL) {
-		uint32_t usage = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
 		if (format->len == 1 &&
 				format->modifiers[0] == DRM_FORMAT_MOD_LINEAR) {
-			usage |= GBM_BO_USE_LINEAR;
+			flags |= GBM_BO_USE_LINEAR;
 			fallback_modifier = DRM_FORMAT_MOD_LINEAR;
 		} else if (!wlr_drm_format_has(format, DRM_FORMAT_MOD_INVALID)) {
 			// If the format doesn't accept an implicit modifier, bail out.
 			wlr_log(WLR_ERROR, "gbm_bo_create_with_modifiers failed");
 			return NULL;
 		}
-		bo = gbm_bo_create(gbm_device, width, height, format->format, usage);
+		bo = gbm_bo_create(gbm_device, width, height, format->format, flags);
 		has_modifier = false;
 	}
 	if (bo == NULL) {
@@ -185,7 +191,7 @@ static struct wlr_gbm_allocator *get_gbm_alloc_from_alloc(
 	return alloc;
 }
 
-struct wlr_allocator *wlr_gbm_allocator_create(int fd) {
+struct wlr_allocator *wlr_gbm_allocator_create_with_drm_fd(int fd, uint32_t bo_flags) {
 	uint64_t cap;
 	if (drmGetCap(fd, DRM_CAP_PRIME, &cap) ||
 			!(cap & DRM_PRIME_CAP_EXPORT)) {
@@ -200,6 +206,7 @@ struct wlr_allocator *wlr_gbm_allocator_create(int fd) {
 	wlr_allocator_init(&alloc->base, &allocator_impl, WLR_BUFFER_CAP_DMABUF);
 
 	alloc->fd = fd;
+	alloc->bo_flags = bo_flags;
 	wl_list_init(&alloc->buffers);
 
 	alloc->gbm_device = gbm_create_device(fd);

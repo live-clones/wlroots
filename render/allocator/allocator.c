@@ -15,6 +15,7 @@
 #include "render/wlr_renderer.h"
 
 #if WLR_HAS_GBM_ALLOCATOR
+#include <gbm.h>
 #include "render/allocator/gbm.h"
 #endif
 
@@ -107,7 +108,8 @@ struct wlr_allocator *allocator_autocreate_with_drm_fd(
 		if (gbm_fd < 0) {
 			return NULL;
 		}
-		if ((alloc = wlr_gbm_allocator_create(gbm_fd)) != NULL) {
+		uint32_t bo_flags = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
+		if ((alloc = wlr_gbm_allocator_create_with_drm_fd(gbm_fd, bo_flags)) != NULL) {
 			return alloc;
 		}
 		close(gbm_fd);

@@ -20,6 +20,7 @@ struct wlr_gbm_allocator {
 
 	int fd;
 	struct gbm_device *gbm_device;
+	uint32_t bo_flags;
 
 	struct wl_list buffers; // wlr_gbm_buffer.link
 };
@@ -27,8 +28,10 @@ struct wlr_gbm_allocator {
 /**
  * Creates a new GBM allocator from a DRM FD.
  *
+ * bo_flags is a bitfield of enum gbm_bo_flags.
+ *
  * Takes ownership over the FD.
  */
-struct wlr_allocator *wlr_gbm_allocator_create(int drm_fd);
+struct wlr_allocator *wlr_gbm_allocator_create_with_drm_fd(int drm_fd, uint32_t bo_flags);
 
 #endif
