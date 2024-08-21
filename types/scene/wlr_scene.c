@@ -339,7 +339,7 @@ static void logical_to_buffer_coords(pixman_region32_t *damage, const struct ren
 
 static void output_to_buffer_coords(pixman_region32_t *damage, struct wlr_output *output) {
 	int width, height;
-	wlr_output_transformed_resolution(output, &width, &height);
+	wlr_output_transformed_resolution(output, NULL, &width, &height);
 
 	wlr_region_transform(damage, damage,
 		wlr_output_transform_invert(output->transform), width, height);
@@ -1579,7 +1579,7 @@ static void scene_output_handle_damage(struct wl_listener *listener, void *data)
 	struct wlr_output_event_damage *event = data;
 
 	int width, height;
-	wlr_output_transformed_resolution(output, &width, &height);
+	wlr_output_transformed_resolution(output, NULL, &width, &height);
 
 	pixman_region32_t damage;
 	pixman_region32_init(&damage);
