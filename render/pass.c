@@ -25,13 +25,18 @@ void wlr_render_pass_add_texture(struct wlr_render_pass *render_pass,
 			box->y + box->height <= options->texture->height);
 	}
 
-	render_pass->impl->add_texture(render_pass, options);
+	if (wlr_render_texture_options_get_alpha(options) > 0 &&
+			!wlr_box_empty(&options->dst_box)) {
+		render_pass->impl->add_texture(render_pass, options);
+	}
 }
 
 void wlr_render_pass_add_rect(struct wlr_render_pass *render_pass,
 		const struct wlr_render_rect_options *options) {
 	assert(options->box.width >= 0 && options->box.height >= 0);
-	render_pass->impl->add_rect(render_pass, options);
+	if (options->color.a > 0) {
+		render_pass->impl->add_rect(render_pass, options);
+	}
 }
 
 void wlr_render_texture_options_get_src_box(const struct wlr_render_texture_options *options,
