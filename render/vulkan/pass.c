@@ -981,14 +981,6 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		return NULL;
 	}
 
-	if (!renderer->dummy3d_image_transitioned) {
-		renderer->dummy3d_image_transitioned = true;
-		vulkan_change_layout(cb->vk, renderer->dummy3d_image,
-			VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_SHADER_READ_BIT);
-	}
-
 	int width = buffer->wlr_buffer->width;
 	int height = buffer->wlr_buffer->height;
 	VkRect2D rect = { .extent = { width, height } };
