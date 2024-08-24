@@ -23,38 +23,28 @@ float linear_channel_to_srgb(float x) {
 	return max(min(x * 12.92, 0.04045), 1.055 * pow(x, 1. / 2.4) - 0.055);
 }
 
-vec4 linear_color_to_srgb(vec4 color) {
-	if (color.a == 0) {
-		return vec4(0);
-	}
-	color.rgb /= color.a;
-	color.rgb = vec3(
-		linear_channel_to_srgb(color.r),
-		linear_channel_to_srgb(color.g),
-		linear_channel_to_srgb(color.b)
-	);
-	color.rgb *= color.a;
-	return color;
-}
-
 void main() {
 	vec4 val = subpassLoad(in_color).rgba;
-	if (OUTPUT_TRANSFORM == OUTPUT_TRANSFORM_LUT_3D) {
-		if (val.a == 0) {
-			out_color = vec4(0);
-			return;
-		}
-		// Convert from pre-multiplied alpha to straight alpha
-		vec3 rgb = val.rgb / val.a;
+	if (val.a == 0) {
+		out_color = vec4(0);
+		return;
+	}
 
+	// Convert from pre-multiplied alpha to straight alpha
+	vec3 rgb = val.rgb / val.a;
+
+	if (OUTPUT_TRANSFORM == OUTPUT_TRANSFORM_LUT_3D) {
 		// Apply 3D LUT
 		vec3 pos = data.lut_3d_offset + rgb * data.lut_3d_scale;
 		rgb = texture(lut_3d, pos).rgb;
-
-		// Back to pre-multiplied alpha
-		out_color = vec4(rgb * val.a, val.a);
 	} else { // OUTPUT_TRANSFORM_INVERSE_SRGB
-		// Produce post-premultiplied sRGB encoded values
-		out_color = linear_color_to_srgb(val);
+		rgb = vec3(
+			linear_channel_to_srgb(rgb.r),
+			linear_channel_to_srgb(rgb.g),
+			linear_channel_to_srgb(rgb.b)
+		);
 	}
+
+	// Back to pre-multiplied alpha
+	out_color = vec4(rgb * val.a, val.a);
 }
