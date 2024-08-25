@@ -497,7 +497,7 @@ struct wlr_vk_color_transform {
 		VkDeviceMemory memory;
 		VkDescriptorSet ds;
 		struct wlr_vk_descriptor_pool *ds_pool;
-	} lut_3d;
+	} lut;
 };
 void vk_color_transform_destroy(struct wlr_addon *addon);
 

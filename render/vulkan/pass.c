@@ -132,7 +132,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 				pl = render_buffer->plain.render_setup->output_pipe_lut3d;
 				struct wlr_vk_color_transform *transform =
 					get_color_transform(pass->color_transform, renderer);
-				ds[ds_len++] = transform->lut_3d.ds;
+				ds[ds_len++] = transform->lut.ds;
 
 				struct wlr_color_transform_lut3d *lut =
 					wlr_color_transform_lut3d_from_base(pass->color_transform);
@@ -712,11 +712,11 @@ void vk_color_transform_destroy(struct wlr_addon *addon) {
 	struct wlr_vk_color_transform *transform = wl_container_of(addon, transform, addon);
 
 	VkDevice dev = renderer->dev->dev;
-	if (transform->lut_3d.image) {
-		vkDestroyImage(dev, transform->lut_3d.image, NULL);
-		vkDestroyImageView(dev, transform->lut_3d.image_view, NULL);
-		vkFreeMemory(dev, transform->lut_3d.memory, NULL);
-		vulkan_free_ds(renderer, transform->lut_3d.ds_pool, transform->lut_3d.ds);
+	if (transform->lut.image) {
+		vkDestroyImage(dev, transform->lut.image, NULL);
+		vkDestroyImageView(dev, transform->lut.image_view, NULL);
+		vkFreeMemory(dev, transform->lut.memory, NULL);
+		vulkan_free_ds(renderer, transform->lut.ds_pool, transform->lut.ds);
 	}
 
 	wl_list_remove(&transform->link);
@@ -900,11 +900,11 @@ static struct wlr_vk_color_transform *vk_color_transform_create(
 	if (transform->type == COLOR_TRANSFORM_LUT_3D) {
 		if (!create_3d_lut_image(renderer,
 				wlr_color_transform_lut3d_from_base(transform),
-				&vk_transform->lut_3d.image,
-				&vk_transform->lut_3d.image_view,
-				&vk_transform->lut_3d.memory,
-				&vk_transform->lut_3d.ds,
-				&vk_transform->lut_3d.ds_pool)) {
+				&vk_transform->lut.image,
+				&vk_transform->lut.image_view,
+				&vk_transform->lut.memory,
+				&vk_transform->lut.ds,
+				&vk_transform->lut.ds_pool)) {
 			free(vk_transform);
 			return NULL;
 		}
