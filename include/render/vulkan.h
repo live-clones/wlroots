@@ -268,7 +268,8 @@ struct wlr_vk_renderer {
 	VkShaderModule vert_module;
 	VkShaderModule tex_frag_module;
 	VkShaderModule quad_frag_module;
-	VkShaderModule output_module;
+	VkShaderModule output_module_srgb;
+	VkShaderModule output_module_3d_lut;
 
 	struct wl_list pipeline_layouts; // struct wlr_vk_pipeline_layout.link
 

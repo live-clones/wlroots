@@ -24,7 +24,8 @@
 #include "render/vulkan/shaders/common.vert.h"
 #include "render/vulkan/shaders/texture.frag.h"
 #include "render/vulkan/shaders/quad.frag.h"
-#include "render/vulkan/shaders/output.frag.h"
+#include "render/vulkan/shaders/output_inverse_rgb.frag.h"
+#include "render/vulkan/shaders/output_lut_3d.frag.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_matrix.h"
 
@@ -1117,7 +1118,8 @@ static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 	vkDestroyShaderModule(dev->dev, renderer->vert_module, NULL);
 	vkDestroyShaderModule(dev->dev, renderer->tex_frag_module, NULL);
 	vkDestroyShaderModule(dev->dev, renderer->quad_frag_module, NULL);
-	vkDestroyShaderModule(dev->dev, renderer->output_module, NULL);
+	vkDestroyShaderModule(dev->dev, renderer->output_module_srgb, NULL);
+	vkDestroyShaderModule(dev->dev, renderer->output_module_3d_lut, NULL);
 
 	struct wlr_vk_pipeline_layout *pipeline_layout, *pipeline_layout_tmp;
 	wl_list_for_each_safe(pipeline_layout, pipeline_layout_tmp,
@@ -1797,18 +1799,15 @@ static bool init_blend_to_output_pipeline(struct wlr_vk_renderer *renderer,
 	VkResult res;
 	VkDevice dev = renderer->dev->dev;
 
-	uint32_t output_transform_type = transform;
-	VkSpecializationMapEntry spec_entry = {
-		.constantID = 0,
-		.offset = 0,
-		.size = sizeof(uint32_t),
-	};
-	VkSpecializationInfo specialization = {
-		.mapEntryCount = 1,
-		.pMapEntries = &spec_entry,
-		.dataSize = sizeof(uint32_t),
-		.pData = &output_transform_type,
-	};
+	VkShaderModule output_module;
+	switch(transform) {
+	case WLR_VK_OUTPUT_TRANSFORM_INVERSE_SRGB:
+		output_module = renderer->output_module_srgb;
+		break;
+	case WLR_VK_OUTPUT_TRANSFORM_LUT3D:
+		output_module = renderer->output_module_3d_lut;
+		break;
+	}
 
 	VkPipelineShaderStageCreateInfo tex_stages[2] = {
 		{
@@ -1820,9 +1819,8 @@ static bool init_blend_to_output_pipeline(struct wlr_vk_renderer *renderer,
 		{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-			.module = renderer->output_module,
+			.module = output_module,
 			.pName = "main",
-			.pSpecializationInfo = &specialization,
 		},
 	};
 
@@ -2140,12 +2138,25 @@ static bool init_static_render_data(struct wlr_vk_renderer *renderer) {
 
 	sinfo = (VkShaderModuleCreateInfo){
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = sizeof(output_frag_data),
-		.pCode = output_frag_data,
+		.codeSize = sizeof(output_inverse_rgb_data),
+		.pCode = output_inverse_rgb_data,
 	};
-	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->output_module);
+
+	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->output_module_srgb);
 	if (res != VK_SUCCESS) {
-		wlr_vk_error("Failed to create blend->output fragment shader module", res);
+		wlr_vk_error("Failed to create blend->output fragment shader module for srgb", res);
+		return false;
+	}
+
+	sinfo = (VkShaderModuleCreateInfo){
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = sizeof(output_lut_3d_data),
+		.pCode = output_lut_3d_data,
+	};
+
+	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->output_module_3d_lut);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("Failed to create blend->output fragment shader module for 3d lut", res);
 		return false;
 	}
 
