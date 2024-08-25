@@ -162,6 +162,7 @@ enum wlr_vk_shader_source {
 enum wlr_vk_output_transform {
 	WLR_VK_OUTPUT_TRANSFORM_INVERSE_SRGB = 0,
 	WLR_VK_OUTPUT_TRANSFORM_LUT3D = 1,
+	WLR_VK_OUTPUT_TRANSFORM_LUT3x1D = 2,
 };
 
 struct wlr_vk_pipeline_key {
@@ -192,6 +193,7 @@ struct wlr_vk_render_format_setup {
 
 	VkPipeline output_pipe_srgb;
 	VkPipeline output_pipe_lut3d;
+	VkPipeline output_pipe_lut3x1d;
 
 	struct wlr_vk_renderer *renderer;
 	struct wl_list pipelines; // struct wlr_vk_pipeline.link
@@ -270,6 +272,7 @@ struct wlr_vk_renderer {
 	VkShaderModule quad_frag_module;
 	VkShaderModule output_module_srgb;
 	VkShaderModule output_module_3d_lut;
+	VkShaderModule output_module_3x1d_lut;
 
 	struct wl_list pipeline_layouts; // struct wlr_vk_pipeline_layout.link
 

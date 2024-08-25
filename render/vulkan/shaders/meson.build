@@ -23,6 +23,7 @@ endforeach
 vulkan_shader_output_color_transforms = {
 	'inverse_rgb': '0',
 	'lut_3d': '1',
+	'lut_3x1d': '2',
 }
 
 foreach name, ident : vulkan_shader_output_color_transforms

@@ -26,6 +26,7 @@
 #include "render/vulkan/shaders/quad.frag.h"
 #include "render/vulkan/shaders/output_inverse_rgb.frag.h"
 #include "render/vulkan/shaders/output_lut_3d.frag.h"
+#include "render/vulkan/shaders/output_lut_3x1d.frag.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_matrix.h"
 
@@ -1120,6 +1121,7 @@ static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 	vkDestroyShaderModule(dev->dev, renderer->quad_frag_module, NULL);
 	vkDestroyShaderModule(dev->dev, renderer->output_module_srgb, NULL);
 	vkDestroyShaderModule(dev->dev, renderer->output_module_3d_lut, NULL);
+	vkDestroyShaderModule(dev->dev, renderer->output_module_3x1d_lut, NULL);
 
 	struct wlr_vk_pipeline_layout *pipeline_layout, *pipeline_layout_tmp;
 	wl_list_for_each_safe(pipeline_layout, pipeline_layout_tmp,
@@ -1803,6 +1805,9 @@ static bool init_blend_to_output_pipeline(struct wlr_vk_renderer *renderer,
 	case WLR_VK_OUTPUT_TRANSFORM_LUT3D:
 		output_module = renderer->output_module_3d_lut;
 		break;
+	case WLR_VK_OUTPUT_TRANSFORM_LUT3x1D:
+		output_module = renderer->output_module_3x1d_lut;
+		break;
 	}
 
 	VkPipelineShaderStageCreateInfo tex_stages[2] = {
@@ -2053,6 +2058,18 @@ static bool init_static_render_data(struct wlr_vk_renderer *renderer) {
 		return false;
 	}
 
+	sinfo = (VkShaderModuleCreateInfo){
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = sizeof(output_lut_3x1d_data),
+		.pCode = output_lut_3x1d_data,
+	};
+
+	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->output_module_3x1d_lut);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("Failed to create blend->output fragment shader module for 3x1d lut", res);
+		return false;
+	}
+
 	return true;
 }
 
@@ -2200,6 +2217,11 @@ static struct wlr_vk_render_format_setup *find_or_create_render_setup(
 		if (!init_blend_to_output_pipeline(
 			renderer, setup->render_pass, renderer->output_pipe_layout,
 			&setup->output_pipe_srgb, WLR_VK_OUTPUT_TRANSFORM_INVERSE_SRGB)) {
+			goto error;
+		}
+		if (!init_blend_to_output_pipeline(
+			renderer, setup->render_pass, renderer->output_pipe_layout,
+			&setup->output_pipe_lut3x1d, WLR_VK_OUTPUT_TRANSFORM_LUT3x1D)) {
 			goto error;
 		}
 	} else {

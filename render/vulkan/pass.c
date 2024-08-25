@@ -146,6 +146,23 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 
 				break;
 			}
+			case COLOR_TRANSFORM_LUT_3x1D: {
+				pl = render_buffer->plain.render_setup->output_pipe_lut3x1d;
+				struct wlr_vk_color_transform *transform =
+					get_color_transform(pass->color_transform, renderer);
+				ds[ds_len++] = transform->lut.ds;
+
+				struct wlr_color_transform_lut3x1d *lut =
+					wlr_color_transform_lut3x1d_from_base(pass->color_transform);
+				struct wlr_vk_frag_output_pcr_data frag_pcr_data = {
+					.lut_3d_offset = 0.5f / lut->ramp_size,
+					.lut_3d_scale = (float)(lut->ramp_size - 1) / lut->ramp_size,
+				};
+				vkCmdPushConstants(render_cb->vk, renderer->output_pipe_layout,
+					VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data),
+					sizeof(frag_pcr_data), &frag_pcr_data);
+				break;
+			}
 			case COLOR_TRANSFORM_SRGB:
 				break;
 			}
@@ -889,6 +906,166 @@ fail_image:
 	return false;
 }
 
+static bool create_3x1d_lut_image(struct wlr_vk_renderer *renderer,
+		const struct wlr_color_transform_lut3x1d *lut,
+		VkImage *image, VkImageView *image_view,
+		VkDeviceMemory *memory,	VkDescriptorSet *ds,
+		struct wlr_vk_descriptor_pool **ds_pool) {
+	VkDevice dev = renderer->dev->dev;
+	VkResult res;
+
+	*image = VK_NULL_HANDLE;
+	*memory = VK_NULL_HANDLE;
+	*image_view = VK_NULL_HANDLE;
+	*ds = VK_NULL_HANDLE;
+	*ds_pool = NULL;
+
+	// R32G32B32 is not a required Vulkan format
+	// TODO: use it when available
+	VkFormat format = VK_FORMAT_R32G32B32A32_SFLOAT;
+
+	VkImageCreateInfo img_info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.imageType = VK_IMAGE_TYPE_1D,
+		.format = format,
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.extent = (VkExtent3D) { lut->ramp_size, 1, 1 },
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+	};
+	res = vkCreateImage(dev, &img_info, NULL, image);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkCreateImage failed", res);
+		return NULL;
+	}
+
+	VkMemoryRequirements mem_reqs = {0};
+	vkGetImageMemoryRequirements(dev, *image, &mem_reqs);
+
+	int mem_type_index = vulkan_find_mem_type(renderer->dev,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mem_reqs.memoryTypeBits);
+	if (mem_type_index == -1) {
+		wlr_log(WLR_ERROR, "Failed to find suitable memory type");
+		goto fail_image;
+	}
+
+	VkMemoryAllocateInfo mem_info = {
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = mem_reqs.size,
+		.memoryTypeIndex = mem_type_index,
+	};
+	res = vkAllocateMemory(dev, &mem_info, NULL, memory);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkAllocateMemory failed", res);
+		goto fail_image;
+	}
+
+	res = vkBindImageMemory(dev, *image, *memory, 0);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkBindMemory failed", res);
+		goto fail_memory;
+	}
+
+	VkImageViewCreateInfo view_info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+		.viewType = VK_IMAGE_VIEW_TYPE_1D,
+		.format = format,
+		.components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
+		.components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
+		.components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
+		.components.a = VK_COMPONENT_SWIZZLE_IDENTITY,
+		.subresourceRange = (VkImageSubresourceRange) {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseMipLevel = 0,
+			.levelCount = 1,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		},
+		.image = *image,
+	};
+	res = vkCreateImageView(dev, &view_info, NULL, image_view);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkCreateImageView failed", res);
+		goto fail_image;
+	}
+
+	size_t bytes_per_block = 4 * sizeof(float);
+	size_t size = lut->ramp_size * bytes_per_block;
+	struct wlr_vk_buffer_span span = vulkan_get_stage_span(renderer,
+		size, bytes_per_block);
+	if (!span.buffer || span.alloc.size != size) {
+		wlr_log(WLR_ERROR, "Failed to retrieve staging buffer");
+		goto fail_imageview;
+	}
+
+	char *map = (char*)span.buffer->cpu_mapping + span.alloc.start;
+	float *dst = (float*)map;
+
+	float normalize = (1 << 16) - 1;
+	for (size_t i = 0; i < lut->ramp_size; i++) {
+		size_t dst_offset = 4 * i;
+		dst[dst_offset + 0] = (float)lut->r[i] / normalize;
+		dst[dst_offset + 1] = (float)lut->g[i] / normalize;
+		dst[dst_offset + 2] = (float)lut->b[i] / normalize;
+		dst[dst_offset + 3] = 1.0;
+	}
+
+	VkCommandBuffer cb = vulkan_record_stage_cb(renderer);
+	vulkan_change_layout(cb, *image,
+		VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_ACCESS_TRANSFER_WRITE_BIT);
+	VkBufferImageCopy copy = {
+		.bufferOffset = span.alloc.start,
+		.imageExtent.width = lut->ramp_size,
+		.imageExtent.height = 1,
+		.imageExtent.depth = 1,
+		.imageSubresource.layerCount = 1,
+		.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+	};
+	vkCmdCopyBufferToImage(cb, span.buffer->buffer, *image,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+	vulkan_change_layout(cb, *image,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_ACCESS_TRANSFER_WRITE_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_SHADER_READ_BIT);
+
+	*ds_pool = vulkan_alloc_texture_ds(renderer,
+		renderer->output_ds_lut3d_layout, ds);
+	if (!*ds_pool) {
+		wlr_log(WLR_ERROR, "Failed to allocate descriptor");
+		goto fail_imageview;
+	}
+
+	VkDescriptorImageInfo ds_img_info = {
+		.imageView = *image_view,
+		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+	};
+	VkWriteDescriptorSet ds_write = {
+		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+		.descriptorCount = 1,
+		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+		.dstSet = *ds,
+		.pImageInfo = &ds_img_info,
+	};
+	vkUpdateDescriptorSets(dev, 1, &ds_write, 0, NULL);
+
+	return true;
+
+fail_imageview:
+	vkDestroyImageView(dev, *image_view, NULL);
+fail_memory:
+	vkFreeMemory(dev, *memory, NULL);
+fail_image:
+	vkDestroyImage(dev, *image, NULL);
+	return false;
+}
+
 static struct wlr_vk_color_transform *vk_color_transform_create(
 		struct wlr_vk_renderer *renderer, struct wlr_color_transform *transform) {
 	struct wlr_vk_color_transform *vk_transform =
@@ -897,7 +1074,8 @@ static struct wlr_vk_color_transform *vk_color_transform_create(
 		return NULL;
 	}
 
-	if (transform->type == COLOR_TRANSFORM_LUT_3D) {
+	switch(transform->type) {
+	case COLOR_TRANSFORM_LUT_3D:
 		if (!create_3d_lut_image(renderer,
 				wlr_color_transform_lut3d_from_base(transform),
 				&vk_transform->lut.image,
@@ -908,6 +1086,21 @@ static struct wlr_vk_color_transform *vk_color_transform_create(
 			free(vk_transform);
 			return NULL;
 		}
+		break;
+	case COLOR_TRANSFORM_LUT_3x1D:
+		if (!create_3x1d_lut_image(renderer,
+				wlr_color_transform_lut3x1d_from_base(transform),
+				&vk_transform->lut.image,
+				&vk_transform->lut.image_view,
+				&vk_transform->lut.memory,
+				&vk_transform->lut.ds,
+				&vk_transform->lut.ds_pool)) {
+			free(vk_transform);
+			return NULL;
+		}
+		break;
+	case COLOR_TRANSFORM_SRGB:
+		break;
 	}
 
 	wlr_addon_init(&vk_transform->addon, &transform->addons,
