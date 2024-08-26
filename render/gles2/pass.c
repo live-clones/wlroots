@@ -305,6 +305,7 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 		GLenum status = renderer->procs.glGetGraphicsResetStatusKHR();
 		if (status != GL_NO_ERROR) {
 			wlr_log(WLR_ERROR, "GPU reset (%s)", reset_status_str(status));
+			renderer->wlr_renderer.lost = true;
 			wl_signal_emit_mutable(&renderer->wlr_renderer.events.lost, NULL);
 			return NULL;
 		}

@@ -12,6 +12,20 @@
 #include "render/pixel_format.h"
 #include "render/wlr_renderer.h"
 
+static void handle_lost_mgpu_renderer(struct wlr_drm_backend *drm) {
+	wlr_log(WLR_DEBUG, "Handling lost renderer");
+	for (size_t i = 0; i < drm->num_planes; ++i) {
+		struct wlr_drm_plane *plane = &drm->planes[i];
+		finish_drm_surface(&plane->mgpu_surf);
+	}
+	finish_drm_renderer(&drm->mgpu_renderer);
+
+	if (!init_drm_renderer(drm, &drm->mgpu_renderer)) {
+		wlr_log(WLR_ERROR, "Failed to initialize renderer");
+		return;
+	}
+}
+
 bool init_drm_renderer(struct wlr_drm_backend *drm,
 		struct wlr_drm_renderer *renderer) {
 	renderer->wlr_rend = renderer_autocreate_with_drm_fd(drm->fd);
@@ -73,8 +87,8 @@ bool init_drm_surface(struct wlr_drm_surface *surf,
 	return true;
 }
 
-struct wlr_buffer *drm_surface_blit(struct wlr_drm_surface *surf,
-		struct wlr_buffer *buffer) {
+struct wlr_buffer *drm_surface_blit(struct wlr_drm_backend *drm,
+		struct wlr_drm_surface *surf, struct wlr_buffer *buffer) {
 	struct wlr_renderer *renderer = surf->renderer->wlr_rend;
 
 	if (surf->swapchain->width != buffer->width ||
@@ -118,6 +132,9 @@ error_dst:
 	wlr_buffer_unlock(dst);
 error_tex:
 	wlr_texture_destroy(tex);
+	if (renderer->lost) {
+		handle_lost_mgpu_renderer(drm);
+	}
 	return NULL;
 }
 

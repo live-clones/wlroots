@@ -38,6 +38,7 @@ void wlr_renderer_init(struct wlr_renderer *renderer,
 	*renderer = (struct wlr_renderer){
 		.impl = impl,
 		.render_buffer_caps = render_buffer_caps,
+		.lost = false,
 	};
 
 	wl_signal_init(&renderer->events.destroy);

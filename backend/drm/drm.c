@@ -723,7 +723,7 @@ static bool drm_connector_state_update_primary_fb(struct wlr_drm_connector *conn
 			return false;
 		}
 
-		local_buf = drm_surface_blit(&plane->mgpu_surf, source_buf);
+		local_buf = drm_surface_blit(drm, &plane->mgpu_surf, source_buf);
 		if (local_buf == NULL) {
 			return false;
 		}
@@ -1088,7 +1088,7 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 				return false;
 			}
 
-			local_buf = drm_surface_blit(&plane->mgpu_surf, buffer);
+			local_buf = drm_surface_blit(drm, &plane->mgpu_surf, buffer);
 			if (local_buf == NULL) {
 				return false;
 			}

@@ -29,6 +29,7 @@ struct wlr_renderer {
 	// Capabilities required for the buffer used as a render target (bitmask of
 	// enum wlr_buffer_cap)
 	uint32_t render_buffer_caps;
+	bool lost;
 
 	struct {
 		struct wl_signal destroy;
