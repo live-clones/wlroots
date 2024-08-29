@@ -176,13 +176,14 @@ static bool init_plane(struct wlr_drm_backend *drm,
 	p->id = drm_plane->plane_id;
 	p->props = props;
 	p->initial_crtc_id = drm_plane->crtc_id;
+	bool can_scanout_implicit = !drm->parent || drm->mgpu_renderer.wlr_rend;
 
 	for (size_t i = 0; i < drm_plane->count_formats; ++i) {
 		// Force a LINEAR layout for the cursor if the driver doesn't support
 		// modifiers
 		wlr_drm_format_set_add(&p->formats, drm_plane->formats[i],
 			DRM_FORMAT_MOD_LINEAR);
-		if (type != DRM_PLANE_TYPE_CURSOR) {
+		if (type != DRM_PLANE_TYPE_CURSOR && can_scanout_implicit) {
 			wlr_drm_format_set_add(&p->formats, drm_plane->formats[i],
 				DRM_FORMAT_MOD_INVALID);
 		}
@@ -203,6 +204,9 @@ static bool init_plane(struct wlr_drm_backend *drm,
 
 		drmModeFormatModifierIterator iter = {0};
 		while (drmModeFormatModifierBlobIterNext(blob, &iter)) {
+			if (!can_scanout_implicit && iter.mod == DRM_FORMAT_MOD_INVALID) {
+				continue;
+			}
 			wlr_drm_format_set_add(&p->formats, iter.fmt, iter.mod);
 		}
 
