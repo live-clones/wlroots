@@ -258,7 +258,7 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 		}
 	}
 
-	if ((is_auto && !has_render_node(backend)) || strcmp(renderer_name, "pixman") == 0) {
+	if ((is_auto && !has_render_node(backend) && drm_fd == -1) || strcmp(renderer_name, "pixman") == 0) {
 		renderer = wlr_pixman_renderer_create();
 		if (renderer) {
 			goto out;
