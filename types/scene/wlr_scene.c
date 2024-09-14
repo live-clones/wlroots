@@ -879,13 +879,17 @@ void wlr_scene_buffer_set_raster_with_damage(struct wlr_scene_buffer *scene_buff
 	struct wlr_buffer *buffer = raster ? raster->buffer : NULL;
 	if (buffer != scene_buffer->buffer) {
 		scene_buffer->is_single_pixel_buffer = false;
+		struct wlr_buffer *source = buffer;
 		struct wlr_client_buffer *client_buffer = NULL;
 		if (buffer != NULL) {
 			client_buffer = wlr_client_buffer_get(buffer);
 		}
-		if (client_buffer != NULL && client_buffer->source != NULL) {
+		if (client_buffer != NULL) {
+			source = client_buffer->source;
+		}
+		if (source != NULL) {
 			struct wlr_single_pixel_buffer_v1 *single_pixel_buffer =
-				wlr_single_pixel_buffer_v1_try_from_buffer(client_buffer->source);
+				wlr_single_pixel_buffer_v1_try_from_buffer(source);
 			if (single_pixel_buffer != NULL) {
 				scene_buffer->is_single_pixel_buffer = true;
 				scene_buffer->single_pixel_buffer_color[0] = single_pixel_buffer->r;
