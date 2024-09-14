@@ -752,14 +752,12 @@ static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 	if (scene_buffer->own_buffer) {
 		wlr_buffer_unlock(scene_buffer->buffer);
 	}
-	scene_buffer->buffer = NULL;
+	scene_buffer->buffer = buffer;
+	scene_buffer->own_buffer = false;
 
 	if (!buffer) {
 		return;
 	}
-
-	scene_buffer->own_buffer = true;
-	scene_buffer->buffer = wlr_buffer_lock(buffer);
 
 	scene_buffer->buffer_release.notify = scene_buffer_handle_buffer_release;
 	wl_signal_add(&buffer->events.release, &scene_buffer->buffer_release);
@@ -783,9 +781,14 @@ struct wlr_scene_buffer *wlr_scene_buffer_create(struct wlr_scene_tree *parent,
 	wl_list_init(&scene_buffer->buffer_release.link);
 	wl_list_init(&scene_buffer->renderer_destroy.link);
 	scene_buffer->opacity = 1;
-	scene_buffer->raster = buffer ? wlr_raster_create(buffer, NULL) : NULL;
-
 	scene_buffer_set_buffer(scene_buffer, buffer);
+
+	if (buffer) {
+		scene_buffer->raster = wlr_raster_create(buffer, NULL);
+		wlr_buffer_lock(buffer);
+		scene_buffer->own_buffer = true;
+	}
+
 	scene_node_update(&scene_buffer->node, NULL);
 
 	return scene_buffer;
@@ -798,38 +801,47 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
 		options = &default_options;
 	}
 
-	// specifying a region for a NULL buffer doesn't make sense. We need to know
-	// about the buffer to scale the buffer local coordinates down to scene
+	struct wlr_raster *raster = NULL;
+	if (buffer) {
+		raster = wlr_raster_create(buffer, &(struct wlr_raster_create_options) {
+			.wait_timeline = options->wait_timeline,
+			.wait_point = options->wait_point,
+		});
+	}
+
+	wlr_scene_buffer_set_raster_with_damage(scene_buffer, raster, options->damage);
+
+	if (raster) {
+		wlr_buffer_lock(buffer);
+		scene_buffer->own_buffer = true;
+	}
+
+	wlr_raster_unlock(raster);
+}
+
+void wlr_scene_buffer_set_raster_with_damage(struct wlr_scene_buffer *scene_buffer,
+		struct wlr_raster *raster, const pixman_region32_t *damage) {
+	// specifying a region for a NULL raster doesn't make sense. We need to know
+	// about the raster to scale the raster local coordinates down to scene
 	// coordinates.
-	assert(buffer || !options->damage);
+	assert(raster || !damage);
 
-	bool mapped = buffer != NULL;
-	bool prev_mapped = scene_buffer->raster != NULL;
-
-	if (!mapped && !prev_mapped) {
-		// unmapping already unmapped buffer - noop
+	if (raster == scene_buffer->raster) {
 		return;
 	}
 
 	// if this node used to not be mapped or its previous displayed
 	// buffer region will be different from what the new buffer would
 	// produce we need to update the node.
-	bool update = mapped != prev_mapped;
-	if (buffer != NULL && scene_buffer->dst_width == 0 && scene_buffer->dst_height == 0) {
-		update = update || (int)scene_buffer->raster->width != buffer->width ||
-			(int)scene_buffer->raster->height != buffer->height;
+	bool update = !raster != !scene_buffer->raster;
+	if (raster != NULL && scene_buffer->dst_width == 0 && scene_buffer->dst_height == 0) {
+		update = update || scene_buffer->raster->width != raster->width ||
+			scene_buffer->raster->height != raster->height;
 	}
 
 	wlr_raster_unlock(scene_buffer->raster);
-	scene_buffer->raster = NULL;
-
-	scene_buffer_set_buffer(scene_buffer, buffer);
-	if (buffer) {
-		scene_buffer->raster = wlr_raster_create(buffer, &(struct wlr_raster_create_options) {
-			.wait_timeline = options->wait_timeline,
-			.wait_point = options->wait_point,
-		});
-	}
+	scene_buffer_set_buffer(scene_buffer, raster ? raster->buffer : NULL);
+	scene_buffer->raster = raster ? wlr_raster_lock(raster) : NULL;
 
 	if (update) {
 		scene_node_update(&scene_buffer->node, NULL);
@@ -844,8 +856,7 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
 	}
 
 	pixman_region32_t fallback_damage;
-	pixman_region32_init_rect(&fallback_damage, 0, 0, buffer->width, buffer->height);
-	const pixman_region32_t *damage = options->damage;
+	pixman_region32_init_rect(&fallback_damage, 0, 0, raster->width, raster->height);
 	if (!damage) {
 		damage = &fallback_damage;
 	}
@@ -854,26 +865,26 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
 	if (wlr_fbox_empty(&box)) {
 		box.x = 0;
 		box.y = 0;
-		box.width = buffer->width;
-		box.height = buffer->height;
+		box.width = raster->width;
+		box.height = raster->height;
 	}
 
 	wlr_fbox_transform(&box, &box, scene_buffer->transform,
-		buffer->width, buffer->height);
+		raster->width, raster->height);
 
 	float scale_x, scale_y;
 	if (scene_buffer->dst_width || scene_buffer->dst_height) {
 		scale_x = scene_buffer->dst_width / box.width;
 		scale_y = scene_buffer->dst_height / box.height;
 	} else {
-		scale_x = buffer->width / box.width;
-		scale_y = buffer->height / box.height;
+		scale_x = raster->width / box.width;
+		scale_y = raster->height / box.height;
 	}
 
 	pixman_region32_t trans_damage;
 	pixman_region32_init(&trans_damage);
 	wlr_region_transform(&trans_damage, damage,
-		scene_buffer->transform, buffer->width, buffer->height);
+		scene_buffer->transform, raster->width, raster->height);
 	pixman_region32_intersect_rect(&trans_damage, &trans_damage,
 		box.x, box.y, box.width, box.height);
 	pixman_region32_translate(&trans_damage, -box.x, -box.y);
