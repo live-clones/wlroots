@@ -1,13 +1,21 @@
 #include <assert.h>
+#include <drm_fourcc.h>
 #include <pixman.h>
+#include <wlr/render/allocator.h>
+#include <wlr/render/wlr_renderer.h>
+#include <wlr/render/wlr_texture.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
+#include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_raster.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/wlr_texture.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/util/addon.h>
+#include <wlr/util/log.h>
+#include "render/drm_format_set.h"
+#include "render/wlr_renderer.h"
 #include "types/wlr_buffer.h"
 
 static void raster_handle_buffer_release(struct wl_listener *listener, void *data) {
@@ -49,6 +57,7 @@ struct wlr_raster *wlr_raster_create(struct wlr_buffer *buffer,
 static void raster_source_destroy(struct wlr_raster_source *source) {
 	wl_list_remove(&source->link);
 	wl_list_remove(&source->renderer_destroy.link);
+	wl_list_remove(&source->allocator_destroy.link);
 	free(source);
 }
 
@@ -107,7 +116,15 @@ static void handle_renderer_destroy(struct wl_listener *listener, void *data) {
 	raster_source_destroy(source);
 }
 
-static void raster_attach(struct wlr_raster *raster, struct wlr_texture *texture) {
+static void handle_allocator_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_raster_source *source = wl_container_of(listener, source, allocator_destroy);
+	source->allocator = NULL;
+	wl_list_remove(&source->allocator_destroy.link);
+	wl_list_init(&source->allocator_destroy.link);
+}
+
+static void raster_attach_with_allocator(struct wlr_raster *raster,
+		struct wlr_texture *texture, struct wlr_allocator *allocator) {
 	assert(texture->width == raster->width && texture->height == raster->height);
 
 	struct wlr_raster_source *source;
@@ -123,8 +140,20 @@ static void raster_attach(struct wlr_raster *raster, struct wlr_texture *texture
 	source->renderer_destroy.notify = handle_renderer_destroy;
 	wl_signal_add(&texture->renderer->events.destroy, &source->renderer_destroy);
 
+	if (allocator) {
+		source->allocator_destroy.notify = handle_allocator_destroy;
+		wl_signal_add(&allocator->events.destroy, &source->allocator_destroy);
+	} else {
+		wl_list_init(&source->allocator_destroy.link);
+	}
+
 	wl_list_insert(&raster->sources, &source->link);
 	source->texture = texture;
+	source->allocator = allocator;
+}
+
+static void raster_attach(struct wlr_raster *raster, struct wlr_texture *texture) {
+	raster_attach_with_allocator(raster, texture, NULL);
 }
 
 static struct wlr_texture *wlr_raster_get_texture(struct wlr_raster *raster,
@@ -139,27 +168,156 @@ static struct wlr_texture *wlr_raster_get_texture(struct wlr_raster *raster,
 	return NULL;
 }
 
-struct wlr_texture *wlr_raster_obtain_texture(struct wlr_raster *raster,
+static bool compute_import_buffer_format(struct wlr_raster *raster, struct wlr_drm_format *drm_fmt,
+		struct wlr_renderer *dst) {
+	const struct wlr_drm_format_set *texture_formats =
+		wlr_renderer_get_texture_formats(dst, WLR_BUFFER_CAP_DMABUF);
+	if (!texture_formats) {
+		wlr_log(WLR_ERROR, "Failed to get texture_formats");
+		return NULL;
+	}
+
+	// For now, let's only use XRGB
+	uint32_t fmt = raster->opaque ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_ARGB8888;
+	const struct wlr_drm_format *drm_fmt_inv =
+		wlr_drm_format_set_get(texture_formats, fmt);
+
+	if (!wlr_drm_format_copy(drm_fmt, drm_fmt_inv)) {
+		return false;
+	}
+
+	for (size_t i = 0; i < drm_fmt->len; i++) {
+		uint64_t mod = drm_fmt->modifiers[i];
+		if (mod != DRM_FORMAT_MOD_INVALID) {
+			continue;
+		}
+
+		for (size_t j = i + 1; j < drm_fmt->len; j++) {
+			drm_fmt->modifiers[j] = drm_fmt->modifiers[j + 1];
+		}
+
+		drm_fmt->len--;
+		break;
+	}
+
+	return true;
+}
+
+static struct wlr_buffer *raster_try_blit(struct wlr_raster *raster,
+		struct wlr_raster_source *source, struct wlr_renderer *dst) {
+	if (!source->allocator) {
+		return NULL;
+	}
+
+	wlr_log(WLR_DEBUG, "Attempting a multigpu blit through a GPU");
+
+	struct wlr_renderer *src = source->texture->renderer;
+
+	// The src needs to be able to render into this format
+	const struct wlr_drm_format_set *render_formats =
+		wlr_renderer_get_render_formats(src);
+	if (!render_formats) {
+		wlr_log(WLR_ERROR, "Failed to get render_formats");
+		return NULL;
+	}
+
+	struct wlr_drm_format fmt = {0};
+	if (!compute_import_buffer_format(raster, &fmt, dst)) {
+		wlr_log(WLR_ERROR, "Could not find a common format modifiers for all GPUs");
+		return NULL;
+	}
+
+	if (wlr_drm_format_intersect(&fmt, &fmt,
+			wlr_drm_format_set_get(render_formats, fmt.format))) {
+		wlr_drm_format_finish(&fmt);
+		return NULL;
+	}
+
+	struct wlr_buffer *buffer = wlr_allocator_create_buffer(
+		source->allocator, raster->width, raster->height, &fmt);
+	wlr_drm_format_finish(&fmt);
+	if (!buffer) {
+		wlr_log(WLR_ERROR, "Failed to allocate multirenderer blit buffer");
+		return NULL;
+	}
+
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(src, buffer, NULL);
+	if (!pass) {
+		wlr_log(WLR_ERROR, "Failed to create a render pass");
+		wlr_buffer_drop(buffer);
+		return NULL;
+	}
+
+	wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options) {
+		.texture = source->texture,
+		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+	});
+
+	if (!wlr_render_pass_submit(pass)) {
+		wlr_log(WLR_ERROR, "Failed to renedr to a multigpu blit buffer");
+		wlr_buffer_drop(buffer);
+		return NULL;
+	}
+
+	return buffer;
+}
+
+static struct wlr_texture *raster_try_texture_from_blit(struct wlr_raster *raster,
 		struct wlr_renderer *renderer) {
+	struct wlr_buffer *imported = NULL;
+
+	struct wlr_raster_source *source;
+	wl_list_for_each(source, &raster->sources, link) {
+		imported = raster_try_blit(raster, source, renderer);
+		if (imported) {
+			break;
+		}
+	}
+
+	if (!imported) {
+		return NULL;
+	}
+
+	wlr_buffer_drop(imported);
+
+	return wlr_texture_from_buffer(renderer, imported);
+}
+
+struct wlr_texture *wlr_raster_obtain_texture_with_allocator(struct wlr_raster *raster,
+		struct wlr_renderer *renderer, struct wlr_allocator *allocator) {
 	struct wlr_texture *texture = wlr_raster_get_texture(raster, renderer);
 	if (texture) {
 		return texture;
 	}
 
-	assert(raster->buffer);
+	if (raster->buffer) {
+		struct wlr_client_buffer *client_buffer =
+			wlr_client_buffer_get(raster->buffer);
+		if (client_buffer != NULL) {
+			return client_buffer->texture;
+		}
 
-	struct wlr_client_buffer *client_buffer =
-		wlr_client_buffer_get(raster->buffer);
-	if (client_buffer != NULL) {
-		return client_buffer->texture;
+		// if we have a buffer, try and import that
+		texture = wlr_texture_from_buffer(renderer, raster->buffer);
+		if (texture) {
+			raster_attach_with_allocator(raster, texture, allocator);
+			return texture;
+		}
 	}
 
-	texture = wlr_texture_from_buffer(renderer, raster->buffer);
+	// try to blit using the textures already available to us
+	texture = raster_try_texture_from_blit(raster, renderer);
 	if (texture) {
-		raster_attach(raster, texture);
+		raster_attach_with_allocator(raster, texture, allocator);
+		return texture;
 	}
 
-	return texture;
+	return NULL;
+}
+
+struct wlr_texture *wlr_raster_obtain_texture(struct wlr_raster *raster,
+		struct wlr_renderer *renderer) {
+	return wlr_raster_create_texture_with_allocator(raster, renderer, NULL);
 }
 
 struct raster_update_state {

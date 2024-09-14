@@ -18,12 +18,15 @@ struct wlr_texture;
 struct wlr_renderer;
 struct wlr_drm_syncobj_timeline;
 struct wlr_surface;
+struct wlr_allocator;
 
 struct wlr_raster_source {
 	struct wlr_texture *texture;
+	struct wlr_allocator *allocator; // may be NULL
 	struct wl_list link;
 
 	struct wl_listener renderer_destroy;
+	struct wl_listener allocator_destroy;
 };
 
 struct wlr_raster {
@@ -47,8 +50,6 @@ struct wlr_raster {
 	size_t n_locks;
 
 	struct wl_listener buffer_release;
-
-	struct wl_listener renderer_destroy;
 };
 
 struct wlr_raster_create_options {
@@ -91,6 +92,20 @@ void wlr_raster_unlock(struct wlr_raster *raster);
  */
 struct wlr_texture *wlr_raster_obtain_texture(struct wlr_raster *raster,
 	struct wlr_renderer *renderer);
+
+/**
+ * Returns the texture allocated for this renderer. If there is none,
+ * a new texture will be created and attached to this wlr_raster. Users do not
+ * own the texture returned by this function and can only be used for read-only
+ * purposes.
+ *
+ * An optional allocator can be provided which will be used to allocate staging
+ * buffers to blit between graphics devices if needed.
+ *
+ * Will return NULL if the creation was unsuccessful.
+ */
+struct wlr_texture *wlr_raster_obtain_texture_with_allocator(struct wlr_raster *raster,
+	struct wlr_renderer *renderer, struct wlr_allocator *allocator);
 
 /**
  * Creates a wlr_raster from a surface. This will automatically deduplicate
