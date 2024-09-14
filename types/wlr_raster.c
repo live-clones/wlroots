@@ -124,6 +124,91 @@ struct wlr_texture *wlr_raster_obtain_texture(struct wlr_raster *raster,
 	return texture;
 }
 
+struct raster_update_state {
+	struct wlr_buffer *buffer;
+	pixman_region32_t damage;
+
+	struct wlr_raster *new_raster;
+	struct wlr_raster *old_raster;
+
+	struct wl_listener old_raster_destroy;
+	struct wl_listener new_raster_destroy;
+	struct wl_listener buffer_release;
+};
+
+static void destroy_raster_update_state(struct raster_update_state *state) {
+	wl_list_remove(&state->old_raster_destroy.link);
+	wl_list_remove(&state->new_raster_destroy.link);
+	wl_list_remove(&state->buffer_release.link);
+	pixman_region32_fini(&state->damage);
+	free(state);
+}
+
+static void raster_update_handle_new_raster_destroy(struct wl_listener *listener, void *data) {
+	struct raster_update_state *state = wl_container_of(listener, state, new_raster_destroy);
+	destroy_raster_update_state(state);
+}
+
+static void raster_update_handle_old_raster_destroy(struct wl_listener *listener, void *data) {
+	struct raster_update_state *state = wl_container_of(listener, state, old_raster_destroy);
+
+	// if the new raster already has a texture, there's nothing we can do to help.
+	if (state->new_raster->texture) {
+		assert(state->new_raster->texture->renderer == state->old_raster->texture->renderer);
+		destroy_raster_update_state(state);
+		return;
+	}
+
+	struct wlr_texture *texture = state->old_raster->texture;
+	if (!texture) {
+		destroy_raster_update_state(state);
+		return;
+	}
+
+	if (wlr_texture_update_from_buffer(texture, state->buffer, &state->damage)) {
+		raster_detach(state->old_raster, texture);
+		raster_attach(state->new_raster, texture);
+	}
+
+	destroy_raster_update_state(state);
+}
+
+static void raster_update_handle_buffer_release(struct wl_listener *listener, void *data) {
+	struct raster_update_state *state = wl_container_of(listener, state, buffer_release);
+	destroy_raster_update_state(state);
+}
+
+static struct wlr_raster *raster_update(struct wlr_raster *raster,
+		struct wlr_buffer *buffer, const pixman_region32_t *damage,
+		const struct wlr_raster_create_options *options) {
+	struct raster_update_state *state = calloc(1, sizeof(*state));
+	if (!state) {
+		return NULL;
+	}
+
+	struct wlr_raster *new_raster = wlr_raster_create(buffer, options);
+	if (!new_raster) {
+		free(state);
+		return NULL;
+	}
+
+	state->old_raster_destroy.notify = raster_update_handle_old_raster_destroy;
+	wl_signal_add(&raster->events.destroy, &state->old_raster_destroy);
+	state->new_raster_destroy.notify = raster_update_handle_new_raster_destroy;
+	wl_signal_add(&new_raster->events.destroy, &state->new_raster_destroy);
+	state->buffer_release.notify = raster_update_handle_buffer_release;
+	wl_signal_add(&buffer->events.release, &state->buffer_release);
+
+	state->new_raster = new_raster;
+	state->old_raster = raster;
+	state->buffer = buffer;
+
+	pixman_region32_init(&state->damage);
+	pixman_region32_copy(&state->damage, damage);
+
+	return new_raster;
+}
+
 struct surface_raster {
 	struct wlr_raster *raster;
 	struct wlr_surface *surface;
@@ -245,9 +330,12 @@ struct wlr_raster *wlr_raster_from_surface(struct wlr_surface *surface) {
 		if (surface_raster->raster->buffer == surface->current.buffer) {
 			return wlr_raster_lock(surface_raster->raster);
 		}
-	}
 
-	raster = wlr_raster_create(surface->current.buffer, &options);
+		raster = raster_update(surface_raster->raster,
+			surface->current.buffer, &surface->buffer_damage, &options);
+	} else {
+		raster = wlr_raster_create(surface->current.buffer, &options);
+	}
 
 	if (!raster) {
 		return NULL;
