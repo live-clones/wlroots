@@ -3,6 +3,7 @@
 #include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -56,6 +57,11 @@ static void handle_scene_buffer_output_sample(
 		wlr_presentation_surface_scanned_out_on_output(surface->surface, scene_output->output);
 	} else {
 		wlr_presentation_surface_textured_on_output(surface->surface, scene_output->output);
+	}
+
+	if (surface->fifo_barrier_set) {
+		surface->fifo_barrier_set = false;
+		wlr_fifo_v1_signal_barrier(surface->surface);
 	}
 }
 
