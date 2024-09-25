@@ -428,7 +428,6 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 		return true;
 	}
 
-	wlr_log(WLR_DEBUG, "Falling back to software cursor on output '%s'", output->name);
 	output_disable_hardware_cursor(output);
 	output_cursor_damage_whole(cursor);
 	return true;
