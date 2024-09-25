@@ -203,6 +203,14 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 		const struct wlr_output_cursor_size *sizes =
 			output->impl->get_cursor_sizes(cursor->output, &sizes_len);
 
+		if (sizes == NULL) {
+			// No cursor support
+			wlr_log(WLR_DEBUG, "Output '%s' has no cursor support, disabling permanently",
+				output->name);
+			output->software_cursor_locks++;
+			return NULL;
+		}
+
 		bool found = false;
 		for (size_t i = 0; i < sizes_len; i++) {
 			struct wlr_output_cursor_size size = sizes[i];
