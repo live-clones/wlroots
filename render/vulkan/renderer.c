@@ -27,6 +27,7 @@
 #include "render/vulkan/shaders/output.frag.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_matrix.h"
+#include "util/env.h"
 
 // TODO:
 // - simplify stage allocation, don't track allocations but use ringbuffer-like
@@ -2435,6 +2436,8 @@ struct wlr_renderer *vulkan_renderer_create_for_device(struct wlr_vk_device *dev
 	wl_list_init(&renderer->render_buffers);
 	wl_list_init(&renderer->color_transforms);
 	wl_list_init(&renderer->pipeline_layouts);
+
+	renderer->direct_shm_import = env_parse_bool("WLR_VK_DIRECT_SHM_IMPORT");
 
 	if (!init_static_render_data(renderer)) {
 		goto error;

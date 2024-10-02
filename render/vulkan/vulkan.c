@@ -470,6 +470,12 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 	extensions[extensions_len++] = VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME; // or vulkan 1.2
 	extensions[extensions_len++] = VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME; // or vulkan 1.3
 
+	bool has_ext_external_memory_host =
+		check_extension(avail_ext_props, avail_extc, VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME);
+	if (has_ext_external_memory_host) {
+		extensions[extensions_len++] = VK_EXT_EXTERNAL_MEMORY_HOST_EXTENSION_NAME;
+	}
+
 	for (size_t i = 0; i < extensions_len; i++) {
 		if (!check_extension(avail_ext_props, avail_extc, extensions[i])) {
 			wlr_log(WLR_ERROR, "vulkan: required device extension %s not found",
@@ -620,6 +626,20 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 	load_device_proc(dev, "vkGetSemaphoreFdKHR", &dev->api.vkGetSemaphoreFdKHR);
 	load_device_proc(dev, "vkImportSemaphoreFdKHR", &dev->api.vkImportSemaphoreFdKHR);
 	load_device_proc(dev, "vkQueueSubmit2KHR", &dev->api.vkQueueSubmit2KHR);
+
+	if (has_ext_external_memory_host) {
+		load_device_proc(dev, "vkGetMemoryHostPointerPropertiesEXT",
+			&dev->api.vkGetMemoryHostPointerPropertiesEXT);
+		VkPhysicalDeviceExternalMemoryHostPropertiesEXT memory_host_props = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_MEMORY_HOST_PROPERTIES_EXT,
+		};
+		VkPhysicalDeviceProperties2 props = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+			.pNext = &memory_host_props,
+		};
+		vkGetPhysicalDeviceProperties2(phdev, &props);
+		dev->minImportedHostPointerAlignment = memory_host_props.minImportedHostPointerAlignment;
+	}
 
 	size_t max_fmts;
 	const struct wlr_vk_format *fmts = vulkan_get_format_list(&max_fmts);

@@ -51,6 +51,10 @@ wlroots reads these environment variables
 * *WLR_RENDERER_ALLOW_SOFTWARE*: allows the gles2 renderer to use software
   rendering
 
+## Vulkan renderer
+
+* *WLR_VK_DIRECT_SHM_IMPORT*: Allow importing shm buffers directly as host memory
+
 ## scenes
 
 * *WLR_SCENE_DEBUG_DAMAGE*: specifies debug options for screen damage related

@@ -54,6 +54,7 @@ struct wlr_vk_device {
 		PFN_vkGetSemaphoreFdKHR vkGetSemaphoreFdKHR;
 		PFN_vkImportSemaphoreFdKHR vkImportSemaphoreFdKHR;
 		PFN_vkQueueSubmit2KHR vkQueueSubmit2KHR;
+		PFN_vkGetMemoryHostPointerPropertiesEXT vkGetMemoryHostPointerPropertiesEXT;
 	} api;
 
 	uint32_t format_prop_count;
@@ -61,6 +62,7 @@ struct wlr_vk_device {
 	struct wlr_drm_format_set dmabuf_render_formats;
 	struct wlr_drm_format_set dmabuf_texture_formats;
 	struct wlr_drm_format_set shm_texture_formats;
+	size_t minImportedHostPointerAlignment;
 };
 
 // Tries to find the VkPhysicalDevice for the given drm fd.
@@ -322,6 +324,8 @@ struct wlr_vk_renderer {
 		VkImage dst_image;
 		VkDeviceMemory dst_img_memory;
 	} read_pixels_cache;
+
+	bool direct_shm_import;
 };
 
 // vertex shader push constant range data
