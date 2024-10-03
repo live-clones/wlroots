@@ -8,7 +8,7 @@
 #include <wlr/util/log.h>
 #include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
-#define FOREIGN_TOPLEVEL_MANAGEMENT_V1_VERSION 3
+#define FOREIGN_TOPLEVEL_MANAGEMENT_V1_VERSION 4
 
 static const struct zwlr_foreign_toplevel_handle_v1_interface toplevel_handle_impl;
 
@@ -486,6 +486,32 @@ void wlr_foreign_toplevel_handle_v1_set_parent(
 	toplevel_update_idle_source(toplevel);
 }
 
+void wlr_foreign_toplevel_handle_v1_set_responsive(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel, bool responsive) {
+	enum wlr_foreign_toplevel_handle_v1_responsiveness responsiveness;
+	if (responsive) {
+		responsiveness = WLR_FOREIGN_TOPLEVEL_HANDLE_V1_RESPONSIVENESS_RESPONSIVE;
+	} else {
+		responsiveness = WLR_FOREIGN_TOPLEVEL_HANDLE_V1_RESPONSIVENESS_UNRESPONSIVE;
+	}
+
+	if (toplevel->responsiveness == responsiveness) {
+		// Only inform clients if the state changed
+		return;
+	}
+
+	struct wl_resource *resource;
+	wl_resource_for_each(resource, &toplevel->resources) {
+		if (wl_resource_get_version(resource) <
+				ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_RESPONSIVENESS_SINCE_VERSION) {
+			continue;
+		}
+		zwlr_foreign_toplevel_handle_v1_send_responsiveness(resource, responsiveness);
+	}
+	toplevel->responsiveness = responsiveness;
+	toplevel_update_idle_source(toplevel);
+}
+
 void wlr_foreign_toplevel_handle_v1_destroy(
 		struct wlr_foreign_toplevel_handle_v1 *toplevel) {
 	if (!toplevel) {
@@ -569,6 +595,8 @@ wlr_foreign_toplevel_handle_v1_create(
 	wl_list_init(&toplevel->resources);
 	wl_list_init(&toplevel->outputs);
 
+	toplevel->responsiveness = WLR_FOREIGN_TOPLEVEL_HANDLE_V1_RESPONSIVENESS_RESPONSIVE;
+
 	wl_signal_init(&toplevel->events.request_maximize);
 	wl_signal_init(&toplevel->events.request_minimize);
 	wl_signal_init(&toplevel->events.request_activate);
@@ -636,6 +664,11 @@ static void toplevel_send_details_to_toplevel_resource(
 	wl_array_release(&states);
 
 	toplevel_resource_send_parent(resource, toplevel->parent);
+
+	if (wl_resource_get_version(resource) >=
+			ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_RESPONSIVENESS_SINCE_VERSION) {
+		zwlr_foreign_toplevel_handle_v1_send_responsiveness(resource, toplevel->responsiveness);
+	}
 
 	zwlr_foreign_toplevel_handle_v1_send_done(resource);
 }
