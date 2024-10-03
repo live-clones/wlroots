@@ -175,6 +175,30 @@ static bool test_buffer(struct wlr_wl_backend *wl,
 	}
 }
 
+struct dmabuf_listener_data {
+	struct wl_buffer *wl_buffer;
+	bool done;
+};
+
+static void dmabuf_handle_created(void *data_, struct zwp_linux_buffer_params_v1 *params,
+		struct wl_buffer *buffer) {
+	struct dmabuf_listener_data *data = data_;
+	data->wl_buffer = buffer;
+	data->done = true;
+	wlr_log(WLR_DEBUG, "DMA-BUF imported into parent Wayland compositor");
+}
+
+static void dmabuf_handle_failed(void *data_, struct zwp_linux_buffer_params_v1 *params) {
+	struct dmabuf_listener_data *data = data_;
+	data->done = true;
+	wlr_log(WLR_ERROR, "Failed to import DMA-BUF into parent Wayland compositor");
+}
+
+static const struct zwp_linux_buffer_params_v1_listener dmabuf_listener = {
+	.created = dmabuf_handle_created,
+	.failed = dmabuf_handle_failed,
+};
+
 static struct wl_buffer *import_dmabuf(struct wlr_wl_backend *wl,
 		struct wlr_dmabuf_attributes *dmabuf) {
 	uint32_t modifier_hi = dmabuf->modifier >> 32;
@@ -186,11 +210,19 @@ static struct wl_buffer *import_dmabuf(struct wlr_wl_backend *wl,
 			dmabuf->offset[i], dmabuf->stride[i], modifier_hi, modifier_lo);
 	}
 
-	struct wl_buffer *wl_buffer = zwp_linux_buffer_params_v1_create_immed(
-		params, dmabuf->width, dmabuf->height, dmabuf->format, 0);
+	struct dmabuf_listener_data data = {0};
+	zwp_linux_buffer_params_v1_add_listener(params, &dmabuf_listener, &data);
+	zwp_linux_buffer_params_v1_create(params, dmabuf->width, dmabuf->height, dmabuf->format, 0);
+
+	while (!data.done) {
+		if (wl_display_dispatch(wl->remote_display) < 0) {
+			wlr_log(WLR_ERROR, "wl_display_dispatch() failed");
+			break;
+		}
+	}
+
 	zwp_linux_buffer_params_v1_destroy(params);
-	// TODO: handle create() errors
-	return wl_buffer;
+	return data.wl_buffer;
 }
 
 static struct wl_buffer *import_shm(struct wlr_wl_backend *wl,
