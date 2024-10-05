@@ -25,12 +25,12 @@ struct wlr_renderer;
 struct wlr_shm {
 	struct wl_global *global;
 
-	// private state
+	struct {
+		uint32_t *formats;
+		size_t formats_len;
 
-	uint32_t *formats;
-	size_t formats_len;
-
-	struct wl_listener display_destroy;
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 /**

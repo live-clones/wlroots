@@ -30,9 +30,9 @@ struct wlr_backend_output_state;
 struct wlr_output_swapchain_manager {
 	struct wlr_backend *backend;
 
-	// private state
-
-	struct wl_array outputs; // struct wlr_output_swapchain_manager_output
+	struct {
+		struct wl_array outputs; // struct wlr_output_swapchain_manager_output
+	} WLR_PRIVATE;
 };
 
 /**

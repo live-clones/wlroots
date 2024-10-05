@@ -20,9 +20,9 @@ struct wlr_alpha_modifier_surface_v1_state {
 struct wlr_alpha_modifier_v1 {
 	struct wl_global *global;
 
-	// private state
-
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_alpha_modifier_v1 *wlr_alpha_modifier_v1_create(struct wl_display *display);

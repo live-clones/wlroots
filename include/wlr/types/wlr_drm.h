@@ -40,12 +40,12 @@ struct wlr_drm {
 		struct wl_signal destroy;
 	} events;
 
-	// private state
+	struct {
+		char *node_name;
+		struct wlr_drm_format_set formats;
 
-	char *node_name;
-	struct wlr_drm_format_set formats;
-
-	struct wl_listener display_destroy;
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_drm_buffer *wlr_drm_buffer_try_from_resource(

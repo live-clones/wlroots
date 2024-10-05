@@ -54,13 +54,13 @@ struct wlr_xdg_toplevel_decoration_v1 {
 
 	void *data;
 
-	// private state
+	struct {
+		struct wl_listener toplevel_destroy;
+		struct wl_listener surface_configure;
+		struct wl_listener surface_ack_configure;
 
-	struct wl_listener toplevel_destroy;
-	struct wl_listener surface_configure;
-	struct wl_listener surface_ack_configure;
-
-	struct wlr_surface_synced synced;
+		struct wlr_surface_synced synced;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_decoration_manager_v1 *

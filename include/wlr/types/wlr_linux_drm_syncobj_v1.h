@@ -26,11 +26,11 @@ struct wlr_linux_drm_syncobj_surface_v1_state {
 struct wlr_linux_drm_syncobj_manager_v1 {
 	struct wl_global *global;
 
-	// private state
+	struct {
+		int drm_fd;
 
-	int drm_fd;
-
-	struct wl_listener display_destroy;
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 /**

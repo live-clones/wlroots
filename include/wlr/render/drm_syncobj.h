@@ -29,9 +29,9 @@ struct wlr_drm_syncobj_timeline {
 	int drm_fd;
 	uint32_t handle;
 
-	// private state
-
-	size_t n_refs;
+	struct {
+		size_t n_refs;
+	} WLR_PRIVATE;
 };
 
 struct wlr_drm_syncobj_timeline_waiter {
@@ -39,10 +39,10 @@ struct wlr_drm_syncobj_timeline_waiter {
 		struct wl_signal ready;
 	} events;
 
-	// private state
-
-	int ev_fd;
-	struct wl_event_source *event_source;
+	struct {
+		int ev_fd;
+		struct wl_event_source *event_source;
+	} WLR_PRIVATE;
 };
 
 /**

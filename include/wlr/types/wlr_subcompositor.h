@@ -23,9 +23,9 @@ struct wlr_subsurface_parent_state {
 	int32_t x, y;
 	struct wl_list link;
 
-	// private state
-
-	struct wlr_surface_synced *synced;
+	struct {
+		struct wlr_surface_synced *synced;
+	} WLR_PRIVATE;
 };
 
 struct wlr_subsurface {
@@ -50,9 +50,9 @@ struct wlr_subsurface {
 
 	void *data;
 
-	// private state
-
-	struct wlr_surface_synced parent_synced;
+	struct {
+		struct wlr_surface_synced parent_synced;
+	} WLR_PRIVATE;
 };
 
 struct wlr_subcompositor {

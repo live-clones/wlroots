@@ -17,8 +17,9 @@ struct wlr_transient_seat_v1 {
 	struct wl_resource *resource;
 	struct wlr_seat *seat;
 
-        // private state
-	struct wl_listener seat_destroy;
+	struct {
+		struct wl_listener seat_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_transient_seat_manager_v1 {

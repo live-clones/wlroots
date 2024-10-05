@@ -28,11 +28,11 @@ struct wlr_security_context_manager_v1 {
 
 	void *data;
 
-	// private state
+	struct {
+		struct wl_list contexts; // wlr_security_context_v1.link
 
-	struct wl_list contexts; // wlr_security_context_v1.link
-
-	struct wl_listener display_destroy;
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_security_context_v1_state {

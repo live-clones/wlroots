@@ -236,33 +236,33 @@ struct wlr_surface {
 	struct wlr_addon_set addons;
 	void *data;
 
-	// private state
-
-	struct wl_listener role_resource_destroy;
-
 	struct {
-		int32_t scale;
-		enum wl_output_transform transform;
-		int width, height;
-		int buffer_width, buffer_height;
-	} previous;
+		struct wl_listener role_resource_destroy;
 
-	bool unmap_commit;
+		struct {
+			int32_t scale;
+			enum wl_output_transform transform;
+			int width, height;
+			int buffer_width, buffer_height;
+		} previous;
 
-	bool opaque;
+		bool unmap_commit;
 
-	bool handling_commit;
-	bool pending_rejected;
+		bool opaque;
 
-	int32_t preferred_buffer_scale;
-	bool preferred_buffer_transform_sent;
-	enum wl_output_transform preferred_buffer_transform;
+		bool handling_commit;
+		bool pending_rejected;
 
-	struct wl_list synced; // wlr_surface_synced.link
-	size_t synced_len;
+		int32_t preferred_buffer_scale;
+		bool preferred_buffer_transform_sent;
+		enum wl_output_transform preferred_buffer_transform;
 
-	struct wl_resource *pending_buffer_resource;
-	struct wl_listener pending_buffer_resource_destroy;
+		struct wl_list synced; // wlr_surface_synced.link
+		size_t synced_len;
+
+		struct wl_resource *pending_buffer_resource;
+		struct wl_listener pending_buffer_resource_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_renderer;

@@ -28,9 +28,9 @@ struct wlr_cursor_shape_manager_v1 {
 
 	void *data;
 
-	// private state
-
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_cursor_shape_manager_v1_device_type {

@@ -24,9 +24,9 @@ struct wlr_session_lock_manager_v1 {
 
 	void *data;
 
-	// private state
-
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_session_lock_v1 {
@@ -42,9 +42,9 @@ struct wlr_session_lock_v1 {
 
 	void *data;
 
-	// private state
-
-	bool locked_sent;
+	struct {
+		bool locked_sent;
+	} WLR_PRIVATE;
 };
 
 struct wlr_session_lock_surface_v1_state {
@@ -79,11 +79,11 @@ struct wlr_session_lock_surface_v1 {
 
 	void *data;
 
-	// private state
+	struct {
+		struct wlr_surface_synced synced;
 
-	struct wlr_surface_synced synced;
-
-	struct wl_listener output_destroy;
+		struct wl_listener output_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_session_lock_manager_v1 *wlr_session_lock_manager_v1_create(
