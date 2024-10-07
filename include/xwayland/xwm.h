@@ -172,4 +172,6 @@ xcb_void_cookie_t xwm_send_event_with_size(xcb_connection_t *c,
 	uint8_t propagate, xcb_window_t destination,
 	uint32_t event_mask, const void *event, uint32_t length);
 
+void xwm_schedule_flush(struct wlr_xwm *xwm);
+
 #endif

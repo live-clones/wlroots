@@ -37,7 +37,7 @@ xwm_selection_transfer_create_incoming(struct wlr_xwm_selection *selection) {
 			XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_PROPERTY_CHANGE
 		}
 	);
-	xcb_flush(xwm->xcb_conn);
+	xwm_schedule_flush(xwm);
 
 	return transfer;
 }
@@ -89,7 +89,7 @@ static void xwm_notify_ready_for_next_incr_chunk(
 	wlr_log(WLR_DEBUG, "deleting property");
 	xcb_delete_property(xwm->xcb_conn, transfer->incoming_window,
 		xwm->atoms[WL_SELECTION]);
-	xcb_flush(xwm->xcb_conn);
+	xwm_schedule_flush(xwm);
 
 	xwm_selection_transfer_remove_event_source(transfer);
 	xwm_selection_transfer_destroy_property_reply(transfer);
@@ -234,7 +234,7 @@ static void source_send(struct wlr_xwm_selection *selection,
 		xwm->atoms[WL_SELECTION],
 		XCB_TIME_CURRENT_TIME);
 
-	xcb_flush(xwm->xcb_conn);
+	xwm_schedule_flush(xwm);
 
 	fcntl(fd, F_SETFL, O_WRONLY | O_NONBLOCK);
 	transfer->wl_client_fd = fd;
@@ -533,7 +533,7 @@ int xwm_handle_xfixes_selection_notify(struct wlr_xwm *xwm,
 		xwm->atoms[WL_SELECTION],
 		event->timestamp
 	);
-	xcb_flush(xwm->xcb_conn);
+	xwm_schedule_flush(xwm);
 
 	return 1;
 }
