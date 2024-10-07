@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <linux/input-event-codes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -303,4 +304,47 @@ bool wlr_keyboard_keymaps_match(struct xkb_keymap *km1,
 	free(km1_str);
 	free(km2_str);
 	return result;
+}
+
+uint32_t wlr_keyboard_keysym_to_pointer_button(xkb_keysym_t keysym) {
+	switch (keysym) {
+	case XKB_KEY_Pointer_Button1:
+		return BTN_LEFT;
+	case XKB_KEY_Pointer_Button2:
+		return BTN_MIDDLE;
+	case XKB_KEY_Pointer_Button3:
+		return BTN_RIGHT;
+	default:
+		return 0;
+	}
+}
+
+void wlr_keyboard_keysym_to_pointer_motion(xkb_keysym_t keysym, int *dx, int *dy) {
+	*dx = 0;
+	switch (keysym) {
+	case XKB_KEY_Pointer_Right:
+	case XKB_KEY_Pointer_DownRight:
+	case XKB_KEY_Pointer_UpRight:
+		*dx = 1;
+		break;
+	case XKB_KEY_Pointer_Left:
+	case XKB_KEY_Pointer_DownLeft:
+	case XKB_KEY_Pointer_UpLeft:
+		*dx = -1;
+		break;
+	}
+
+	*dy = 0;
+	switch (keysym) {
+	case XKB_KEY_Pointer_Down:
+	case XKB_KEY_Pointer_DownLeft:
+	case XKB_KEY_Pointer_DownRight:
+		*dy = 1;
+		break;
+	case XKB_KEY_Pointer_Up:
+	case XKB_KEY_Pointer_UpLeft:
+	case XKB_KEY_Pointer_UpRight:
+		*dy = -1;
+		break;
+	}
 }

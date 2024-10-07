@@ -116,6 +116,23 @@ bool wlr_keyboard_set_keymap(struct wlr_keyboard *kb,
 bool wlr_keyboard_keymaps_match(struct xkb_keymap *km1, struct xkb_keymap *km2);
 
 /**
+ * Interpret pointer button key symbols.
+ *
+ * Returns a button code (BTN_*) if the key symbol is a pointer button
+ * (XKB_KEY_Pointer_Button*), 0 otherwise.
+ */
+uint32_t wlr_keyboard_keysym_to_pointer_button(xkb_keysym_t keysym);
+
+/**
+ * Interpret pointer motion key symbols.
+ *
+ * Sets dx and dy to horizontal and vertical motion deltas (0, 1 or -1) if the
+ * key symbol is a pointer motion (XKB_KEY_Pointer_*). Otherwise, sets both dx
+ * and dy to 0.
+ */
+void wlr_keyboard_keysym_to_pointer_motion(xkb_keysym_t keysym, int *dx, int *dy);
+
+/**
  * Set the keyboard repeat info.
  *
  * rate is in key repeats/second and delay is in milliseconds.
