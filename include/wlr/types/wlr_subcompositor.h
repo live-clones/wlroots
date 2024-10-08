@@ -53,10 +53,6 @@ struct wlr_subsurface {
 	// private state
 
 	struct wlr_surface_synced parent_synced;
-
-	struct {
-		int32_t x, y;
-	} previous;
 };
 
 struct wlr_subcompositor {

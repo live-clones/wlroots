@@ -289,9 +289,6 @@ void subsurface_handle_parent_commit(struct wlr_subsurface *subsurface) {
 			subsurface);
 		subsurface_consider_map(subsurface);
 	}
-
-	subsurface->previous.x = subsurface->current.x;
-	subsurface->previous.y = subsurface->current.y;
 }
 
 struct wlr_subsurface *wlr_subsurface_try_from_wlr_surface(struct wlr_surface *surface) {
