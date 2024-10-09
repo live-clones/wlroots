@@ -275,9 +275,9 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	}
 
 	int in_fence_fd = -1;
-	if (state->wait_timeline != NULL) {
-		in_fence_fd = wlr_drm_syncobj_timeline_export_sync_file(state->wait_timeline,
-			state->wait_point);
+	if (state->base->committed & WLR_OUTPUT_STATE_WAIT_TIMELINE) {
+		in_fence_fd = wlr_drm_syncobj_timeline_export_sync_file(state->base->wait_timeline,
+			state->base->wait_point);
 		if (in_fence_fd < 0) {
 			return false;
 		}

@@ -8,13 +8,13 @@
 #include <wayland-server-core.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
-#include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_manager.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_scene.h>
@@ -35,8 +35,7 @@ enum tinywl_cursor_mode {
 struct tinywl_server {
 	struct wl_display *wl_display;
 	struct wlr_backend *backend;
-	struct wlr_renderer *renderer;
-	struct wlr_allocator *allocator;
+	struct wlr_output_manager output_manager;
 	struct wlr_scene *scene;
 	struct wlr_scene_output_layout *scene_layout;
 
@@ -599,9 +598,10 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 		wl_container_of(listener, server, new_output);
 	struct wlr_output *wlr_output = data;
 
-	/* Configures the output created by the backend to use our allocator
-	 * and our renderer. Must be done once, before commiting the output */
-	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
+	/* Configures the output created by the backend using the output manager
+	 * to allocate a renderer and a allocator for us. Must be done once,
+	 * before commiting the output */
+	wlr_output_manager_init_output(&server->output_manager, wlr_output);
 
 	/* The output may be disabled, switch it on. */
 	struct wlr_output_state state;
@@ -904,28 +904,16 @@ int main(int argc, char *argv[]) {
 		return 1;
 	}
 
-	/* Autocreates a renderer, either Pixman, GLES2 or Vulkan for us. The user
-	 * can also specify a renderer using the WLR_RENDERER env var.
-	 * The renderer is responsible for defining the various pixel formats it
-	 * supports for shared memory, this configures that for clients. */
-	server.renderer = wlr_renderer_autocreate(server.backend);
-	if (server.renderer == NULL) {
-		wlr_log(WLR_ERROR, "failed to create wlr_renderer");
+	/* This is a helper that will automatically create renderers and allocators
+	 * for each output. This serves as the bridge between the output and the
+	 * backend for rendering.
+	 */
+	if (!wlr_output_manager_init(&server.output_manager, server.backend)) {
+		wlr_log(WLR_ERROR, "failed to create wlr_output_manager");
 		return 1;
 	}
 
-	wlr_renderer_init_wl_display(server.renderer, server.wl_display);
-
-	/* Autocreates an allocator for us.
-	 * The allocator is the bridge between the renderer and the backend. It
-	 * handles the buffer creation, allowing wlroots to render onto the
-	 * screen */
-	server.allocator = wlr_allocator_autocreate(server.backend,
-		server.renderer);
-	if (server.allocator == NULL) {
-		wlr_log(WLR_ERROR, "failed to create wlr_allocator");
-		return 1;
-	}
+	wlr_output_manager_init_wl_display(&server.output_manager, server.wl_display);
 
 	/* This creates some hands-off wlroots interfaces. The compositor is
 	 * necessary for clients to allocate surfaces, the subcompositor allows to
@@ -934,7 +922,7 @@ int main(int argc, char *argv[]) {
 	 * to dig your fingers in and play with their behavior if you want. Note that
 	 * the clients cannot set the selection directly without compositor approval,
 	 * see the handling of the request_set_selection event below.*/
-	wlr_compositor_create(server.wl_display, 5, server.renderer);
+	wlr_compositor_create(server.wl_display, 5, NULL);
 	wlr_subcompositor_create(server.wl_display);
 	wlr_data_device_manager_create(server.wl_display);
 
@@ -1057,10 +1045,8 @@ int main(int argc, char *argv[]) {
 	wl_display_destroy_clients(server.wl_display);
 	wlr_scene_node_destroy(&server.scene->tree.node);
 	wlr_xcursor_manager_destroy(server.cursor_mgr);
-	wlr_cursor_destroy(server.cursor);
-	wlr_allocator_destroy(server.allocator);
-	wlr_renderer_destroy(server.renderer);
 	wlr_backend_destroy(server.backend);
+	wlr_output_manager_finish(&server.output_manager);
 	wl_display_destroy(server.wl_display);
 	return 0;
 }

@@ -14,6 +14,7 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_tablet_tool.h>
 #include <wlr/types/wlr_touch.h>
+#include <wlr/types/wlr_raster.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
@@ -539,7 +540,13 @@ static void cursor_output_cursor_update(struct wlr_cursor_output_cursor *output_
 	} else if (cur->state->surface != NULL) {
 		struct wlr_surface *surface = cur->state->surface;
 
-		struct wlr_texture *texture = wlr_surface_get_texture(surface);
+		struct wlr_texture *texture = NULL;
+		struct wlr_raster *raster = wlr_raster_from_surface(surface);
+		if (raster) {
+			texture = wlr_raster_obtain_texture(raster, output_cursor->output_cursor->output->renderer);
+		}
+		wlr_raster_unlock(raster);
+
 		int32_t hotspot_x = cur->state->surface_hotspot.x;
 		int32_t hotspot_y = cur->state->surface_hotspot.y;
 

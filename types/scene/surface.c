@@ -6,6 +6,7 @@
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_raster.h>
 #include <wlr/util/transform.h>
 #include "types/wlr_scene.h"
 
@@ -76,28 +77,6 @@ static void scene_surface_handle_surface_destroy(
 	wlr_scene_node_destroy(&surface->buffer->node);
 }
 
-// This is used for wlr_scene where it unconditionally locks buffers preventing
-// reuse of the existing texture for shm clients. With the usage pattern of
-// wlr_scene surface handling, we can mark its locked buffer as safe
-// for mutation.
-static void client_buffer_mark_next_can_damage(struct wlr_client_buffer *buffer) {
-	buffer->n_ignore_locks++;
-}
-
-static void scene_buffer_unmark_client_buffer(struct wlr_scene_buffer *scene_buffer) {
-	if (!scene_buffer->buffer) {
-		return;
-	}
-
-	struct wlr_client_buffer *buffer = wlr_client_buffer_get(scene_buffer->buffer);
-	if (!buffer) {
-		return;
-	}
-
-	assert(buffer->n_ignore_locks > 0);
-	buffer->n_ignore_locks--;
-}
-
 static int min(int a, int b) {
 	return a < b ? a : b;
 }
@@ -160,29 +139,13 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 	wlr_scene_buffer_set_transform(scene_buffer, state->transform);
 	wlr_scene_buffer_set_opacity(scene_buffer, opacity);
 
-	scene_buffer_unmark_client_buffer(scene_buffer);
-
-	if (surface->buffer) {
-		client_buffer_mark_next_can_damage(surface->buffer);
+	struct wlr_raster *raster = wlr_raster_from_surface(surface);
+	if (raster) {
+		wlr_scene_buffer_set_raster_with_damage(scene_buffer,
+			raster, &surface->buffer_damage);
 
 		struct wlr_linux_drm_syncobj_surface_v1_state *syncobj_surface_state =
 			wlr_linux_drm_syncobj_v1_get_surface_state(surface);
-
-		struct wlr_drm_syncobj_timeline *wait_timeline = NULL;
-		uint64_t wait_point = 0;
-		if (syncobj_surface_state != NULL) {
-			wait_timeline = syncobj_surface_state->acquire_timeline;
-			wait_point = syncobj_surface_state->acquire_point;
-		}
-
-		struct wlr_scene_buffer_set_buffer_options options = {
-			.damage = &surface->buffer_damage,
-			.wait_timeline = wait_timeline,
-			.wait_point = wait_point,
-		};
-		wlr_scene_buffer_set_buffer_with_options(scene_buffer,
-			&surface->buffer->base, &options);
-
 		if (syncobj_surface_state != NULL &&
 				(surface->current.committed & WLR_SURFACE_STATE_BUFFER)) {
 			wlr_linux_drm_syncobj_v1_state_signal_release_with_buffer(syncobj_surface_state,
@@ -192,6 +155,7 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
 	}
 
+	wlr_raster_unlock(raster);
 	pixman_region32_fini(&opaque);
 }
 
@@ -230,8 +194,6 @@ static bool scene_buffer_point_accepts_input(struct wlr_scene_buffer *scene_buff
 
 static void surface_addon_destroy(struct wlr_addon *addon) {
 	struct wlr_scene_surface *surface = wl_container_of(addon, surface, addon);
-
-	scene_buffer_unmark_client_buffer(surface->buffer);
 
 	wlr_addon_finish(&surface->addon);
 

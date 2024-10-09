@@ -32,20 +32,11 @@ struct wlr_drm_lease {
 /**
  * Creates a DRM backend using the specified GPU file descriptor (typically from
  * a device node in /dev/dri).
- *
- * To slave this to another DRM backend, pass it as the parent (which _must_ be
- * a DRM backend, other kinds of backends raise SIGABRT).
  */
-struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
-	struct wlr_device *dev, struct wlr_backend *parent);
+struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session, struct wlr_device *dev);
 
 bool wlr_backend_is_drm(struct wlr_backend *backend);
 bool wlr_output_is_drm(struct wlr_output *output);
-
-/**
- * Get the parent DRM backend, if any.
- */
-struct wlr_backend *wlr_drm_backend_get_parent(struct wlr_backend *backend);
 
 /**
  * Get the KMS connector object ID.

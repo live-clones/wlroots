@@ -7,7 +7,6 @@
 static void drm_backend_monitor_destroy(struct wlr_drm_backend_monitor* monitor) {
 	wl_list_remove(&monitor->session_add_drm_card.link);
 	wl_list_remove(&monitor->session_destroy.link);
-	wl_list_remove(&monitor->primary_drm_destroy.link);
 	wl_list_remove(&monitor->multi_destroy.link);
 	free(monitor);
 }
@@ -25,8 +24,7 @@ static void handle_add_drm_card(struct wl_listener *listener, void *data) {
 	}
 
 	wlr_log(WLR_DEBUG, "Creating DRM backend for %s after hotplug", event->path);
-	struct wlr_backend *child_drm = wlr_drm_backend_create(backend_monitor->session,
-		dev, backend_monitor->primary_drm);
+	struct wlr_backend *child_drm = wlr_drm_backend_create(backend_monitor->session, dev);
 	if (!child_drm) {
 		wlr_log(WLR_ERROR, "Failed to create DRM backend after hotplug");
 		return;
@@ -50,12 +48,6 @@ static void handle_session_destroy(struct wl_listener *listener, void *data) {
 	drm_backend_monitor_destroy(backend_monitor);
 }
 
-static void handle_primary_drm_destroy(struct wl_listener *listener, void *data) {
-	struct wlr_drm_backend_monitor *backend_monitor =
-		wl_container_of(listener, backend_monitor, primary_drm_destroy);
-	drm_backend_monitor_destroy(backend_monitor);
-}
-
 static void handle_multi_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_drm_backend_monitor *backend_monitor =
 		wl_container_of(listener, backend_monitor, multi_destroy);
@@ -63,8 +55,7 @@ static void handle_multi_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_drm_backend_monitor *drm_backend_monitor_create(
-		struct wlr_backend *multi, struct wlr_backend *primary_drm,
-		struct wlr_session *session) {
+		struct wlr_backend *multi, struct wlr_session *session) {
 	struct wlr_drm_backend_monitor *monitor = calloc(1, sizeof(*monitor));
 	if (!monitor) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
@@ -72,7 +63,6 @@ struct wlr_drm_backend_monitor *drm_backend_monitor_create(
 	}
 
 	monitor->multi = multi;
-	monitor->primary_drm = primary_drm;
 	monitor->session = session;
 
 	monitor->session_add_drm_card.notify = handle_add_drm_card;
@@ -80,9 +70,6 @@ struct wlr_drm_backend_monitor *drm_backend_monitor_create(
 
 	monitor->session_destroy.notify = handle_session_destroy;
 	wl_signal_add(&session->events.destroy, &monitor->session_destroy);
-
-	monitor->primary_drm_destroy.notify = handle_primary_drm_destroy;
-	wl_signal_add(&primary_drm->events.destroy, &monitor->primary_drm_destroy);
 
 	monitor->multi_destroy.notify = handle_multi_destroy;
 	wl_signal_add(&multi->events.destroy, &monitor->multi_destroy);

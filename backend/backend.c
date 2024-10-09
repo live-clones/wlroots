@@ -240,46 +240,44 @@ static struct wlr_backend *attempt_headless_backend(struct wl_event_loop *loop) 
 	return backend;
 }
 
-static struct wlr_backend *attempt_drm_backend(struct wlr_backend *backend, struct wlr_session *session) {
+static bool attempt_drm_backend(struct wlr_backend *backend, struct wlr_session *session) {
 #if WLR_HAS_DRM_BACKEND
 	struct wlr_device *gpus[8];
 	ssize_t num_gpus = wlr_session_find_gpus(session, 8, gpus);
 	if (num_gpus < 0) {
 		wlr_log(WLR_ERROR, "Failed to find GPUs");
-		return NULL;
+		return false;
 	}
 
 	if (num_gpus == 0) {
 		wlr_log(WLR_ERROR, "Found 0 GPUs, cannot create backend");
-		return NULL;
+		return false;
 	} else {
 		wlr_log(WLR_INFO, "Found %zu GPUs", num_gpus);
 	}
 
-	struct wlr_backend *primary_drm = NULL;
+	bool ok = false;
 	for (size_t i = 0; i < (size_t)num_gpus; ++i) {
-		struct wlr_backend *drm = wlr_drm_backend_create(session, gpus[i], primary_drm);
+		struct wlr_backend *drm = wlr_drm_backend_create(session, gpus[i]);
 		if (!drm) {
 			wlr_log(WLR_ERROR, "Failed to create DRM backend");
 			continue;
 		}
 
-		if (!primary_drm) {
-			primary_drm = drm;
-		}
-
 		wlr_multi_backend_add(backend, drm);
+		ok = true;
 	}
-	if (!primary_drm) {
+
+	if (!ok) {
 		wlr_log(WLR_ERROR, "Could not successfully create backend on any GPU");
-		return NULL;
+		return false;
 	}
 
 	if (getenv("WLR_DRM_DEVICES") == NULL) {
-		drm_backend_monitor_create(backend, primary_drm, session);
+		drm_backend_monitor_create(backend, session);
 	}
 
-	return primary_drm;
+	return true;
 #else
 	wlr_log(WLR_ERROR, "Cannot create DRM backend: disabled at compile-time");
 	return NULL;
@@ -319,7 +317,7 @@ static bool attempt_backend_by_name(struct wl_event_loop *loop,
 			backend = attempt_libinput_backend(*session_ptr);
 		} else {
 			// attempt_drm_backend() adds the multi drm backends itself
-			return attempt_drm_backend(multi, *session_ptr) != NULL;
+			return attempt_drm_backend(multi, *session_ptr);
 		}
 	} else {
 		wlr_log(WLR_ERROR, "unrecognized backend '%s'", name);
@@ -423,13 +421,8 @@ struct wlr_backend *wlr_backend_autocreate(struct wl_event_loop *loop,
 		goto error;
 	}
 
-	struct wlr_backend *primary_drm = attempt_drm_backend(multi, session);
-	if (primary_drm == NULL) {
+	if (!attempt_drm_backend(multi, session)) {
 		wlr_log(WLR_ERROR, "Failed to open any DRM device");
-		goto error;
-	}
-
-	if (!auto_backend_monitor_create(multi, primary_drm)) {
 		goto error;
 	}
 
