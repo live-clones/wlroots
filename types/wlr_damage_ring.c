@@ -9,11 +9,7 @@
 #define WLR_DAMAGE_RING_MAX_RECTS 20
 
 void wlr_damage_ring_init(struct wlr_damage_ring *ring) {
-	*ring = (struct wlr_damage_ring){
-		.width = INT_MAX,
-		.height = INT_MAX,
-	};
-
+	*ring = (struct wlr_damage_ring){ 0 };
 	pixman_region32_init(&ring->current);
 	wl_list_init(&ring->buffers);
 }
@@ -33,56 +29,30 @@ void wlr_damage_ring_finish(struct wlr_damage_ring *ring) {
 	}
 }
 
-void wlr_damage_ring_set_bounds(struct wlr_damage_ring *ring,
-		int32_t width, int32_t height) {
-	if (width == 0 || height == 0) {
-		width = INT_MAX;
-		height = INT_MAX;
-	}
-
-	if (ring->width == width && ring->height == height) {
-		return;
-	}
-
-	ring->width = width;
-	ring->height = height;
-	wlr_damage_ring_add_whole(ring);
-}
-
-bool wlr_damage_ring_add(struct wlr_damage_ring *ring,
+void wlr_damage_ring_add(struct wlr_damage_ring *ring,
 		const pixman_region32_t *damage) {
-	pixman_region32_t clipped;
-	pixman_region32_init(&clipped);
-	pixman_region32_intersect_rect(&clipped, damage,
-		0, 0, ring->width, ring->height);
-	bool intersects = pixman_region32_not_empty(&clipped);
-	if (intersects) {
-		pixman_region32_union(&ring->current, &ring->current, &clipped);
-	}
-	pixman_region32_fini(&clipped);
-	return intersects;
+	pixman_region32_union(&ring->current, &ring->current, damage);
 }
 
-bool wlr_damage_ring_add_box(struct wlr_damage_ring *ring,
+void wlr_damage_ring_add_box(struct wlr_damage_ring *ring,
 		const struct wlr_box *box) {
-	struct wlr_box clipped = {
-		.x = 0,
-		.y = 0,
-		.width = ring->width,
-		.height = ring->height,
-	};
-	if (wlr_box_intersection(&clipped, &clipped, box)) {
-		pixman_region32_union_rect(&ring->current,
-			&ring->current, clipped.x, clipped.y,
-			clipped.width, clipped.height);
-		return true;
-	}
-	return false;
+	pixman_region32_union_rect(&ring->current,
+		&ring->current, box->x, box->y,
+		box->width, box->height);
 }
 
 void wlr_damage_ring_add_whole(struct wlr_damage_ring *ring) {
+	int width = 0;
+	int height = 0;
+
+	struct wlr_damage_ring_buffer *entry;
+	wl_list_for_each(entry, &ring->buffers, link) {
+		width = width < entry->buffer->width ? entry->buffer->width : width;
+		height = height < entry->buffer->height ? entry->buffer->height : height;
+	}
+
 	pixman_region32_union_rect(&ring->current,
-		&ring->current, 0, 0, ring->width, ring->height);
+		&ring->current, 0, 0, width, height);
 }
 
 static void entry_squash_damage(struct wlr_damage_ring_buffer *entry) {
@@ -116,6 +86,8 @@ void wlr_damage_ring_rotate_buffer(struct wlr_damage_ring *ring,
 			continue;
 		}
 
+		pixman_region32_intersect_rect(damage, damage, 0, 0, buffer->width, buffer->height);
+
 		// Check the number of rectangles
 		int n_rects = pixman_region32_n_rects(damage);
 		if (n_rects > WLR_DAMAGE_RING_MAX_RECTS) {
@@ -138,7 +110,7 @@ void wlr_damage_ring_rotate_buffer(struct wlr_damage_ring *ring,
 
 	pixman_region32_clear(damage);
 	pixman_region32_union_rect(damage, damage,
-		0, 0, ring->width, ring->height);
+		0, 0, buffer->width, buffer->height);
 
 	entry = calloc(1, sizeof(*entry));
 	if (!entry) {

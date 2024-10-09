@@ -27,8 +27,6 @@ struct wlr_damage_ring_buffer {
 };
 
 struct wlr_damage_ring {
-	int32_t width, height;
-
 	// Difference between the current buffer and the previous one
 	pixman_region32_t current;
 
@@ -42,30 +40,15 @@ void wlr_damage_ring_init(struct wlr_damage_ring *ring);
 void wlr_damage_ring_finish(struct wlr_damage_ring *ring);
 
 /**
- * Set ring bounds and damage the ring fully.
- *
- * Next time damage will be added, it will be cropped to the ring bounds.
- * If at least one of the dimensions is 0, bounds are removed.
- *
- * By default, a damage ring doesn't have bounds.
- */
-void wlr_damage_ring_set_bounds(struct wlr_damage_ring *ring,
-	int32_t width, int32_t height);
-
-/**
  * Add a region to the current damage.
- *
- * Returns true if the region intersects the ring bounds, false otherwise.
  */
-bool wlr_damage_ring_add(struct wlr_damage_ring *ring,
+void wlr_damage_ring_add(struct wlr_damage_ring *ring,
 	const pixman_region32_t *damage);
 
 /**
  * Add a box to the current damage.
- *
- * Returns true if the box intersects the ring bounds, false otherwise.
  */
-bool wlr_damage_ring_add_box(struct wlr_damage_ring *ring,
+void wlr_damage_ring_add_box(struct wlr_damage_ring *ring,
 	const struct wlr_box *box);
 
 /**
