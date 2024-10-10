@@ -40,13 +40,15 @@ void wlr_damage_ring_init(struct wlr_damage_ring *ring);
 void wlr_damage_ring_finish(struct wlr_damage_ring *ring);
 
 /**
- * Add a region to the current damage.
+ * Add a region to the current damage. The region must be in the buffer-local
+ * coordinate space.
  */
 void wlr_damage_ring_add(struct wlr_damage_ring *ring,
 	const pixman_region32_t *damage);
 
 /**
- * Add a box to the current damage.
+ * Add a box to the current damage. The box must be in the buffer-local
+ * coordinate space.
  */
 void wlr_damage_ring_add_box(struct wlr_damage_ring *ring,
 	const struct wlr_box *box);
@@ -65,6 +67,8 @@ void wlr_damage_ring_add_whole(struct wlr_damage_ring *ring);
  *
  * Users should damage the ring if an error occurs while rendering or
  * submitting the new buffer to the backend.
+ *
+ * The returned damage will be in the buffer-local coordinate space.
  */
 void wlr_damage_ring_rotate_buffer(struct wlr_damage_ring *ring,
 	struct wlr_buffer *buffer, pixman_region32_t *damage);
