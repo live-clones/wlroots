@@ -1607,7 +1607,8 @@ struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 	}
 
 	int drm_fd = wlr_backend_get_drm_fd(output->backend);
-	if (drm_fd >= 0 && output->timeline && output->renderer != NULL && output->renderer->features.timeline) {
+	if (drm_fd >= 0 && output->backend->features.timeline &&
+			output->renderer != NULL && output->renderer->features.timeline) {
 		scene_output->in_timeline = wlr_drm_syncobj_timeline_create(drm_fd);
 		if (scene_output->in_timeline == NULL) {
 			return NULL;

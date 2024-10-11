@@ -80,6 +80,8 @@ struct wlr_backend *wlr_headless_backend_create(struct wl_event_loop *loop) {
 	backend->event_loop_destroy.notify = handle_event_loop_destroy;
 	wl_event_loop_add_destroy_listener(loop, &backend->event_loop_destroy);
 
+	backend->backend.features.timeline = true;
+
 	return &backend->backend;
 }
 

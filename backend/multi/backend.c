@@ -225,6 +225,16 @@ static struct subbackend_state *multi_backend_get_subbackend(struct wlr_multi_ba
 	return NULL;
 }
 
+static void multi_backend_refresh_features(struct wlr_multi_backend *multi) {
+	multi->backend.features.timeline = true;
+
+	struct subbackend_state *sub = NULL;
+	wl_list_for_each(sub, &multi->backends, link) {
+		multi->backend.features.timeline = multi->backend.features.timeline &&
+			sub->backend->features.timeline;
+	}
+}
+
 bool wlr_multi_backend_add(struct wlr_backend *_multi,
 		struct wlr_backend *backend) {
 	assert(_multi && backend);
@@ -256,6 +266,7 @@ bool wlr_multi_backend_add(struct wlr_backend *_multi,
 	wl_signal_add(&backend->events.new_output, &sub->new_output);
 	sub->new_output.notify = new_output_reemit;
 
+	multi_backend_refresh_features(multi);
 	wl_signal_emit_mutable(&multi->events.backend_add, backend);
 	return true;
 }
@@ -270,6 +281,7 @@ void wlr_multi_backend_remove(struct wlr_backend *_multi,
 	if (sub) {
 		wl_signal_emit_mutable(&multi->events.backend_remove, backend);
 		subbackend_state_destroy(sub);
+		multi_backend_refresh_features(multi);
 	}
 }
 

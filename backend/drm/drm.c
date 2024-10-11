@@ -126,6 +126,12 @@ bool check_drm_features(struct wlr_drm_backend *drm) {
 		drm->supports_tearing_page_flips = drmGetCap(drm->fd, DRM_CAP_ATOMIC_ASYNC_PAGE_FLIP, &cap) == 0 && cap == 1;
 	}
 
+	drm->backend.features.timeline = drm->iface != &legacy_iface;
+	if (drm->parent) {
+		drm->backend.features.timeline = drm->backend.features.timeline &&
+			drm->mgpu_renderer.wlr_rend->features.timeline;
+	}
+
 	if (env_parse_bool("WLR_DRM_NO_MODIFIERS")) {
 		wlr_log(WLR_DEBUG, "WLR_DRM_NO_MODIFIERS set, disabling modifiers");
 	} else {
@@ -1644,11 +1650,6 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 			wlr_log(WLR_INFO, "Non-desktop connector");
 		}
 		output->non_desktop = non_desktop;
-	}
-
-	output->timeline = drm->iface != &legacy_iface;
-	if (drm->parent) {
-		output->timeline = output->timeline && drm->mgpu_renderer.wlr_rend->features.timeline;
 	}
 
 	memset(wlr_conn->max_bpc_bounds, 0, sizeof(wlr_conn->max_bpc_bounds));

@@ -638,7 +638,7 @@ static bool output_basic_test(struct wlr_output *output,
 	}
 
 	if ((state->committed & (WLR_OUTPUT_STATE_WAIT_TIMELINE | WLR_OUTPUT_STATE_SIGNAL_TIMELINE)) &&
-			!output->timeline) {
+			!output->backend->features.timeline) {
 		wlr_log(WLR_DEBUG, "Wait/signal timelines are not supported for this output");
 		return false;
 	}

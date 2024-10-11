@@ -171,8 +171,6 @@ struct wlr_output {
 
 	// true for example with VR headsets
 	bool non_desktop;
-	// Whether wait/signal timelines are supported
-	bool timeline;
 
 	// Commit sequence number. Incremented on each commit, may overflow.
 	uint32_t commit_seq;

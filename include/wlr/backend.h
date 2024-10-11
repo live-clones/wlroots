@@ -30,6 +30,11 @@ struct wlr_backend {
 	const struct wlr_backend_impl *impl;
 
 	struct {
+		// Whether wait/signal timelines are supported in output commits
+		bool timeline;
+	} features;
+
+	struct {
 		/** Raised when destroyed */
 		struct wl_signal destroy;
 		/** Raised when new inputs are added, passed the struct wlr_input_device */
