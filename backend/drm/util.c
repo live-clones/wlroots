@@ -78,8 +78,9 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 	if (!manu) {
 		manu = pnp_id;
 	}
-	output->make = strdup(manu);
 
+	output->product_code = vendor_product->product;
+	output->make = strdup(manu);
 	output->model = di_info_get_model(info);
 	output->serial = di_info_get_serial(info);
 

@@ -142,6 +142,7 @@ struct wlr_output {
 	struct wl_global *global;
 	struct wl_list resources;
 
+	uint16_t product_code;
 	char *name;
 	char *description; // may be NULL
 	char *make, *model, *serial; // may be NULL
