@@ -81,12 +81,6 @@ void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
 	int width, height;
 	wlr_output_transformed_resolution(output, &width, &height);
 
-	pixman_region32_t render_damage;
-	pixman_region32_init_rect(&render_damage, 0, 0, width, height);
-	if (damage != NULL) {
-		pixman_region32_intersect(&render_damage, &render_damage, damage);
-	}
-
 	struct wlr_output_cursor *cursor;
 	wl_list_for_each(cursor, &output->cursors, link) {
 		if (!cursor->enabled || !cursor->visible ||
@@ -101,19 +95,20 @@ void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
 
 		struct wlr_box box;
 		output_cursor_get_box(cursor, &box);
+		wlr_box_transform(&box, &box,
+			wlr_output_transform_invert(output->transform), width, height);
 
 		pixman_region32_t cursor_damage;
-		pixman_region32_init_rect(&cursor_damage, box.x, box.y, box.width, box.height);
-		pixman_region32_intersect(&cursor_damage, &cursor_damage, &render_damage);
+		pixman_region32_init_rect(&cursor_damage,
+			box.x, box.y, box.width, box.height);
+		if (damage != NULL) {
+			pixman_region32_intersect(&cursor_damage, &cursor_damage, damage);
+		}
+
 		if (!pixman_region32_not_empty(&cursor_damage)) {
 			pixman_region32_fini(&cursor_damage);
 			continue;
 		}
-
-		enum wl_output_transform transform =
-			wlr_output_transform_invert(output->transform);
-		wlr_box_transform(&box, &box, transform, width, height);
-		wlr_region_transform(&cursor_damage, &cursor_damage, transform, width, height);
 
 		wlr_render_pass_add_texture(render_pass, &(struct wlr_render_texture_options) {
 			.texture = texture,
@@ -125,8 +120,6 @@ void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
 
 		pixman_region32_fini(&cursor_damage);
 	}
-
-	pixman_region32_fini(&render_damage);
 }
 
 static void output_cursor_damage_whole(struct wlr_output_cursor *cursor) {

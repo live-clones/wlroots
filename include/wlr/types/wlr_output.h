@@ -380,7 +380,7 @@ void wlr_output_lock_attach_render(struct wlr_output *output, bool lock);
  */
 void wlr_output_lock_software_cursors(struct wlr_output *output, bool lock);
 /**
- * Render software cursors.
+ * Render software cursors. The damage is in buffer-local coordinate space.
  *
  * This is a utility function that can be called when compositors render.
  */

@@ -2208,14 +2208,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		}
 	}
 
-	pixman_region32_t cursor_damage;
-	pixman_region32_init(&cursor_damage);
-	pixman_region32_copy(&cursor_damage, &render_data.damage);
-	wlr_region_transform(&cursor_damage, &cursor_damage,
-		output->transform, resolution_width, resolution_height);
-	wlr_output_add_software_cursors_to_render_pass(output, render_pass, &cursor_damage);
-	pixman_region32_fini(&cursor_damage);
-
+	wlr_output_add_software_cursors_to_render_pass(output, render_pass, &render_data.damage);
 	pixman_region32_fini(&render_data.damage);
 
 	if (!wlr_render_pass_submit(render_pass)) {
