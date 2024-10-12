@@ -1968,6 +1968,12 @@ void xwm_destroy(struct wlr_xwm *xwm) {
 	xwm_selection_finish(&xwm->primary_selection);
 	xwm_selection_finish(&xwm->dnd_selection);
 
+	if (xwm->drag != NULL) {
+		wlr_data_source_destroy(xwm->drag->source);
+	}
+
+	xwm_set_seat(xwm, NULL);
+
 	if (xwm->seat) {
 		if (xwm->seat->selection_source &&
 				data_source_is_xwayland(xwm->seat->selection_source)) {
