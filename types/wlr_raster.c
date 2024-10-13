@@ -241,7 +241,18 @@ static struct wlr_buffer *raster_try_blit(struct wlr_raster *raster,
 		return NULL;
 	}
 
-	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(src, buffer, NULL);
+	struct wlr_drm_syncobj_timeline *timeline = NULL;
+	int drm_fd = wlr_renderer_get_drm_fd(src);
+	if (src->features.timeline && drm_fd >= 0) {
+		timeline = wlr_drm_syncobj_timeline_create(drm_fd);
+	}
+
+	const struct wlr_buffer_pass_options pass_options = {
+		.signal_timeline = timeline,
+		.signal_point = 1,
+	};
+
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(src, buffer, &pass_options);
 	if (!pass) {
 		wlr_log(WLR_ERROR, "Failed to create a render pass");
 		wlr_buffer_drop(buffer);
@@ -251,7 +262,11 @@ static struct wlr_buffer *raster_try_blit(struct wlr_raster *raster,
 	wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options) {
 		.texture = source->texture,
 		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+		.wait_timeline = timeline,
+		.wait_point = 1,
 	});
+
+	wlr_drm_syncobj_timeline_unref(timeline);
 
 	if (!wlr_render_pass_submit(pass)) {
 		wlr_log(WLR_ERROR, "Failed to renedr to a multigpu blit buffer");
