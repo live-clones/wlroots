@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_raster.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
@@ -54,6 +55,7 @@ struct tinywl_server {
 	struct wl_listener cursor_frame;
 
 	struct wlr_seat *seat;
+	struct wl_listener new_surface;
 	struct wl_listener new_input;
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
@@ -106,6 +108,12 @@ struct tinywl_keyboard {
 
 	struct wl_listener modifiers;
 	struct wl_listener key;
+	struct wl_listener destroy;
+};
+
+struct tinywl_surface {
+	struct wlr_surface *surface;
+	struct wl_listener commit;
 	struct wl_listener destroy;
 };
 
@@ -870,6 +878,48 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
 }
 
+static void surface_handle_commit(struct wl_listener *listener, void *data) {
+	struct tinywl_surface *surface = wl_container_of(listener, surface, commit);
+
+	/*
+	 * wlr_raster_from_surface will not automatically latch onto a surface and
+	 * update itself as the surface commits new buffers. We have to handle that
+	 * ourselves. Every time a surface is committed, we have to make sure to
+	 * read from the surface buffer before it is unlocked at the end of the
+	 * commit. Since wlr_raster_from_surface will de-duplicate rasters created
+	 * from the same surface, wlr_scene will consume rasters that are created
+	 * here.
+	 */
+	struct wlr_raster *raster = wlr_raster_from_surface(surface->surface);
+
+	// unlock the raster immediately as we're only prepping the surface
+	wlr_raster_unlock(raster);
+}
+
+static void surface_handle_destroy(struct wl_listener *listener, void *data) {
+	struct tinywl_surface *surface = wl_container_of(listener, surface, destroy);
+	wl_list_remove(&surface->commit.link);
+	wl_list_remove(&surface->destroy.link);
+	free(surface);
+}
+
+static void handle_new_surface(struct wl_listener *listener, void *data) {
+	struct wlr_surface *wlr_surface = data;
+
+	struct tinywl_surface *surface = calloc(1, sizeof(*surface));
+	if (!surface) {
+		return;
+	}
+
+	surface->surface = wlr_surface;
+
+	surface->commit.notify = surface_handle_commit;
+	wl_signal_add(&wlr_surface->events.commit, &surface->commit);
+
+	surface->destroy.notify = surface_handle_destroy;
+	wl_signal_add(&wlr_surface->events.destroy, &surface->destroy);
+}
+
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_DEBUG, NULL);
 	char *startup_cmd = NULL;
@@ -934,7 +984,18 @@ int main(int argc, char *argv[]) {
 	 * to dig your fingers in and play with their behavior if you want. Note that
 	 * the clients cannot set the selection directly without compositor approval,
 	 * see the handling of the request_set_selection event below.*/
-	wlr_compositor_create(server.wl_display, 5, server.renderer);
+	struct wlr_compositor *compositor = wlr_compositor_create(server.wl_display, 5, NULL);
+
+	/*
+	 * Surfaces act as a container for state that come from a wayland surface
+	 * of a client. Surfaces provide buffers that act as the pixel data that the
+	 * client wants to show. However, buffers aren't immetiately useful for us.
+	 * We need to upload them to the GPU and for this, we'll use wlr_raster to
+	 * help us do that.
+	 */
+	server.new_surface.notify = handle_new_surface;
+	wl_signal_add(&compositor->events.new_surface, &server.new_surface);
+
 	wlr_subcompositor_create(server.wl_display);
 	wlr_data_device_manager_create(server.wl_display);
 
