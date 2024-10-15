@@ -271,15 +271,14 @@ xcb_void_cookie_t xwm_send_event_with_size(xcb_connection_t *c,
 		uint8_t propagate, xcb_window_t destination,
 		uint32_t event_mask, const void *event, uint32_t length)
 {
-	if (length == 32) {
+	assert(length <= 32);
+	if (length >= 32) {
 		return xcb_send_event(c, propagate, destination, event_mask, event);
-	} else if (length < 32) {
+	} else {
 		char buf[32];
 		memcpy(buf, event, length);
 		memset(buf + length, 0, 32 - length);
 		return xcb_send_event(c, propagate, destination, event_mask, buf);
-	} else {
-		assert(false && "Event too long");
 	}
 }
 

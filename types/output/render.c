@@ -152,8 +152,7 @@ bool output_pick_format(struct wlr_output *output,
 		const struct wlr_drm_format_set *display_formats,
 		struct wlr_drm_format *format, uint32_t fmt) {
 	struct wlr_renderer *renderer = output->renderer;
-	struct wlr_allocator *allocator = output->allocator;
-	assert(renderer != NULL && allocator != NULL);
+	assert(renderer != NULL && output->allocator != NULL);
 
 	const struct wlr_drm_format_set *render_formats =
 		wlr_renderer_get_render_formats(renderer);
