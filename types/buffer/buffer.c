@@ -19,6 +19,7 @@ void wlr_buffer_init(struct wlr_buffer *buffer,
 	};
 	wl_signal_init(&buffer->events.destroy);
 	wl_signal_init(&buffer->events.release);
+	wl_signal_init(&buffer->events.prerelease);
 	wlr_addon_set_init(&buffer->addons);
 }
 
@@ -57,6 +58,10 @@ void wlr_buffer_unlock(struct wlr_buffer *buffer) {
 
 	assert(buffer->n_locks > 0);
 	buffer->n_locks--;
+
+	if (buffer->n_locks == 0) {
+		wl_signal_emit_mutable(&buffer->events.prerelease, NULL);
+	}
 
 	if (buffer->n_locks == 0) {
 		wl_signal_emit_mutable(&buffer->events.release, NULL);

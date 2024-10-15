@@ -19,9 +19,6 @@ struct wlr_drm_plane {
 	uint32_t type;
 	uint32_t id;
 
-	/* Only initialized on multi-GPU setups */
-	struct wlr_drm_surface mgpu_surf;
-
 	/* Buffer submitted to the kernel, will be presented on next vblank */
 	struct wlr_drm_fb *queued_fb;
 	/* Buffer currently displayed on screen */
@@ -80,7 +77,6 @@ struct wlr_drm_crtc {
 struct wlr_drm_backend {
 	struct wlr_backend backend;
 
-	struct wlr_drm_backend *parent;
 	const struct wlr_drm_interface *iface;
 	bool addfb2_modifiers;
 
@@ -99,7 +95,6 @@ struct wlr_drm_backend {
 
 	struct wl_listener session_destroy;
 	struct wl_listener session_active;
-	struct wl_listener parent_destroy;
 	struct wl_listener dev_change;
 	struct wl_listener dev_remove;
 
@@ -108,14 +103,9 @@ struct wlr_drm_backend {
 
 	struct wl_list page_flips; // wlr_drm_page_flip.link
 
-	/* Only initialized on multi-GPU setups */
-	struct wlr_drm_renderer mgpu_renderer;
-
 	struct wlr_session *session;
 
 	uint64_t cursor_width, cursor_height;
-
-	struct wlr_drm_format_set mgpu_formats;
 
 	bool supports_tearing_page_flips;
 };

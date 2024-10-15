@@ -13,35 +13,6 @@
 #include "render/pixel_format.h"
 #include "render/wlr_renderer.h"
 
-bool init_drm_renderer(struct wlr_drm_backend *drm,
-		struct wlr_drm_renderer *renderer) {
-	renderer->wlr_rend = renderer_autocreate_with_drm_fd(drm->fd);
-	if (!renderer->wlr_rend) {
-		wlr_log(WLR_ERROR, "Failed to create renderer");
-		return false;
-	}
-
-	uint32_t backend_caps = backend_get_buffer_caps(&drm->backend);
-	renderer->allocator = allocator_autocreate_with_drm_fd(backend_caps,
-		renderer->wlr_rend, drm->fd);
-	if (renderer->allocator == NULL) {
-		wlr_log(WLR_ERROR, "Failed to create allocator");
-		wlr_renderer_destroy(renderer->wlr_rend);
-		return false;
-	}
-
-	return true;
-}
-
-void finish_drm_renderer(struct wlr_drm_renderer *renderer) {
-	if (!renderer) {
-		return;
-	}
-
-	wlr_allocator_destroy(renderer->allocator);
-	wlr_renderer_destroy(renderer->wlr_rend);
-}
-
 void finish_drm_surface(struct wlr_drm_surface *surf) {
 	if (!surf || !surf->renderer) {
 		return;
@@ -83,62 +54,6 @@ bool init_drm_surface(struct wlr_drm_surface *surf,
 	surf->renderer = renderer;
 
 	return true;
-}
-
-struct wlr_buffer *drm_surface_blit(struct wlr_drm_surface *surf,
-		struct wlr_buffer *buffer,
-		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
-	struct wlr_renderer *renderer = surf->renderer->wlr_rend;
-
-	if (surf->swapchain->width != buffer->width ||
-			surf->swapchain->height != buffer->height) {
-		wlr_log(WLR_ERROR, "Surface size doesn't match buffer size");
-		return NULL;
-	}
-
-	struct wlr_texture *tex = wlr_texture_from_buffer(renderer, buffer);
-	if (tex == NULL) {
-		wlr_log(WLR_ERROR, "Failed to import source buffer into multi-GPU renderer");
-		return NULL;
-	}
-
-	struct wlr_buffer *dst = wlr_swapchain_acquire(surf->swapchain);
-	if (!dst) {
-		wlr_log(WLR_ERROR, "Failed to acquire multi-GPU swapchain buffer");
-		goto error_tex;
-	}
-
-	surf->point++;
-	const struct wlr_buffer_pass_options pass_options = {
-		.signal_timeline = surf->timeline,
-		.signal_point = surf->point,
-	};
-	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(renderer, dst, &pass_options);
-	if (pass == NULL) {
-		wlr_log(WLR_ERROR, "Failed to begin render pass with multi-GPU destination buffer");
-		goto error_dst;
-	}
-
-	wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options){
-		.texture = tex,
-		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
-		.wait_timeline = wait_timeline,
-		.wait_point = wait_point,
-	});
-	if (!wlr_render_pass_submit(pass)) {
-		wlr_log(WLR_ERROR, "Failed to submit multi-GPU render pass");
-		goto error_dst;
-	}
-
-	wlr_texture_destroy(tex);
-
-	return dst;
-
-error_dst:
-	wlr_buffer_unlock(dst);
-error_tex:
-	wlr_texture_destroy(tex);
-	return NULL;
 }
 
 bool drm_plane_pick_render_format(struct wlr_drm_plane *plane,

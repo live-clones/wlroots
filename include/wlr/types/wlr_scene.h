@@ -35,6 +35,7 @@ struct wlr_xdg_surface;
 struct wlr_layer_surface_v1;
 struct wlr_drag_icon;
 struct wlr_surface;
+struct wlr_raster;
 
 struct wlr_scene_node;
 struct wlr_scene_buffer;
@@ -158,6 +159,7 @@ struct wlr_scene_buffer {
 
 	// May be NULL
 	struct wlr_buffer *buffer;
+	struct wlr_raster *raster;
 
 	struct {
 		struct wl_signal outputs_update; // struct wlr_scene_outputs_update_event
@@ -188,15 +190,9 @@ struct wlr_scene_buffer {
 	// private state
 
 	uint64_t active_outputs;
-	struct wlr_texture *texture;
 	struct wlr_linux_dmabuf_feedback_v1_init_options prev_feedback_options;
 
 	bool own_buffer;
-	int buffer_width, buffer_height;
-	bool buffer_is_opaque;
-
-	struct wlr_drm_syncobj_timeline *wait_timeline;
-	uint64_t wait_point;
 
 	struct wl_listener buffer_release;
 	struct wl_listener renderer_destroy;
@@ -427,7 +423,7 @@ struct wlr_scene_buffer *wlr_scene_buffer_create(struct wlr_scene_tree *parent,
 	struct wlr_buffer *buffer);
 
 /**
- * Sets the buffer's backing buffer.
+ * Sets the buffer's backing raster.
  *
  * If the buffer is NULL, the buffer node will not be displayed.
  */
@@ -435,7 +431,7 @@ void wlr_scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 	struct wlr_buffer *buffer);
 
 /**
- * Sets the buffer's backing buffer with a custom damage region.
+ * Sets the buffer's backing raster with a custom damage region.
  *
  * The damage region is in buffer-local coordinates. If the region is NULL,
  * the whole buffer node will be damaged.
@@ -464,6 +460,15 @@ struct wlr_scene_buffer_set_buffer_options {
  */
 void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buffer,
 	struct wlr_buffer *buffer, const struct wlr_scene_buffer_set_buffer_options *options);
+
+/*
+ * Sets the buffer's backing raster with a custom damage region.
+ *
+ * The damage region is in buffer-local coordinates. If the region is NULL,
+ * the whole buffer node will be damaged.
+ */
+void wlr_scene_buffer_set_raster_with_damage(struct wlr_scene_buffer *scene_buffer,
+	struct wlr_raster *raster, const pixman_region32_t *damage);
 
 /**
  * Sets the buffer's opaque region. This is an optimization hint used to

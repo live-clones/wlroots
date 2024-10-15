@@ -239,6 +239,7 @@ struct wlr_surface {
 	// private state
 
 	struct wl_listener role_resource_destroy;
+	struct wl_listener current_buffer_release;
 
 	struct {
 		int32_t scale;
@@ -250,6 +251,7 @@ struct wlr_surface {
 	bool unmap_commit;
 
 	bool opaque;
+	bool consumed;
 
 	bool handling_commit;
 	bool pending_rejected;
@@ -535,6 +537,12 @@ void wlr_surface_synced_finish(struct wlr_surface_synced *synced);
  */
 void *wlr_surface_synced_get_state(struct wlr_surface_synced *synced,
 	const struct wlr_surface_state *state);
+
+/*
+ * Consumes buffer and damage state of the buffer so that the compositor may
+ * drop references to any of these resources.
+ */
+void wlr_surface_consume(struct wlr_surface *surface);
 
 /**
  * Get a Pixman region from a wl_region resource.
