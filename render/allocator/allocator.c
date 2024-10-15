@@ -18,6 +18,8 @@
 #include "render/allocator/gbm.h"
 #endif
 
+#include "render/allocator/dma_heap.h"
+
 void wlr_allocator_init(struct wlr_allocator *alloc,
 		const struct wlr_allocator_interface *impl, uint32_t buffer_caps) {
 	assert(impl && impl->destroy && impl->create_buffer);
@@ -95,6 +97,13 @@ struct wlr_allocator *allocator_autocreate_with_drm_fd(
 		uint32_t backend_caps, struct wlr_renderer *renderer,
 		int drm_fd) {
 	uint32_t renderer_caps = renderer->render_buffer_caps;
+
+	int heap_fd = open("/dev/dma_heap/system", O_RDWR | O_CLOEXEC);
+	if (heap_fd < 0) {
+		wlr_log_errno(WLR_ERROR, "Failed to open /dev/dma_heap/system");
+		return NULL;
+	}
+	return wlr_dma_heap_allocator_create(heap_fd);
 
 	struct wlr_allocator *alloc = NULL;
 
