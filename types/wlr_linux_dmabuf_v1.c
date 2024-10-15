@@ -213,11 +213,11 @@ static bool check_import_dmabuf(struct wlr_dmabuf_attributes *attribs, void *dat
 	for (int i = 0; i < attribs->n_planes; i++) {
 		uint32_t handle = 0;
 		if (drmPrimeFDToHandle(linux_dmabuf->main_device_fd, attribs->fd[i], &handle) != 0) {
-			wlr_log_errno(WLR_DEBUG, "Failed to import DMA-BUF FD");
+			wlr_log_errno(WLR_ERROR, "Failed to import DMA-BUF FD for plane %d", i);
 			return false;
 		}
 		if (drmCloseBufferHandle(linux_dmabuf->main_device_fd, handle) != 0) {
-			wlr_log_errno(WLR_ERROR, "Failed to close buffer handle");
+			wlr_log_errno(WLR_ERROR, "Failed to close buffer handle for plane %d", i);
 			return false;
 		}
 	}
