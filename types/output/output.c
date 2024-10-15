@@ -601,6 +601,12 @@ static bool output_basic_test(struct wlr_output *output,
 		}
 	}
 
+	if ((state->committed & WLR_OUTPUT_STATE_DAMAGE) &&
+			!(state->committed & WLR_OUTPUT_STATE_BUFFER)) {
+		wlr_log(WLR_DEBUG, "Tried to commit output damage with no buffer");
+		return false;
+	}
+
 	if (!enabled && state->committed & WLR_OUTPUT_STATE_BUFFER) {
 		wlr_log(WLR_DEBUG, "Tried to commit a buffer on a disabled output");
 		return false;
