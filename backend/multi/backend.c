@@ -126,22 +126,24 @@ static bool commit(struct wlr_backend *backend,
 	qsort(by_backend, states_len, sizeof(by_backend[0]), compare_output_state_backend);
 
 	bool ok = true;
-	for (size_t i = 0; i < states_len; i++) {
+	for (size_t i = 0; i < states_len;) {
 		struct wlr_backend *sub = by_backend[i].output->backend;
 
-		size_t j = i;
-		while (j < states_len && by_backend[j].output->backend == sub) {
-			j++;
+		size_t len = 1;
+		while (i + len < states_len &&
+				by_backend[i + len].output->backend == sub) {
+			len++;
 		}
 
 		if (test_only) {
-			ok = wlr_backend_test(sub, &by_backend[i], j - i);
+			ok = wlr_backend_test(sub, &by_backend[i], len);
 		} else {
-			ok = wlr_backend_commit(sub, &by_backend[i], j - i);
+			ok = wlr_backend_commit(sub, &by_backend[i], len);
 		}
 		if (!ok) {
 			break;
 		}
+		i += len;
 	}
 
 	free(by_backend);
