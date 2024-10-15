@@ -7,7 +7,7 @@
 #include <wlr/util/addon.h>
 #include "presentation-time-protocol.h"
 
-#define PRESENTATION_VERSION 1
+#define PRESENTATION_VERSION 2
 
 struct wlr_presentation_surface_state {
 	struct wlr_presentation_feedback *feedback;
@@ -172,14 +172,16 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_presentation *wlr_presentation_create(struct wl_display *display,
-		struct wlr_backend *backend) {
+		struct wlr_backend *backend, int version) {
+	assert(version <= PRESENTATION_VERSION);
+
 	struct wlr_presentation *presentation = calloc(1, sizeof(*presentation));
 	if (presentation == NULL) {
 		return NULL;
 	}
 
 	presentation->global = wl_global_create(display, &wp_presentation_interface,
-		PRESENTATION_VERSION, NULL, presentation_bind);
+		version, NULL, presentation_bind);
 	if (presentation->global == NULL) {
 		free(presentation);
 		return NULL;
@@ -283,6 +285,11 @@ static void feedback_handle_output_present(struct wl_listener *listener,
 	if (output_event->presented) {
 		struct wlr_presentation_event event = {0};
 		wlr_presentation_event_from_output(&event, output_event);
+		struct wl_resource *resource = wl_resource_from_link(feedback->resources.next);
+		if (wl_resource_get_version(resource) == 1 &&
+				event.output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) {
+			event.refresh = 0;
+		}
 		if (!feedback->zero_copy) {
 			event.flags &= ~WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY;
 		}
