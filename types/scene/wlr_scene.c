@@ -355,16 +355,22 @@ static void transform_output_box(struct wlr_box *box, const struct render_data *
 }
 
 static void scene_output_damage(struct wlr_scene_output *scene_output,
-		const pixman_region32_t *frame_damage) {
-	if (!pixman_region32_not_empty(frame_damage)) {
-		return;
+		const pixman_region32_t *damage) {
+	struct wlr_output *output = scene_output->output;
+
+	pixman_region32_t clipped;
+	pixman_region32_init(&clipped);
+	pixman_region32_intersect_rect(&clipped, damage, 0, 0, output->width, output->height);
+
+	if (pixman_region32_not_empty(&clipped)) {
+		wlr_output_schedule_frame(scene_output->output);
+		wlr_damage_ring_add(&scene_output->damage_ring, &clipped);
+
+		pixman_region32_union(&scene_output->pending_commit_damage,
+			&scene_output->pending_commit_damage, &clipped);
 	}
 
-	wlr_output_schedule_frame(scene_output->output);
-	wlr_damage_ring_add(&scene_output->damage_ring, frame_damage);
-
-	pixman_region32_union(&scene_output->pending_commit_damage,
-		&scene_output->pending_commit_damage, frame_damage);
+	pixman_region32_fini(&clipped);
 }
 
 static void scene_output_damage_whole(struct wlr_scene_output *scene_output) {
