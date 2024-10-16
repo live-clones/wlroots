@@ -116,11 +116,13 @@ math = cc.find_library('m')
 rt = cc.find_library('rt')
 
 wlr_files = []
-wlr_deps = [
+wlr_requires = [
 	wayland_server,
 	drm,
 	xkbcommon,
 	pixman,
+]
+wlr_deps = wlr_requires + [
 	math,
 	rt,
 ]
@@ -175,6 +177,7 @@ pkgconfig.generate(
 	lib_wlr,
 	name: versioned_name,
 	description: 'Wayland compositor library',
+	requires: wlr_requires,
 	subdirs: versioned_name,
 	url: 'https://gitlab.freedesktop.org/wlroots/wlroots',
 	variables: wlr_vars,
