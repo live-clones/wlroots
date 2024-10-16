@@ -71,17 +71,17 @@ static bool write_pixels(struct wlr_vk_texture *texture,
 	}
 
 	// get staging buffer
-	struct wlr_vk_buffer_span span = vulkan_get_stage_span(renderer, bsize, format_info->bytes_per_block);
-	if (!span.buffer || span.alloc.size != bsize) {
+	struct wlr_vk_stage_span *span = vulkan_get_stage_span(renderer, bsize, format_info->bytes_per_block);
+	if (span == NULL) {
 		wlr_log(WLR_ERROR, "Failed to retrieve staging buffer");
 		free(copies);
 		return false;
 	}
-	char *map = (char*)span.buffer->cpu_mapping + span.alloc.start;
+	char *map = (char*)span->buffer->cpu_mapping + span->start;
 
 	// upload data
 
-	uint32_t buf_off = span.alloc.start;
+	uint32_t buf_off = span->start;
 	for (int i = 0; i < rects_len; i++) {
 		pixman_box32_t rect = rects[i];
 		uint32_t width = rect.x2 - rect.x1;
@@ -130,6 +130,7 @@ static bool write_pixels(struct wlr_vk_texture *texture,
 	// will be executed before next frame
 	VkCommandBuffer cb = vulkan_record_stage_cb(renderer);
 	if (cb == VK_NULL_HANDLE) {
+		vulkan_return_stage_span(renderer, span);
 		free(copies);
 		return false;
 	}
@@ -139,7 +140,7 @@ static bool write_pixels(struct wlr_vk_texture *texture,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		VK_ACCESS_TRANSFER_WRITE_BIT);
 
-	vkCmdCopyBufferToImage(cb, span.buffer->buffer, texture->image,
+	vkCmdCopyBufferToImage(cb, span->buffer->buffer, texture->image,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, (uint32_t)rects_len, copies);
 	vulkan_change_layout(cb, texture->image,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -147,6 +148,7 @@ static bool write_pixels(struct wlr_vk_texture *texture,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_SHADER_READ_BIT);
 	texture->last_used_cb = renderer->stage.cb;
+	wl_list_insert(&renderer->stage.cb->stage_spans, &span->usage_link);
 
 	free(copies);
 
