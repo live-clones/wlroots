@@ -197,6 +197,15 @@ struct wlr_vk_render_format_setup {
 	struct wl_list pipelines; // struct wlr_vk_pipeline.link
 };
 
+// Internal blending buffer shraed between render buffers
+struct wlr_vk_blend_buffer {
+	struct wlr_vk_renderer *renderer;
+	VkImageView blend_image_view;
+	VkImage blend_image;
+	VkDeviceMemory blend_memory;
+	int refcnt;
+};
+
 // Renderer-internal represenation of an wlr_buffer imported for rendering.
 struct wlr_vk_render_buffer {
 	struct wlr_buffer *wlr_buffer;
@@ -228,9 +237,8 @@ struct wlr_vk_render_buffer {
 		VkFramebuffer framebuffer;
 		bool transitioned;
 
-		VkImage blend_image;
-		VkImageView blend_image_view;
-		VkDeviceMemory blend_memory;
+		struct wlr_vk_blend_buffer *blend_buffer;
+
 		VkDescriptorSet blend_descriptor_set;
 		struct wlr_vk_descriptor_pool *blend_attachment_pool;
 		bool blend_transitioned;

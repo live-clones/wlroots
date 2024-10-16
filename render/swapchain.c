@@ -6,6 +6,36 @@
 #include "render/allocator/allocator.h"
 #include "render/drm_format_set.h"
 
+struct wlr_swapchain_buffer {
+	struct wlr_addon buffer_addon;
+	struct wlr_swapchain *swapchain;
+};
+
+static void wlr_swapchain_buffer_destroy(struct wlr_addon *addon) {
+	struct wlr_swapchain_buffer *swapchain_buffer =
+		wl_container_of(addon, swapchain_buffer, buffer_addon);
+	wlr_addon_finish(&swapchain_buffer->buffer_addon);
+	swapchain_buffer->swapchain = NULL;
+	free(swapchain_buffer);
+}
+
+static const struct wlr_addon_interface buffer_addon_impl = {
+	.name = "wlr_swapchain_buffer",
+	.destroy = wlr_swapchain_buffer_destroy,
+};
+
+struct wlr_swapchain *wlr_swapchain_try_from_wlr_buffer(struct wlr_buffer *buffer) {
+	struct wlr_addon *addon =
+		wlr_addon_find(&buffer->addons, NULL, &buffer_addon_impl);
+	if (addon == NULL) {
+		return NULL;
+	}
+
+	struct wlr_swapchain_buffer *swapchain_buffer =
+		wl_container_of(addon, swapchain_buffer, buffer_addon);
+	return swapchain_buffer->swapchain;
+}
+
 static void swapchain_handle_allocator_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_swapchain *swapchain =
@@ -33,6 +63,7 @@ struct wlr_swapchain *wlr_swapchain_create(
 
 	swapchain->allocator_destroy.notify = swapchain_handle_allocator_destroy;
 	wl_signal_add(&alloc->events.destroy, &swapchain->allocator_destroy);
+	wlr_addon_set_init(&swapchain->addons);
 
 	return swapchain;
 }
@@ -54,6 +85,7 @@ void wlr_swapchain_destroy(struct wlr_swapchain *swapchain) {
 	}
 	wl_list_remove(&swapchain->allocator_destroy.link);
 	wlr_drm_format_finish(&swapchain->format);
+	wlr_addon_set_finish(&swapchain->addons);
 	free(swapchain);
 }
 
@@ -98,13 +130,25 @@ struct wlr_buffer *wlr_swapchain_acquire(struct wlr_swapchain *swapchain) {
 		return NULL;
 	}
 
+	struct wlr_swapchain_buffer *swapchain_buffer =
+		calloc(1, sizeof(*swapchain_buffer));
+	if (swapchain_buffer == NULL) {
+		return NULL;
+	}
+	swapchain_buffer->swapchain = swapchain;
+
 	wlr_log(WLR_DEBUG, "Allocating new swapchain buffer");
 	free_slot->buffer = wlr_allocator_create_buffer(swapchain->allocator,
 		swapchain->width, swapchain->height, &swapchain->format);
 	if (free_slot->buffer == NULL) {
 		wlr_log(WLR_ERROR, "Failed to allocate buffer");
+		free(swapchain_buffer);
 		return NULL;
 	}
+
+	wlr_addon_init(&swapchain_buffer->buffer_addon, &free_slot->buffer->addons,
+			NULL, &buffer_addon_impl);
+
 	return slot_acquire(swapchain, free_slot);
 }
 
