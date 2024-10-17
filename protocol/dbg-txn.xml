@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="dbg_txn">
+  <interface name="dbg_txn_manager" version="1">
+    <request name="get_txn">
+      <arg name="id" type="new_id" interface="dbg_txn"/>
+    </request>
+  </interface>
+
+  <interface name="dbg_txn" version="1">
+    <request name="add_surface">
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+
+    <request name="commit" type="destructor">
+    </request>
+  </interface>
+</protocol>

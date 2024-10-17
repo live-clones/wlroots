@@ -64,6 +64,8 @@ protocols = {
 	'wlr-output-power-management-unstable-v1': 'wlr-output-power-management-unstable-v1.xml',
 	'wlr-screencopy-unstable-v1': 'wlr-screencopy-unstable-v1.xml',
 	'wlr-virtual-pointer-unstable-v1': 'wlr-virtual-pointer-unstable-v1.xml',
+
+	'dbg-txn': 'dbg-txn.xml',
 }
 
 protocols_code = {}
