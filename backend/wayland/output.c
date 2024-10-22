@@ -300,6 +300,28 @@ static bool output_test(struct wlr_output *wlr_output,
 	struct wlr_wl_output *output =
 		get_wl_output_from_output(wlr_output);
 
+	if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
+		// If the size doesn't match, reject buffer (scaling is not currently
+		// supported but could be implemented with viewporter)
+		int pending_width, pending_height;
+		output_pending_resolution(wlr_output, state,
+			&pending_width, &pending_height);
+		if (state->buffer->width != pending_width ||
+				state->buffer->height != pending_height) {
+			wlr_log(WLR_DEBUG, "Primary buffer size mismatch");
+			return false;
+		}
+		// Source crop is also not currently supported
+		struct wlr_fbox src_box;
+		output_state_get_buffer_src_box(state, &src_box);
+		if (src_box.x != 0.0 || src_box.y != 0.0 ||
+				src_box.width != (double)state->buffer->width ||
+				src_box.height != (double)state->buffer->height) {
+			wlr_log(WLR_DEBUG, "Source crop not supported in wayland output");
+			return false;
+		}
+	}
+
 	uint32_t unsupported = state->committed & ~SUPPORTED_OUTPUT_STATE;
 	if (unsupported != 0) {
 		wlr_log(WLR_DEBUG, "Unsupported output state fields: 0x%"PRIx32,

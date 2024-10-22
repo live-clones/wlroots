@@ -548,14 +548,37 @@ static uint32_t output_compare_state(struct wlr_output *output,
 static bool output_basic_test(struct wlr_output *output,
 		const struct wlr_output_state *state) {
 	if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
-		// If the size doesn't match, reject buffer (scaling is not
-		// supported)
+		struct wlr_fbox src_box;
+		output_state_get_buffer_src_box(state, &src_box);
+
+		// Source box must be contained within the buffer
+		if (src_box.x < 0.0 || src_box.y < 0.0 ||
+				src_box.x + src_box.width > state->buffer->width ||
+				src_box.y + src_box.height > state->buffer->height) {
+			wlr_log(WLR_ERROR, "Tried to commit with invalid buffer_src_box");
+			return false;
+		}
+
+		// Source box must not be empty (but it can be smaller than 1 pixel,
+		// some DRM devices support sub-pixel crops)
+		if (wlr_fbox_empty(&src_box)) {
+			wlr_log(WLR_ERROR, "Tried to commit with an empty buffer_src_box");
+			return false;
+		}
+
+		// Destination box cannot be entirely off-screen (but it also doesn't
+		// have to be entirely on-screen).  This also checks the dst box is
+		// not empty.
 		int pending_width, pending_height;
-		output_pending_resolution(output, state,
-			&pending_width, &pending_height);
-		if (state->buffer->width != pending_width ||
-				state->buffer->height != pending_height) {
-			wlr_log(WLR_DEBUG, "Primary buffer size mismatch");
+		output_pending_resolution(output, state, &pending_width, &pending_height);
+		struct wlr_box output_box = {
+			.width = pending_width,
+			.height = pending_height
+		};
+		struct wlr_box dst_box;
+		output_state_get_buffer_dst_box(state, &dst_box);
+		if (!wlr_box_intersection(&output_box, &output_box, &dst_box)) {
+			wlr_log(WLR_ERROR, "Primary buffer is entirely off-screen or 0-sized");
 			return false;
 		}
 	} else {
@@ -843,6 +866,39 @@ void output_defer_present(struct wlr_output *output, struct wlr_output_event_pre
 
 	deferred->idle_source = wl_event_loop_add_idle(output->event_loop,
 		deferred_present_event_handle_idle, deferred);
+}
+
+void output_state_get_buffer_src_box(const struct wlr_output_state *state,
+		struct wlr_fbox *out) {
+	out->x = state->buffer_src_box.x;
+	out->y = state->buffer_src_box.y;
+	// If the source box is unset then default to the whole buffer.
+	if (state->buffer_src_box.width == 0.0 &&
+			state->buffer_src_box.height == 0.0) {
+		out->width = (double)state->buffer->width;
+		out->height = (double)state->buffer->height;
+	} else {
+		out->width = state->buffer_src_box.width;
+		out->height = state->buffer_src_box.height;
+	}
+}
+
+void output_state_get_buffer_dst_box(const struct wlr_output_state *state,
+		struct wlr_box *out) {
+	out->x = state->buffer_dst_box.x;
+	out->y = state->buffer_dst_box.y;
+	// If the dst box is unset then default to source crop size (which itself
+	// defaults to the whole buffer size if unset)
+	if (state->buffer_dst_box.width == 0 &&
+			state->buffer_dst_box.height == 0) {
+		struct wlr_fbox src_box;
+		output_state_get_buffer_src_box(state, &src_box);
+		out->width = (int)src_box.width;
+		out->height = (int)src_box.height;
+	} else {
+		out->width = state->buffer_dst_box.width;
+		out->height = state->buffer_dst_box.height;
+	}
 }
 
 void wlr_output_send_request_state(struct wlr_output *output,

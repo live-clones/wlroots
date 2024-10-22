@@ -17,6 +17,7 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/util/addon.h>
+#include <wlr/util/box.h>
 
 enum wlr_output_mode_aspect_ratio {
 	WLR_OUTPUT_MODE_ASPECT_RATIO_NONE,
@@ -94,6 +95,14 @@ struct wlr_output_state {
 	enum wl_output_subpixel subpixel;
 
 	struct wlr_buffer *buffer;
+	// Source crop for the buffer.  If all zeros then no crop is applied.
+	// Double-buffered by WLR_OUTPUT_STATE_BUFFER along with `buffer`.
+	struct wlr_fbox buffer_src_box;
+	// Destination rect to scale the buffer to (after source crop).  If width
+	// and height are zero then the buffer is displayed at native size.
+	// Double-buffered by WLR_OUTPUT_STATE_BUFFER along with `buffer`.
+	struct wlr_box buffer_dst_box;
+
 	/* Request a tearing page-flip. When enabled, this may cause the output to
 	 * display a part of the previous buffer and a part of the current buffer at
 	 * the same time. The backend may reject the commit if a tearing page-flip

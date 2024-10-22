@@ -142,6 +142,8 @@ bool wlr_output_state_copy(struct wlr_output_state *dst,
 		WLR_OUTPUT_STATE_WAIT_TIMELINE |
 		WLR_OUTPUT_STATE_SIGNAL_TIMELINE);
 	copy.buffer = NULL;
+	copy.buffer_src_box = (struct wlr_fbox){0};
+	copy.buffer_dst_box = (struct wlr_box){0};
 	pixman_region32_init(&copy.damage);
 	copy.gamma_lut = NULL;
 	copy.gamma_lut_size = 0;
@@ -150,6 +152,8 @@ bool wlr_output_state_copy(struct wlr_output_state *dst,
 
 	if (src->committed & WLR_OUTPUT_STATE_BUFFER) {
 		wlr_output_state_set_buffer(&copy, src->buffer);
+		copy.buffer_src_box = src->buffer_src_box;
+		copy.buffer_dst_box = src->buffer_dst_box;
 	}
 
 	if (src->committed & WLR_OUTPUT_STATE_DAMAGE) {

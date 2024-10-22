@@ -1831,6 +1831,7 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 		return false;
 	}
 
+	// The native size of the buffer after any transform is applied
 	int default_width = buffer->buffer->width;
 	int default_height = buffer->buffer->height;
 	wlr_output_transform_coords(buffer->transform, &default_width, &default_height);
@@ -1839,21 +1840,12 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 		.height = default_height,
 	};
 
-	if (!wlr_fbox_empty(&buffer->src_box) &&
-			!wlr_fbox_equal(&buffer->src_box, &default_box)) {
-		return false;
-	}
-
 	if (buffer->transform != data->transform) {
 		return false;
 	}
 
 	struct wlr_box node_box = { .x = entry->x, .y = entry->y };
 	scene_node_get_size(node, &node_box.width, &node_box.height);
-
-	if (!wlr_box_equal(&data->logical, &node_box)) {
-		return false;
-	}
 
 	if (buffer->primary_output == scene_output) {
 		struct wlr_linux_dmabuf_feedback_v1_init_options options = {
@@ -1870,6 +1862,12 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	if (!wlr_output_state_copy(&pending, state)) {
 		return false;
 	}
+
+	if (!wlr_fbox_empty(&buffer->src_box) &&
+			!wlr_fbox_equal(&buffer->src_box, &default_box)) {
+		pending.buffer_src_box = buffer->src_box;
+	}
+	pending.buffer_dst_box = node_box;
 
 	wlr_output_state_set_buffer(&pending, buffer->buffer);
 	if (buffer->wait_timeline != NULL) {

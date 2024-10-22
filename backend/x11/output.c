@@ -129,6 +129,27 @@ static bool output_test(struct wlr_output *wlr_output,
 		return false;
 	}
 
+	if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
+		// If the size doesn't match, reject buffer (scaling is not supported)
+		int pending_width, pending_height;
+		output_pending_resolution(wlr_output, state,
+			&pending_width, &pending_height);
+		if (state->buffer->width != pending_width ||
+				state->buffer->height != pending_height) {
+			wlr_log(WLR_DEBUG, "Primary buffer size mismatch");
+			return false;
+		}
+		// Source crop is not supported
+		struct wlr_fbox src_box;
+		output_state_get_buffer_src_box(state, &src_box);
+		if (src_box.x != 0.0 || src_box.y != 0.0 ||
+				src_box.width != (double)state->buffer->width ||
+				src_box.height != (double)state->buffer->height) {
+			wlr_log(WLR_DEBUG, "Source crop not supported in X11 output");
+			return false;
+		}
+	}
+
 	// All we can do to influence adaptive sync on the X11 backend is set the
 	// _VARIABLE_REFRESH window property like mesa automatically does. We don't
 	// have any control beyond that, so we set the state to enabled on creating

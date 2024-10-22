@@ -7,6 +7,7 @@
 #include "backend/drm/fb.h"
 #include "backend/drm/iface.h"
 #include "backend/drm/util.h"
+#include "types/wlr_output.h"
 
 static bool legacy_fb_props_match(struct wlr_drm_fb *fb1,
 		struct wlr_drm_fb *fb2) {
@@ -39,20 +40,41 @@ static bool legacy_crtc_test(const struct wlr_drm_connector_state *state,
 	struct wlr_drm_connector *conn = state->connector;
 	struct wlr_drm_crtc *crtc = conn->crtc;
 
-	if ((state->base->committed & WLR_OUTPUT_STATE_BUFFER) && !modeset) {
-		struct wlr_drm_fb *pending_fb = state->primary_fb;
-
-		struct wlr_drm_fb *prev_fb = crtc->primary->queued_fb;
-		if (!prev_fb) {
-			prev_fb = crtc->primary->current_fb;
+	if (state->base->committed & WLR_OUTPUT_STATE_BUFFER) {
+		// If the size doesn't match, reject buffer (scaling is not supported)
+		int pending_width, pending_height;
+		output_pending_resolution(&state->connector->output, state->base,
+			&pending_width, &pending_height);
+		if (state->base->buffer->width != pending_width ||
+				state->base->buffer->height != pending_height) {
+			wlr_log(WLR_DEBUG, "Primary buffer size mismatch");
+			return false;
+		}
+		// Source crop is also not supported
+		struct wlr_fbox src_box;
+		output_state_get_buffer_src_box(state->base, &src_box);
+		if (src_box.x != 0.0 || src_box.y != 0.0 ||
+				src_box.width != (double)state->base->buffer->width ||
+				src_box.height != (double)state->base->buffer->height) {
+			wlr_log(WLR_DEBUG, "Source crop not supported in DRM-legacy output");
+			return false;
 		}
 
-		/* Legacy is only guaranteed to be able to display a FB if it's been
-		 * allocated the same way as the previous one. */
-		if (prev_fb != NULL && !legacy_fb_props_match(prev_fb, pending_fb)) {
-			wlr_drm_conn_log(conn, WLR_DEBUG,
-				"Cannot change scan-out buffer parameters with legacy KMS API");
-			return false;
+		if (!modeset) {
+			struct wlr_drm_fb *pending_fb = state->primary_fb;
+
+			struct wlr_drm_fb *prev_fb = crtc->primary->queued_fb;
+			if (!prev_fb) {
+				prev_fb = crtc->primary->current_fb;
+			}
+
+			/* Legacy is only guaranteed to be able to display a FB if it's been
+			* allocated the same way as the previous one. */
+			if (prev_fb != NULL && !legacy_fb_props_match(prev_fb, pending_fb)) {
+				wlr_drm_conn_log(conn, WLR_DEBUG,
+					"Cannot change scan-out buffer parameters with legacy KMS API");
+				return false;
+			}
 		}
 	}
 
