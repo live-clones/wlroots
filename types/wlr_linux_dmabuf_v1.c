@@ -266,10 +266,8 @@ static void params_create_common(struct wl_resource *params_resource,
 	}
 
 	/* reject unknown flags */
-	uint32_t all_flags = ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_Y_INVERT |
-		ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_INTERLACED |
-		ZWP_LINUX_BUFFER_PARAMS_V1_FLAGS_BOTTOM_FIRST;
-	if (flags & ~all_flags) {
+	uint32_t version = wl_resource_get_version(params_resource);
+	if (!zwp_linux_buffer_params_v1_flags_is_valid(flags, version)) {
 		wl_resource_post_error(params_resource,
 			ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_FORMAT,
 			"Unknown dmabuf flags %"PRIu32, flags);
