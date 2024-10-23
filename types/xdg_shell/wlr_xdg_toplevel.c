@@ -297,18 +297,8 @@ static void xdg_toplevel_handle_resize(struct wl_client *client,
 	struct wlr_seat_client *seat =
 		wlr_seat_client_from_resource(seat_resource);
 
-	switch (edges) {
-	case XDG_TOPLEVEL_RESIZE_EDGE_NONE:
-	case XDG_TOPLEVEL_RESIZE_EDGE_TOP:
-	case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM:
-	case XDG_TOPLEVEL_RESIZE_EDGE_LEFT:
-	case XDG_TOPLEVEL_RESIZE_EDGE_RIGHT:
-	case XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT:
-	case XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT:
-	case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT:
-	case XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT:
-		break;
-	default:
+	uint32_t version = wl_resource_get_version(toplevel->base->resource);
+	if (!xdg_toplevel_resize_edge_is_valid(edges, version)) {
 		wl_resource_post_error(toplevel->base->resource,
 			XDG_TOPLEVEL_ERROR_INVALID_RESIZE_EDGE,
 			"provided value is not a valid variant of the resize_edge enum");

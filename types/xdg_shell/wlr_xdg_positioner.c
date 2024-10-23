@@ -52,7 +52,8 @@ static void xdg_positioner_handle_set_anchor(struct wl_client *client,
 	struct wlr_xdg_positioner *positioner =
 		wlr_xdg_positioner_from_resource(resource);
 
-	if (anchor > XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT) {
+	uint32_t version = wl_resource_get_version(resource);
+	if (!xdg_positioner_anchor_is_valid(anchor, version)) {
 		wl_resource_post_error(resource,
 			XDG_POSITIONER_ERROR_INVALID_INPUT,
 			"invalid anchor value");
@@ -67,7 +68,8 @@ static void xdg_positioner_handle_set_gravity(struct wl_client *client,
 	struct wlr_xdg_positioner *positioner =
 		wlr_xdg_positioner_from_resource(resource);
 
-	if (gravity > XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT) {
+	uint32_t version = wl_resource_get_version(resource);
+	if (!xdg_positioner_gravity_is_valid(gravity, version)) {
 		wl_resource_post_error(resource,
 			XDG_POSITIONER_ERROR_INVALID_INPUT,
 			"invalid gravity value");
@@ -82,6 +84,14 @@ static void xdg_positioner_handle_set_constraint_adjustment(
 		uint32_t constraint_adjustment) {
 	struct wlr_xdg_positioner *positioner =
 		wlr_xdg_positioner_from_resource(resource);
+
+	uint32_t version = wl_resource_get_version(resource);
+	if (!xdg_positioner_constraint_adjustment_is_valid(constraint_adjustment, version)) {
+		wl_resource_post_error(resource,
+			XDG_POSITIONER_ERROR_INVALID_INPUT,
+			"invalid constraint_adjustment value");
+		return;
+	}
 
 	positioner->rules.constraint_adjustment = constraint_adjustment;
 }
