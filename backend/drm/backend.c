@@ -234,10 +234,15 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 		goto error_event;
 	}
 
+	drm->backend.features.timeline = drm->iface != &legacy_iface;
+
 	if (drm->parent) {
 		if (!init_drm_renderer(drm, &drm->mgpu_renderer)) {
-			wlr_log(WLR_ERROR, "Failed to initialize renderer");
-			goto error_resources;
+			wlr_log(WLR_ERROR, "Failed to initialize mgpu blit renderer"
+				", falling back to scanning out from primary GPU");
+			wl_list_remove(&drm->parent_destroy.link);
+			wl_list_init(&drm->parent_destroy.link);
+			goto done;
 		}
 
 		// We'll perform a multi-GPU copy for all submitted buffers, we need
@@ -262,14 +267,11 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 				wlr_drm_format_set_add(&drm->mgpu_formats, fmt->format, mod);
 			}
 		}
-	}
-
-	drm->backend.features.timeline = drm->iface != &legacy_iface;
-	if (drm->parent) {
 		drm->backend.features.timeline = drm->backend.features.timeline &&
 			drm->mgpu_renderer.wlr_rend->features.timeline;
 	}
 
+done:
 	drm->session_destroy.notify = handle_session_destroy;
 	wl_signal_add(&session->events.destroy, &drm->session_destroy);
 
@@ -277,7 +279,6 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 
 error_mgpu_renderer:
 	finish_drm_renderer(&drm->mgpu_renderer);
-error_resources:
 	finish_drm_resources(drm);
 error_event:
 	wl_list_remove(&drm->session_active.link);
