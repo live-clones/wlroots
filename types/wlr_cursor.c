@@ -445,6 +445,7 @@ void wlr_cursor_set_buffer(struct wlr_cursor *cur, struct wlr_buffer *buffer,
 	cursor_reset_image(cur);
 
 	if (buffer != NULL) {
+		wlr_buffer_unlock(cur->state->buffer);
 		cur->state->buffer = wlr_buffer_lock(buffer);
 		cur->state->buffer_hotspot.x = hotspot_x;
 		cur->state->buffer_hotspot.y = hotspot_y;
