@@ -36,9 +36,9 @@ struct wlr_output_layout {
 
 	void *data;
 
-	// private state
-
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_output_layout_output {
@@ -55,11 +55,11 @@ struct wlr_output_layout_output {
 		struct wl_signal destroy;
 	} events;
 
-	// private state
+	struct {
+		struct wlr_addon addon;
 
-	struct wlr_addon addon;
-
-	struct wl_listener commit;
+		struct wl_listener commit;
+	} WLR_PRIVATE;
 };
 
 struct wlr_output_layout *wlr_output_layout_create(struct wl_display *display);

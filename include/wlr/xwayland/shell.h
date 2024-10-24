@@ -25,13 +25,13 @@ struct wlr_xwayland_shell_v1 {
 		struct wl_signal new_surface; // struct wlr_xwayland_surface_v1
 	} events;
 
-	// private state
+	struct {
+		struct wl_client *client;
+		struct wl_list surfaces; // wlr_xwayland_surface_v1.link
 
-	struct wl_client *client;
-	struct wl_list surfaces; // wlr_xwayland_surface_v1.link
-
-	struct wl_listener display_destroy;
-	struct wl_listener client_destroy;
+		struct wl_listener display_destroy;
+		struct wl_listener client_destroy;
+	} WLR_PRIVATE;
 };
 
 /**
@@ -41,12 +41,12 @@ struct wlr_xwayland_surface_v1 {
 	struct wlr_surface *surface;
 	uint64_t serial;
 
-	// private state
-
-	struct wl_resource *resource;
-	struct wl_list link;
-	struct wlr_xwayland_shell_v1 *shell;
-	bool added;
+	struct {
+		struct wl_resource *resource;
+		struct wl_list link;
+		struct wlr_xwayland_shell_v1 *shell;
+		bool added;
+	} WLR_PRIVATE;
 };
 
 /**

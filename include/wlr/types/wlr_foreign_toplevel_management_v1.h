@@ -39,10 +39,10 @@ struct wlr_foreign_toplevel_handle_v1_output {
 	struct wlr_output *output;
 	struct wlr_foreign_toplevel_handle_v1 *toplevel;
 
-	// private state
-
-	struct wl_listener output_bind;
-	struct wl_listener output_destroy;
+	struct {
+		struct wl_listener output_bind;
+		struct wl_listener output_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_foreign_toplevel_handle_v1 {

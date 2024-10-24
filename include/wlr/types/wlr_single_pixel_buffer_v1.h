@@ -14,9 +14,9 @@
 struct wlr_single_pixel_buffer_manager_v1 {
 	struct wl_global *global;
 
-	// private state
-
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 

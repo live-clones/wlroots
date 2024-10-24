@@ -64,13 +64,13 @@ struct wlr_pointer_constraint_v1 {
 
 	void *data;
 
-	// private state
+	struct {
+		struct wl_listener surface_commit;
+		struct wl_listener surface_destroy;
+		struct wl_listener seat_destroy;
 
-	struct wl_listener surface_commit;
-	struct wl_listener surface_destroy;
-	struct wl_listener seat_destroy;
-
-	struct wlr_surface_synced synced;
+		struct wlr_surface_synced synced;
+	} WLR_PRIVATE;
 };
 
 struct wlr_pointer_constraints_v1 {

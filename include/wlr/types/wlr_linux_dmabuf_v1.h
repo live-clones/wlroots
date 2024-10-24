@@ -24,9 +24,9 @@ struct wlr_dmabuf_v1_buffer {
 	struct wl_resource *resource; // can be NULL if the client destroyed it
 	struct wlr_dmabuf_attributes attributes;
 
-	// private state
-
-	struct wl_listener release;
+	struct {
+		struct wl_listener release;
+	} WLR_PRIVATE;
 };
 
 /**
@@ -55,18 +55,18 @@ struct wlr_linux_dmabuf_v1 {
 		struct wl_signal destroy;
 	} events;
 
-	// private state
+	struct {
+		struct wlr_linux_dmabuf_feedback_v1_compiled *default_feedback;
+		struct wlr_drm_format_set default_formats; // for legacy clients
+		struct wl_list surfaces; // wlr_linux_dmabuf_v1_surface.link
 
-	struct wlr_linux_dmabuf_feedback_v1_compiled *default_feedback;
-	struct wlr_drm_format_set default_formats; // for legacy clients
-	struct wl_list surfaces; // wlr_linux_dmabuf_v1_surface.link
+		int main_device_fd; // to sanity check FDs sent by clients, -1 if unavailable
 
-	int main_device_fd; // to sanity check FDs sent by clients, -1 if unavailable
+		struct wl_listener display_destroy;
 
-	struct wl_listener display_destroy;
-
-	bool (*check_dmabuf_callback)(struct wlr_dmabuf_attributes *attribs, void *data);
-	void *check_dmabuf_callback_data;
+		bool (*check_dmabuf_callback)(struct wlr_dmabuf_attributes *attribs, void *data);
+		void *check_dmabuf_callback_data;
+	} WLR_PRIVATE;
 };
 
 /**
