@@ -44,6 +44,7 @@ wlr_files += files(
 	'wlr_export_dmabuf_v1.c',
 	'wlr_foreign_toplevel_management_v1.c',
 	'wlr_ext_foreign_toplevel_list_v1.c',
+	'wlr_fractional_scale_v1.c',
 	'wlr_fullscreen_shell_v1.c',
 	'wlr_gamma_control_v1.c',
 	'wlr_idle_inhibit_v1.c',
@@ -77,10 +78,10 @@ wlr_files += files(
 	'wlr_shm.c',
 	'wlr_single_pixel_buffer_v1.c',
 	'wlr_subcompositor.c',
-	'wlr_fractional_scale_v1.c',
 	'wlr_switch.c',
 	'wlr_tablet_pad.c',
 	'wlr_tablet_tool.c',
+	'wlr_tearing_control_v1.c',
 	'wlr_text_input_v3.c',
 	'wlr_touch.c',
 	'wlr_transient_seat_v1.c',
@@ -94,7 +95,6 @@ wlr_files += files(
 	'wlr_xdg_foreign_v2.c',
 	'wlr_xdg_foreign_registry.c',
 	'wlr_xdg_output_v1.c',
-	'wlr_tearing_control_v1.c',
 )
 
 if features.get('drm-backend')
