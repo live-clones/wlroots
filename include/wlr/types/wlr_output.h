@@ -96,11 +96,13 @@ struct wlr_output_state {
 
 	struct wlr_buffer *buffer;
 	// Source crop for the buffer.  If all zeros then no crop is applied.
+	// As usual with source crop, this is in buffer coordinates.
 	// Double-buffered by WLR_OUTPUT_STATE_BUFFER along with `buffer`.
 	struct wlr_fbox buffer_src_box;
 	// Destination rect to scale the buffer to (after source crop).  If width
-	// and height are zero then the buffer is displayed at native size.
-	// Double-buffered by WLR_OUTPUT_STATE_BUFFER along with `buffer`.
+	// and height are zero then the buffer is displayed at native size.  The
+	// offset is relative to the origin of this output. Double-buffered by
+	// WLR_OUTPUT_STATE_BUFFER along with `buffer`.
 	struct wlr_box buffer_dst_box;
 
 	/* Request a tearing page-flip. When enabled, this may cause the output to

@@ -1844,9 +1844,6 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 		return false;
 	}
 
-	struct wlr_box node_box = { .x = entry->x, .y = entry->y };
-	scene_node_get_size(node, &node_box.width, &node_box.height);
-
 	if (buffer->primary_output == scene_output) {
 		struct wlr_linux_dmabuf_feedback_v1_init_options options = {
 			.main_renderer = scene_output->output->renderer,
@@ -1867,7 +1864,11 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 			!wlr_fbox_equal(&buffer->src_box, &default_box)) {
 		pending.buffer_src_box = buffer->src_box;
 	}
-	pending.buffer_dst_box = node_box;
+
+	// Translate the location from scene coordinates to output coordinates
+	pending.buffer_dst_box.x = entry->x - scene_output->x;
+	pending.buffer_dst_box.y = entry->y - scene_output->y;
+	scene_node_get_size(node, &pending.buffer_dst_box.width, &pending.buffer_dst_box.height);
 
 	wlr_output_state_set_buffer(&pending, buffer->buffer);
 	if (buffer->wait_timeline != NULL) {
