@@ -1865,10 +1865,17 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 		pending.buffer_src_box = buffer->src_box;
 	}
 
-	// Translate the location from scene coordinates to output coordinates
+	// Translate and rotate the position from scene coordinates to output
+	// coordinates
 	pending.buffer_dst_box.x = entry->x - scene_output->x;
 	pending.buffer_dst_box.y = entry->y - scene_output->y;
+	wlr_output_transform_coords(data->transform, &pending.buffer_dst_box.x,
+		&pending.buffer_dst_box.y);
+
+	// Set the destination size, transform if needed
 	scene_node_get_size(node, &pending.buffer_dst_box.width, &pending.buffer_dst_box.height);
+	wlr_output_transform_coords(data->transform, &pending.buffer_dst_box.width,
+		&pending.buffer_dst_box.height);
 
 	wlr_output_state_set_buffer(&pending, buffer->buffer);
 	if (buffer->wait_timeline != NULL) {
