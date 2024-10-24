@@ -409,7 +409,7 @@ struct wlr_backend *wlr_x11_backend_create(struct wl_event_loop *loop,
 	wl_list_init(&x11->outputs);
 
 	x11->xcb = xcb_connect(x11_display, NULL);
-	if (!x11->xcb || xcb_connection_has_error(x11->xcb)) {
+	if (xcb_connection_has_error(x11->xcb)) {
 		wlr_log(WLR_ERROR, "Failed to open xcb connection");
 		goto error_x11;
 	}
