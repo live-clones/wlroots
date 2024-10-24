@@ -3,6 +3,7 @@
 #include <wlr/util/log.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_buffer.h>
+#include <wlr/types/wlr_damage_ring.h>
 #include "render/allocator/allocator.h"
 #include "render/drm_format_set.h"
 
@@ -106,6 +107,40 @@ struct wlr_buffer *wlr_swapchain_acquire(struct wlr_swapchain *swapchain) {
 		return NULL;
 	}
 	return slot_acquire(swapchain, free_slot);
+}
+
+struct wlr_buffer *wlr_swapchain_acquire_from_damage_ring(struct wlr_swapchain *swapchain,
+		struct wlr_damage_ring *ring, pixman_region32_t *damage) {
+	struct wlr_buffer *buffer = NULL;
+
+	struct wlr_damage_ring_buffer *entry;
+	wl_list_for_each(entry, &ring->buffers, link) {
+		for (size_t i = 0; i < WLR_SWAPCHAIN_CAP; i++) {
+			struct wlr_swapchain_slot *slot = &swapchain->slots[i];
+			if (slot->acquired) {
+				continue;
+			}
+
+			if (slot->buffer == entry->buffer) {
+				buffer = slot_acquire(swapchain, slot);
+				break;
+			}
+		}
+
+		if (buffer) {
+			break;
+		}
+	}
+
+	if (!buffer) {
+		buffer = wlr_swapchain_acquire(swapchain);
+		if (!buffer) {
+			return NULL;
+		}
+	}
+
+	wlr_damage_ring_rotate_buffer(ring, buffer, damage);
+	return buffer;
 }
 
 bool wlr_swapchain_has_buffer(struct wlr_swapchain *swapchain,
