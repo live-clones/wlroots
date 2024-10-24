@@ -527,6 +527,7 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 		wlr_log(WLR_DEBUG, "DMA-BUF sync_file import/export not supported");
 	}
 
+	dev->sync_file_import_export = exportable_semaphore && importable_semaphore;
 	dev->implicit_sync_interop =
 		exportable_semaphore && importable_semaphore && dmabuf_sync_file_import_export;
 	if (dev->implicit_sync_interop) {
