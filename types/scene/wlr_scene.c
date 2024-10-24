@@ -7,6 +7,7 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_damage_ring.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -1482,6 +1483,46 @@ void wlr_scene_set_gamma_control_manager_v1(struct wlr_scene *scene,
 	scene->gamma_control_manager_v1_set_gamma.notify =
 		scene_handle_gamma_control_manager_v1_set_gamma;
 	wl_signal_add(&gamma_control->events.set_gamma, &scene->gamma_control_manager_v1_set_gamma);
+}
+
+static void scene_surface_set_fifo_barrier(struct wlr_scene_buffer *buffer, int sx, int sy, void *user_data) {
+	struct wlr_scene_surface *scene_surface =
+		wlr_scene_surface_try_from_buffer(buffer);
+	struct wlr_fifo_v1 *wlr_fifo = user_data;
+
+	if (scene_surface && scene_surface->surface == wlr_fifo->surface) {
+		scene_surface->fifo_barrier_set = true;
+	}
+}
+
+static void scene_handle_fifo_manager_v1_barrier_set(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene *scene =
+		wl_container_of(listener, scene, fifo_manager_v1_fifo_barrier);
+	struct wlr_fifo_manager_v1_fifo_barrier_event *event = data;
+
+	wlr_scene_node_for_each_buffer(&scene->tree.node, scene_surface_set_fifo_barrier, event);
+}
+
+static void scene_handle_fifo_manager_v1_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene *scene =
+		wl_container_of(listener, scene, fifo_manager_v1_destroy);
+	wl_list_remove(&scene->fifo_manager_v1_destroy.link);
+	wl_list_init(&scene->fifo_manager_v1_destroy.link);
+	wl_list_remove(&scene->fifo_manager_v1_fifo_barrier.link);
+	wl_list_init(&scene->fifo_manager_v1_fifo_barrier.link);
+	scene->fifo_manager_v1 = NULL;
+}
+
+void wlr_scene_set_fifo_manager_v1(struct wlr_scene *scene,
+	    struct wlr_fifo_manager_v1 *fifo_manager) {
+	assert(scene->fifo_manager_v1 == NULL);
+	scene->fifo_manager_v1 = fifo_manager;
+	scene->fifo_manager_v1_fifo_barrier.notify = scene_handle_fifo_manager_v1_barrier_set;
+	wl_signal_add(&fifo_manager->events.barrier_set, &scene->fifo_manager_v1_fifo_barrier);
+	scene->fifo_manager_v1_destroy.notify = scene_handle_fifo_manager_v1_destroy;
+	wl_signal_add(&fifo_manager->events.destroy, &scene->fifo_manager_v1_destroy);
 }
 
 static void scene_output_handle_destroy(struct wlr_addon *addon) {
