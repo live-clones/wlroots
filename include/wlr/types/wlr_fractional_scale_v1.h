@@ -20,9 +20,9 @@ struct wlr_fractional_scale_manager_v1 {
 		struct wl_signal destroy;
 	} events;
 
-	// private state
-
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 void wlr_fractional_scale_v1_notify_scale(

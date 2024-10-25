@@ -23,9 +23,9 @@ struct wlr_content_type_manager_v1 {
 
 	void *data;
 
-	// private state
-
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_content_type_manager_v1 *wlr_content_type_manager_v1_create(

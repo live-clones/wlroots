@@ -53,9 +53,9 @@ struct wlr_renderer {
 		bool timeline;
 	} features;
 
-	// private state
-
-	const struct wlr_renderer_impl *impl;
+	struct {
+		const struct wlr_renderer_impl *impl;
+	} WLR_PRIVATE;
 };
 
 /**

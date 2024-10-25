@@ -30,9 +30,9 @@ struct wlr_damage_ring {
 	// Difference between the current buffer and the previous one
 	pixman_region32_t current;
 
-	// private state
-
-	struct wl_list buffers; // wlr_damage_ring_buffer.link
+	struct {
+		struct wl_list buffers; // wlr_damage_ring_buffer.link
+	} WLR_PRIVATE;
 };
 
 void wlr_damage_ring_init(struct wlr_damage_ring *ring);

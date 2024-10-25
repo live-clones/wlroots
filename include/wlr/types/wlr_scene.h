@@ -75,9 +75,9 @@ struct wlr_scene_node {
 
 	struct wlr_addon_set addons;
 
-	// private state
-
-	pixman_region32_t visible;
+	struct {
+		pixman_region32_t visible;
+	} WLR_PRIVATE;
 };
 
 enum wlr_scene_debug_damage_option {
@@ -103,16 +103,16 @@ struct wlr_scene {
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf_v1;
 	struct wlr_gamma_control_manager_v1 *gamma_control_manager_v1;
 
-	// private state
+	struct {
+		struct wl_listener linux_dmabuf_v1_destroy;
+		struct wl_listener gamma_control_manager_v1_destroy;
+		struct wl_listener gamma_control_manager_v1_set_gamma;
 
-	struct wl_listener linux_dmabuf_v1_destroy;
-	struct wl_listener gamma_control_manager_v1_destroy;
-	struct wl_listener gamma_control_manager_v1_set_gamma;
-
-	enum wlr_scene_debug_damage_option debug_damage_option;
-	bool direct_scanout;
-	bool calculate_visibility;
-	bool highlight_transparent_region;
+		enum wlr_scene_debug_damage_option debug_damage_option;
+		bool direct_scanout;
+		bool calculate_visibility;
+		bool highlight_transparent_region;
+	} WLR_PRIVATE;
 };
 
 /** A scene-graph node displaying a single surface. */
@@ -120,19 +120,19 @@ struct wlr_scene_surface {
 	struct wlr_scene_buffer *buffer;
 	struct wlr_surface *surface;
 
-	// private state
+	struct {
+		struct wlr_box clip;
 
-	struct wlr_box clip;
+		struct wlr_addon addon;
 
-	struct wlr_addon addon;
-
-	struct wl_listener outputs_update;
-	struct wl_listener output_enter;
-	struct wl_listener output_leave;
-	struct wl_listener output_sample;
-	struct wl_listener frame_done;
-	struct wl_listener surface_destroy;
-	struct wl_listener surface_commit;
+		struct wl_listener outputs_update;
+		struct wl_listener output_enter;
+		struct wl_listener output_leave;
+		struct wl_listener output_sample;
+		struct wl_listener frame_done;
+		struct wl_listener surface_destroy;
+		struct wl_listener surface_commit;
+	} WLR_PRIVATE;
 };
 
 /** A scene-graph node displaying a solid-colored rectangle */
@@ -185,21 +185,21 @@ struct wlr_scene_buffer {
 	enum wl_output_transform transform;
 	pixman_region32_t opaque_region;
 
-	// private state
+	struct {
+		uint64_t active_outputs;
+		struct wlr_texture *texture;
+		struct wlr_linux_dmabuf_feedback_v1_init_options prev_feedback_options;
 
-	uint64_t active_outputs;
-	struct wlr_texture *texture;
-	struct wlr_linux_dmabuf_feedback_v1_init_options prev_feedback_options;
+		bool own_buffer;
+		int buffer_width, buffer_height;
+		bool buffer_is_opaque;
 
-	bool own_buffer;
-	int buffer_width, buffer_height;
-	bool buffer_is_opaque;
+		struct wlr_drm_syncobj_timeline *wait_timeline;
+		uint64_t wait_point;
 
-	struct wlr_drm_syncobj_timeline *wait_timeline;
-	uint64_t wait_point;
-
-	struct wl_listener buffer_release;
-	struct wl_listener renderer_destroy;
+		struct wl_listener buffer_release;
+		struct wl_listener renderer_destroy;
+	} WLR_PRIVATE;
 };
 
 /** A viewport for an output in the scene-graph */
@@ -217,26 +217,26 @@ struct wlr_scene_output {
 		struct wl_signal destroy;
 	} events;
 
-	// private state
+	struct {
+		pixman_region32_t pending_commit_damage;
 
-	pixman_region32_t pending_commit_damage;
+		uint8_t index;
+		bool prev_scanout;
 
-	uint8_t index;
-	bool prev_scanout;
+		bool gamma_lut_changed;
+		struct wlr_gamma_control_v1 *gamma_lut;
 
-	bool gamma_lut_changed;
-	struct wlr_gamma_control_v1 *gamma_lut;
+		struct wl_listener output_commit;
+		struct wl_listener output_damage;
+		struct wl_listener output_needs_frame;
 
-	struct wl_listener output_commit;
-	struct wl_listener output_damage;
-	struct wl_listener output_needs_frame;
+		struct wl_list damage_highlight_regions;
 
-	struct wl_list damage_highlight_regions;
+		struct wl_array render_list;
 
-	struct wl_array render_list;
-
-	struct wlr_drm_syncobj_timeline *in_timeline;
-	uint64_t in_point;
+		struct wlr_drm_syncobj_timeline *in_timeline;
+		uint64_t in_point;
+	} WLR_PRIVATE;
 };
 
 struct wlr_scene_timer {
@@ -249,12 +249,12 @@ struct wlr_scene_layer_surface_v1 {
 	struct wlr_scene_tree *tree;
 	struct wlr_layer_surface_v1 *layer_surface;
 
-	// private state
-
-	struct wl_listener tree_destroy;
-	struct wl_listener layer_surface_destroy;
-	struct wl_listener layer_surface_map;
-	struct wl_listener layer_surface_unmap;
+	struct {
+		struct wl_listener tree_destroy;
+		struct wl_listener layer_surface_destroy;
+		struct wl_listener layer_surface_map;
+		struct wl_listener layer_surface_unmap;
+	} WLR_PRIVATE;
 };
 
 /**

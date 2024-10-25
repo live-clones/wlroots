@@ -237,6 +237,13 @@ used and `#undef` them after.
 * Document the contents and container of a `struct wl_list` with a
   `// content.link` and `// container.list` comment.
 
+### Private fields
+
+Wrap private fields of public structures with `struct { … } WLR_PRIVATE`. This
+ensures that compositor authors don't use them by accident. Within wlroots
+`WLR_PRIVATE` is expanded to nothing, so private fields are accessed in the same
+way as public ones.
+
 ### Safety
 
 * Avoid string manipulation functions which don't take the size of the
@@ -325,12 +332,14 @@ struct wlr_compositor {
 	struct wl_global *global;
 	…
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal new_surface;
 		struct wl_signal destroy;
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 ```
 

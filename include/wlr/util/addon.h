@@ -12,8 +12,9 @@
 #include <wayland-server-core.h>
 
 struct wlr_addon_set {
-	// private state
-	struct wl_list addons;
+	struct {
+		struct wl_list addons;
+	} WLR_PRIVATE;
 };
 
 struct wlr_addon;
@@ -26,9 +27,11 @@ struct wlr_addon_interface {
 
 struct wlr_addon {
 	const struct wlr_addon_interface *impl;
-	// private state
-	const void *owner;
-	struct wl_list link;
+
+	struct {
+		const void *owner;
+		struct wl_list link;
+	} WLR_PRIVATE;
 };
 
 void wlr_addon_set_init(struct wlr_addon_set *set);

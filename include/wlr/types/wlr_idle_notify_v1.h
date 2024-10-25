@@ -19,12 +19,12 @@ struct wlr_seat;
 struct wlr_idle_notifier_v1 {
 	struct wl_global *global;
 
-	// private state
+	struct {
+		bool inhibited;
+		struct wl_list notifications; // wlr_idle_notification_v1.link
 
-	bool inhibited;
-	struct wl_list notifications; // wlr_idle_notification_v1.link
-
-	struct wl_listener display_destroy;
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 

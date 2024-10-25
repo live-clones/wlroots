@@ -50,10 +50,10 @@ struct wlr_output_layer {
 
 	void *data;
 
-	// private state
-
-	struct wlr_fbox src_box;
-	struct wlr_box dst_box;
+	struct {
+		struct wlr_fbox src_box;
+		struct wlr_box dst_box;
+	} WLR_PRIVATE;
 };
 
 /**

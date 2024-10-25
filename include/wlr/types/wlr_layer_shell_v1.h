@@ -114,9 +114,9 @@ struct wlr_layer_surface_v1 {
 
 	void *data;
 
-	// private state
-
-	struct wlr_surface_synced synced;
+	struct {
+		struct wlr_surface_synced synced;
+	} WLR_PRIVATE;
 };
 
 struct wlr_layer_shell_v1 *wlr_layer_shell_v1_create(struct wl_display *display,

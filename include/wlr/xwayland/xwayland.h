@@ -65,13 +65,13 @@ struct wlr_xwayland {
 
 	void *data;
 
-	// private state
-
-	struct wl_listener server_start;
-	struct wl_listener server_ready;
-	struct wl_listener server_destroy;
-	struct wl_listener seat_destroy;
-	struct wl_listener shell_destroy;
+	struct {
+		struct wl_listener server_start;
+		struct wl_listener server_ready;
+		struct wl_listener server_destroy;
+		struct wl_listener seat_destroy;
+		struct wl_listener shell_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_xwayland_surface_decorations {
