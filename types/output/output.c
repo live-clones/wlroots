@@ -872,8 +872,9 @@ void output_state_get_buffer_src_box(const struct wlr_output_state *state,
 		struct wlr_fbox *out) {
 	out->x = state->buffer_src_box.x;
 	out->y = state->buffer_src_box.y;
-	// If the source box is unset then default to the whole buffer.
-	if (state->buffer_src_box.width == 0.0 &&
+	// If the source box is unset then default to the whole buffer if set.
+	if (state->buffer != NULL &&
+			state->buffer_src_box.width == 0.0 &&
 			state->buffer_src_box.height == 0.0) {
 		out->width = (double)state->buffer->width;
 		out->height = (double)state->buffer->height;
