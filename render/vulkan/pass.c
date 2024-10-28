@@ -437,15 +437,6 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 
 	free(render_wait);
 
-	struct wlr_vk_shared_buffer *stage_buf, *stage_buf_tmp;
-	wl_list_for_each_safe(stage_buf, stage_buf_tmp, &renderer->stage.buffers, link) {
-		if (stage_buf->allocs.size == 0) {
-			continue;
-		}
-		wl_list_remove(&stage_buf->link);
-		wl_list_insert(&stage_cb->stage_buffers, &stage_buf->link);
-	}
-
 	if (!vulkan_sync_render_buffer(renderer, render_buffer, render_cb)) {
 		wlr_log(WLR_ERROR, "Failed to sync render buffer");
 	}
@@ -816,14 +807,14 @@ static bool create_3d_lut_image(struct wlr_vk_renderer *renderer,
 
 	size_t bytes_per_block = 4 * sizeof(float);
 	size_t size = lut_3d->dim_len * lut_3d->dim_len * lut_3d->dim_len * bytes_per_block;
-	struct wlr_vk_buffer_span span = vulkan_get_stage_span(renderer,
+	struct wlr_vk_stage_span *span = vulkan_get_stage_span(renderer,
 		size, bytes_per_block);
-	if (!span.buffer || span.alloc.size != size) {
+	if (span == NULL) {
 		wlr_log(WLR_ERROR, "Failed to retrieve staging buffer");
 		goto fail_imageview;
 	}
 
-	char *map = (char*)span.buffer->cpu_mapping + span.alloc.start;
+	char *map = (char*)span->buffer->cpu_mapping + span->start;
 	float *dst = (float*)map;
 	size_t dim_len = lut_3d->dim_len;
 	for (size_t b_index = 0; b_index < dim_len; b_index++) {
@@ -841,19 +832,21 @@ static bool create_3d_lut_image(struct wlr_vk_renderer *renderer,
 	}
 
 	VkCommandBuffer cb = vulkan_record_stage_cb(renderer);
+	wl_list_insert(&renderer->stage.cb->stage_spans, &span->usage_link);
+
 	vulkan_change_layout(cb, *image,
 		VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
 		VK_ACCESS_TRANSFER_WRITE_BIT);
 	VkBufferImageCopy copy = {
-		.bufferOffset = span.alloc.start,
+		.bufferOffset = span->start,
 		.imageExtent.width = lut_3d->dim_len,
 		.imageExtent.height = lut_3d->dim_len,
 		.imageExtent.depth = lut_3d->dim_len,
 		.imageSubresource.layerCount = 1,
 		.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 	};
-	vkCmdCopyBufferToImage(cb, span.buffer->buffer, *image,
+	vkCmdCopyBufferToImage(cb, span->buffer->buffer, *image,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
 	vulkan_change_layout(cb, *image,
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
