@@ -48,14 +48,16 @@ struct wlr_input_method_v2 {
 
 	struct wl_list link;
 
-	struct wl_listener seat_client_destroy;
-
 	struct {
 		struct wl_signal commit; // struct wlr_input_method_v2
 		struct wl_signal new_popup_surface; // struct wlr_input_popup_surface_v2
 		struct wl_signal grab_keyboard; // struct wlr_input_method_keyboard_grab_v2
 		struct wl_signal destroy; // struct wlr_input_method_v2
 	} events;
+
+	struct {
+		struct wl_listener seat_client_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_input_popup_surface_v2 {
@@ -77,25 +79,29 @@ struct wlr_input_method_keyboard_grab_v2 {
 	struct wlr_input_method_v2 *input_method;
 	struct wlr_keyboard *keyboard;
 
-	struct wl_listener keyboard_keymap;
-	struct wl_listener keyboard_repeat_info;
-	struct wl_listener keyboard_destroy;
-
 	struct {
 		struct wl_signal destroy; // struct wlr_input_method_keyboard_grab_v2
 	} events;
+
+	struct {
+		struct wl_listener keyboard_keymap;
+		struct wl_listener keyboard_repeat_info;
+		struct wl_listener keyboard_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_input_method_manager_v2 {
 	struct wl_global *global;
 	struct wl_list input_methods; // struct wlr_input_method_v2.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal input_method; // struct wlr_input_method_v2
 		struct wl_signal destroy; // struct wlr_input_method_manager_v2
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_input_method_manager_v2 *wlr_input_method_manager_v2_create(

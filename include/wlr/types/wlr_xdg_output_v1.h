@@ -21,8 +21,10 @@ struct wlr_xdg_output_v1 {
 	int32_t x, y;
 	int32_t width, height;
 
-	struct wl_listener destroy;
-	struct wl_listener description;
+	struct {
+		struct wl_listener destroy;
+		struct wl_listener description;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_output_manager_v1 {
@@ -35,10 +37,12 @@ struct wlr_xdg_output_manager_v1 {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener display_destroy;
-	struct wl_listener layout_add;
-	struct wl_listener layout_change;
-	struct wl_listener layout_destroy;
+	struct {
+		struct wl_listener display_destroy;
+		struct wl_listener layout_add;
+		struct wl_listener layout_change;
+		struct wl_listener layout_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_output_manager_v1 *wlr_xdg_output_manager_v1_create(

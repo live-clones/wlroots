@@ -122,8 +122,11 @@ struct wlr_surface_output {
 	struct wlr_output *output;
 
 	struct wl_list link; // wlr_surface.current_outputs
-	struct wl_listener bind;
-	struct wl_listener destroy;
+
+	struct {
+		struct wl_listener bind;
+		struct wl_listener destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_surface {
@@ -271,13 +274,15 @@ struct wlr_compositor {
 	struct wl_global *global;
 	struct wlr_renderer *renderer; // may be NULL
 
-	struct wl_listener display_destroy;
-	struct wl_listener renderer_destroy;
-
 	struct {
 		struct wl_signal new_surface;
 		struct wl_signal destroy;
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+		struct wl_listener renderer_destroy;
+	} WLR_PRIVATE;
 };
 
 typedef void (*wlr_surface_iterator_func_t)(struct wlr_surface *surface,

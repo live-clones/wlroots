@@ -29,7 +29,9 @@ struct wlr_viewporter {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_viewporter *wlr_viewporter_create(struct wl_display *display);

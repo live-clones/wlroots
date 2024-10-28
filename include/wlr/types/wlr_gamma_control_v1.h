@@ -10,14 +10,16 @@ struct wlr_gamma_control_manager_v1 {
 	struct wl_global *global;
 	struct wl_list controls; // wlr_gamma_control_v1.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 		struct wl_signal set_gamma; // struct wlr_gamma_control_manager_v1_set_gamma_event
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_gamma_control_manager_v1_set_gamma_event {
@@ -34,9 +36,11 @@ struct wlr_gamma_control_v1 {
 	uint16_t *table;
 	size_t ramp_size;
 
-	struct wl_listener output_destroy_listener;
-
 	void *data;
+
+	struct {
+		struct wl_listener output_destroy_listener;
+	} WLR_PRIVATE;
 };
 
 struct wlr_gamma_control_manager_v1 *wlr_gamma_control_manager_v1_create(

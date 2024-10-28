@@ -16,12 +16,14 @@ struct wlr_virtual_keyboard_manager_v1 {
 	struct wl_global *global;
 	struct wl_list virtual_keyboards; // wlr_virtual_keyboard_v1.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal new_virtual_keyboard; // struct wlr_virtual_keyboard_v1
 		struct wl_signal destroy;
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_virtual_keyboard_v1 {

@@ -17,11 +17,13 @@ struct wlr_export_dmabuf_manager_v1 {
 	struct wl_global *global;
 	struct wl_list frames; // wlr_export_dmabuf_frame_v1.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_export_dmabuf_frame_v1 {
@@ -33,8 +35,10 @@ struct wlr_export_dmabuf_frame_v1 {
 
 	bool cursor_locked;
 
-	struct wl_listener output_commit;
-	struct wl_listener output_destroy;
+	struct {
+		struct wl_listener output_commit;
+		struct wl_listener output_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_export_dmabuf_manager_v1 *wlr_export_dmabuf_manager_v1_create(

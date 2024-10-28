@@ -60,13 +60,16 @@ struct wlr_session {
 	struct wl_list devices; // wlr_device.link
 
 	struct wl_event_loop *event_loop;
-	struct wl_listener event_loop_destroy;
 
 	struct {
 		struct wl_signal active;
 		struct wl_signal add_drm_card; // struct wlr_session_add_event
 		struct wl_signal destroy;
 	} events;
+
+	struct {
+		struct wl_listener event_loop_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_session_add_event {

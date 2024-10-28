@@ -18,7 +18,6 @@ struct wlr_drm_lease_v1_manager {
 	struct wl_list devices; // wlr_drm_lease_device_v1.link
 
 	struct wl_display *display;
-	struct wl_listener display_destroy;
 
 	struct {
 		/**
@@ -29,6 +28,10 @@ struct wlr_drm_lease_v1_manager {
 		 */
 		struct wl_signal request;
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_drm_lease_device_v1 {
@@ -43,9 +46,11 @@ struct wlr_drm_lease_device_v1 {
 	struct wl_list requests; // wlr_drm_lease_request_v1.link
 	struct wl_list link; // wlr_drm_lease_v1_manager.devices
 
-	struct wl_listener backend_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener backend_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_drm_lease_v1;
@@ -58,9 +63,11 @@ struct wlr_drm_lease_connector_v1 {
 	/** NULL if no client is currently leasing this connector */
 	struct wlr_drm_lease_v1 *active_lease;
 
-	struct wl_listener destroy;
-
 	struct wl_list link; // wlr_drm_lease_device_v1.connectors
+
+	struct {
+		struct wl_listener destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_drm_lease_request_v1 {
@@ -89,9 +96,11 @@ struct wlr_drm_lease_v1 {
 
 	struct wl_list link; // wlr_drm_lease_device_v1.leases
 
-	struct wl_listener destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener destroy;
+	} WLR_PRIVATE;
 };
 
 /**

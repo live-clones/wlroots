@@ -11,7 +11,9 @@ struct wlr_swapchain_slot {
 	struct wlr_buffer *buffer;
 	bool acquired; // waiting for release
 
-	struct wl_listener release;
+	struct {
+		struct wl_listener release;
+	} WLR_PRIVATE;
 };
 
 struct wlr_swapchain {
@@ -22,7 +24,9 @@ struct wlr_swapchain {
 
 	struct wlr_swapchain_slot slots[WLR_SWAPCHAIN_CAP];
 
-	struct wl_listener allocator_destroy;
+	struct {
+		struct wl_listener allocator_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_swapchain *wlr_swapchain_create(

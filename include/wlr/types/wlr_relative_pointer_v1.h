@@ -30,9 +30,11 @@ struct wlr_relative_pointer_manager_v1 {
 		struct wl_signal new_relative_pointer; // struct wlr_relative_pointer_v1
 	} events;
 
-	struct wl_listener display_destroy_listener;
-
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy_listener;
+	} WLR_PRIVATE;
 };
 
 /**
@@ -51,10 +53,12 @@ struct wlr_relative_pointer_v1 {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener seat_destroy;
-	struct wl_listener pointer_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener seat_destroy;
+		struct wl_listener pointer_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_relative_pointer_manager_v1 *wlr_relative_pointer_manager_v1_create(

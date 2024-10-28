@@ -133,9 +133,6 @@ struct wlr_xwayland_surface {
 
 	struct wlr_surface *surface;
 	struct wlr_addon surface_addon;
-	struct wl_listener surface_commit;
-	struct wl_listener surface_map;
-	struct wl_listener surface_unmap;
 
 	int16_t x, y;
 	uint16_t width, height;
@@ -216,6 +213,12 @@ struct wlr_xwayland_surface {
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener surface_commit;
+		struct wl_listener surface_map;
+		struct wl_listener surface_unmap;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xwayland_surface_configure_event {

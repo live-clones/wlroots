@@ -48,8 +48,11 @@ struct wlr_output_cursor {
 	bool own_texture;
 	struct wlr_drm_syncobj_timeline *wait_timeline;
 	uint64_t wait_point;
-	struct wl_listener renderer_destroy;
 	struct wl_list link;
+
+	struct {
+		struct wl_listener renderer_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_output_adaptive_sync_status {
@@ -226,11 +229,13 @@ struct wlr_output {
 	struct wlr_renderer *renderer;
 	struct wlr_swapchain *swapchain;
 
-	struct wl_listener display_destroy;
-
 	struct wlr_addon_set addons;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_output_event_damage {

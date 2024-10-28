@@ -20,13 +20,15 @@ struct wlr_pointer_gestures_v1 {
 	struct wl_list pinches; // wl_resource_get_link()
 	struct wl_list holds; // wl_resource_get_link()
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_pointer_gestures_v1 *wlr_pointer_gestures_v1_create(

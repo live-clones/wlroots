@@ -31,8 +31,6 @@
 struct wlr_layer_shell_v1 {
 	struct wl_global *global;
 
-	struct wl_listener display_destroy;
-
 	struct {
 		// Note: the output may be NULL. In this case, it is your
 		// responsibility to assign an output before returning.
@@ -41,6 +39,10 @@ struct wlr_layer_shell_v1 {
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_layer_surface_v1_state_field {

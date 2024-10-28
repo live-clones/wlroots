@@ -39,9 +39,11 @@ struct wlr_output_manager_v1 {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener display_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_output_head_v1_state {
@@ -67,7 +69,9 @@ struct wlr_output_head_v1 {
 	struct wl_list resources; // wl_resource_get_link()
 	struct wl_list mode_resources; // wl_resource_get_link()
 
-	struct wl_listener output_destroy;
+	struct {
+		struct wl_listener output_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_output_configuration_v1 {
@@ -89,7 +93,9 @@ struct wlr_output_configuration_head_v1 {
 	// client state
 	struct wl_resource *resource; // can be NULL if finalized or disabled
 
-	struct wl_listener output_destroy;
+	struct {
+		struct wl_listener output_destroy;
+	} WLR_PRIVATE;
 };
 
 /**

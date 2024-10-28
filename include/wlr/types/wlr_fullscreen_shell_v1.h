@@ -22,9 +22,11 @@ struct wlr_fullscreen_shell_v1 {
 		struct wl_signal present_surface;
 	} events;
 
-	struct wl_listener display_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_fullscreen_shell_v1_present_surface_event {

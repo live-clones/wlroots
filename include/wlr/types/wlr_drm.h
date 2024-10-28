@@ -21,7 +21,9 @@ struct wlr_drm_buffer {
 	struct wl_resource *resource; // can be NULL if the client destroyed it
 	struct wlr_dmabuf_attributes dmabuf;
 
-	struct wl_listener release;
+	struct {
+		struct wl_listener release;
+	} WLR_PRIVATE;
 };
 
 /**

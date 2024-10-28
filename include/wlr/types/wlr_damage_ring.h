@@ -19,11 +19,14 @@ struct wlr_box;
 
 struct wlr_damage_ring_buffer {
 	struct wlr_buffer *buffer;
-	struct wl_listener destroy;
 	pixman_region32_t damage;
 
 	struct wlr_damage_ring *ring;
 	struct wl_list link; // wlr_damage_ring.buffers
+
+	struct {
+		struct wl_listener destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_damage_ring {

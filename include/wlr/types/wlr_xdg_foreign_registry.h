@@ -23,10 +23,13 @@
 struct wlr_xdg_foreign_registry {
 	struct wl_list exported_surfaces; // struct wlr_xdg_foreign_exported_surface
 
-	struct wl_listener display_destroy;
 	struct {
 		struct wl_signal destroy;
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_foreign_exported {

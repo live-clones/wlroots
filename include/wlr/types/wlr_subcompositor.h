@@ -41,9 +41,6 @@ struct wlr_subsurface {
 	bool synchronized;
 	bool added;
 
-	struct wl_listener surface_client_commit;
-	struct wl_listener parent_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
@@ -52,17 +49,22 @@ struct wlr_subsurface {
 
 	struct {
 		struct wlr_surface_synced parent_synced;
+
+		struct wl_listener surface_client_commit;
+		struct wl_listener parent_destroy;
 	} WLR_PRIVATE;
 };
 
 struct wlr_subcompositor {
 	struct wl_global *global;
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 /**

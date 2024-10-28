@@ -49,14 +49,16 @@ struct wlr_server_decoration_manager {
 
 	uint32_t default_mode; // enum wlr_server_decoration_manager_mode
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal new_decoration;
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_server_decoration {
@@ -71,9 +73,11 @@ struct wlr_server_decoration {
 		struct wl_signal mode;
 	} events;
 
-	struct wl_listener surface_destroy_listener;
-
 	void *data;
+
+	struct {
+		struct wl_listener surface_destroy_listener;
+	} WLR_PRIVATE;
 };
 
 struct wlr_server_decoration_manager *wlr_server_decoration_manager_create(

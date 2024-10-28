@@ -18,13 +18,15 @@ struct wlr_foreign_toplevel_manager_v1 {
 	struct wl_list resources; // wl_resource_get_link()
 	struct wl_list toplevels; // wlr_foreign_toplevel_handle_v1.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_foreign_toplevel_handle_v1_state {

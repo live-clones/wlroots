@@ -16,13 +16,15 @@ struct wlr_data_device_manager {
 	struct wl_global *global;
 	struct wl_list data_sources;
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_data_offer_type {
@@ -40,7 +42,9 @@ struct wlr_data_offer {
 	enum wl_data_device_manager_dnd_action preferred_action;
 	bool in_ask;
 
-	struct wl_listener source_destroy;
+	struct {
+		struct wl_listener source_destroy;
+	} WLR_PRIVATE;
 };
 
 /**
@@ -89,9 +93,11 @@ struct wlr_drag_icon {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener surface_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener surface_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_drag_grab_type {
@@ -124,11 +130,13 @@ struct wlr_drag {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener source_destroy;
-	struct wl_listener seat_client_destroy;
-	struct wl_listener icon_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener source_destroy;
+		struct wl_listener seat_client_destroy;
+		struct wl_listener icon_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_drag_motion_event {

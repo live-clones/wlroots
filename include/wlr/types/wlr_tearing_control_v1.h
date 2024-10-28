@@ -44,13 +44,16 @@ struct wlr_tearing_control_manager_v1 {
 
 	struct wl_list surface_hints;  // wlr_tearing_control_v1.link
 
-	struct wl_listener display_destroy;
 	struct {
 		struct wl_signal new_object;  // struct wlr_tearing_control_v1*
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_tearing_control_manager_v1 *wlr_tearing_control_manager_v1_create(

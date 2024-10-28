@@ -78,15 +78,17 @@ struct wlr_touch_point {
 	struct wlr_seat_client *focus_client;
 	double sx, sy;
 
-	struct wl_listener surface_destroy;
-	struct wl_listener focus_surface_destroy;
-	struct wl_listener client_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
 
 	struct wl_list link;
+
+	struct {
+		struct wl_listener surface_destroy;
+		struct wl_listener focus_surface_destroy;
+		struct wl_listener client_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_seat_pointer_grab;
@@ -194,11 +196,14 @@ struct wlr_seat_pointer_state {
 	uint32_t grab_serial;
 	uint32_t grab_time;
 
-	struct wl_listener surface_destroy;
 
 	struct {
 		struct wl_signal focus_change; // struct wlr_seat_pointer_focus_change_event
 	} events;
+
+	struct {
+		struct wl_listener surface_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_seat_keyboard_state {
@@ -208,18 +213,20 @@ struct wlr_seat_keyboard_state {
 	struct wlr_seat_client *focused_client;
 	struct wlr_surface *focused_surface;
 
-	struct wl_listener keyboard_destroy;
-	struct wl_listener keyboard_keymap;
-	struct wl_listener keyboard_repeat_info;
-
-	struct wl_listener surface_destroy;
-
 	struct wlr_seat_keyboard_grab *grab;
 	struct wlr_seat_keyboard_grab *default_grab;
 
 	struct {
 		struct wl_signal focus_change; // struct wlr_seat_keyboard_focus_change_event
 	} events;
+
+	struct {
+		struct wl_listener keyboard_destroy;
+		struct wl_listener keyboard_keymap;
+		struct wl_listener keyboard_repeat_info;
+
+		struct wl_listener surface_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_seat_touch_state {
@@ -262,11 +269,6 @@ struct wlr_seat {
 	struct wlr_seat_keyboard_state keyboard_state;
 	struct wlr_seat_touch_state touch_state;
 
-	struct wl_listener display_destroy;
-	struct wl_listener selection_source_destroy;
-	struct wl_listener primary_selection_source_destroy;
-	struct wl_listener drag_source_destroy;
-
 	struct {
 		struct wl_signal pointer_grab_begin;
 		struct wl_signal pointer_grab_end;
@@ -302,6 +304,13 @@ struct wlr_seat {
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+		struct wl_listener selection_source_destroy;
+		struct wl_listener primary_selection_source_destroy;
+		struct wl_listener drag_source_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_seat_pointer_request_set_cursor_event {

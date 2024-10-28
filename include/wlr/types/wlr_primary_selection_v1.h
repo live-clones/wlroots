@@ -16,13 +16,15 @@ struct wlr_primary_selection_v1_device_manager {
 	struct wl_global *global;
 	struct wl_list devices; // wlr_primary_selection_v1_device.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 /**
@@ -36,11 +38,13 @@ struct wlr_primary_selection_v1_device {
 
 	struct wl_list offers; // wl_resource_get_link()
 
-	struct wl_listener seat_destroy;
-	struct wl_listener seat_focus_change;
-	struct wl_listener seat_set_primary_selection;
-
 	void *data;
+
+	struct {
+		struct wl_listener seat_destroy;
+		struct wl_listener seat_focus_change;
+		struct wl_listener seat_set_primary_selection;
+	} WLR_PRIVATE;
 };
 
 struct wlr_primary_selection_v1_device_manager *

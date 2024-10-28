@@ -48,10 +48,12 @@ struct wlr_xwayland_server {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener client_destroy;
-	struct wl_listener display_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener client_destroy;
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xwayland_server_ready_event {

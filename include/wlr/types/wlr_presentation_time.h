@@ -26,7 +26,9 @@ struct wlr_presentation {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_listener display_destroy;
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_presentation_feedback {
@@ -39,9 +41,11 @@ struct wlr_presentation_feedback {
 	uint32_t output_commit_seq;
 	bool zero_copy;
 
-	struct wl_listener output_commit;
-	struct wl_listener output_present;
-	struct wl_listener output_destroy;
+	struct {
+		struct wl_listener output_commit;
+		struct wl_listener output_present;
+		struct wl_listener output_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_presentation_event {

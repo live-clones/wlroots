@@ -18,9 +18,6 @@ struct wlr_xdg_foreign_v2 {
 		struct wl_list objects; // wlr_xdg_exported_v2.link or wlr_xdg_imported_v2.link
 	} exporter, importer;
 
-	struct wl_listener foreign_registry_destroy;
-	struct wl_listener display_destroy;
-
 	struct wlr_xdg_foreign_registry *registry;
 
 	struct {
@@ -28,24 +25,34 @@ struct wlr_xdg_foreign_v2 {
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener foreign_registry_destroy;
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_exported_v2 {
 	struct wlr_xdg_foreign_exported base;
 
 	struct wl_resource *resource;
-	struct wl_listener xdg_toplevel_destroy;
-
 	struct wl_list link; // wlr_xdg_foreign_v2.exporter.objects
+
+	struct {
+		struct wl_listener xdg_toplevel_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_imported_v2 {
 	struct wlr_xdg_foreign_exported *exported;
-	struct wl_listener exported_destroyed;
 
 	struct wl_resource *resource;
 	struct wl_list link; // wlr_xdg_foreign_v2.importer.objects
 	struct wl_list children;
+
+	struct {
+		struct wl_listener exported_destroyed;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_imported_child_v2 {
@@ -54,8 +61,10 @@ struct wlr_xdg_imported_child_v2 {
 
 	struct wl_list link; // wlr_xdg_imported_v2.children
 
-	struct wl_listener xdg_toplevel_destroy;
-	struct wl_listener xdg_toplevel_set_parent;
+	struct {
+		struct wl_listener xdg_toplevel_destroy;
+		struct wl_listener xdg_toplevel_set_parent;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_foreign_v2 *wlr_xdg_foreign_v2_create(

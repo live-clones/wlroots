@@ -18,13 +18,15 @@ struct wlr_screencopy_manager_v1 {
 	struct wl_global *global;
 	struct wl_list frames; // wlr_screencopy_frame_v1.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_screencopy_v1_client {
@@ -50,11 +52,14 @@ struct wlr_screencopy_frame_v1 {
 	struct wlr_buffer *buffer;
 
 	struct wlr_output *output;
-	struct wl_listener output_commit;
-	struct wl_listener output_destroy;
-	struct wl_listener output_enable;
 
 	void *data;
+
+	struct {
+		struct wl_listener output_commit;
+		struct wl_listener output_destroy;
+		struct wl_listener output_enable;
+	} WLR_PRIVATE;
 };
 
 struct wlr_screencopy_manager_v1 *wlr_screencopy_manager_v1_create(

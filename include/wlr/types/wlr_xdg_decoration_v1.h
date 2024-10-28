@@ -14,14 +14,16 @@ struct wlr_xdg_decoration_manager_v1 {
 	struct wl_global *global;
 	struct wl_list decorations; // wlr_xdg_toplevel_decoration.link
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal new_toplevel_decoration; // struct wlr_xdg_toplevel_decoration
 		struct wl_signal destroy;
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_toplevel_decoration_v1_configure {

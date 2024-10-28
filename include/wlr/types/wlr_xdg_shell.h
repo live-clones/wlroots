@@ -22,8 +22,6 @@ struct wlr_xdg_shell {
 	struct wl_list popup_grabs;
 	uint32_t ping_timeout;
 
-	struct wl_listener display_destroy;
-
 	struct {
 		struct wl_signal new_surface; // struct wlr_xdg_surface
 		struct wl_signal new_toplevel; // struct wlr_xdg_toplevel
@@ -32,6 +30,10 @@ struct wlr_xdg_shell {
 	} events;
 
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_client {
@@ -124,7 +126,10 @@ struct wlr_xdg_popup_grab {
 	struct wlr_seat *seat;
 	struct wl_list popups;
 	struct wl_list link; // wlr_xdg_shell.popup_grabs
-	struct wl_listener seat_destroy;
+
+	struct {
+		struct wl_listener seat_destroy;
+	} WLR_PRIVATE;
 };
 
 enum wlr_xdg_surface_role {
@@ -176,7 +181,10 @@ struct wlr_xdg_toplevel_configure {
 struct wlr_xdg_toplevel_requested {
 	bool maximized, minimized, fullscreen;
 	struct wlr_output *fullscreen_output;
-	struct wl_listener fullscreen_output_destroy;
+
+	struct {
+		struct wl_listener fullscreen_output_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_xdg_toplevel {
@@ -184,7 +192,6 @@ struct wlr_xdg_toplevel {
 	struct wlr_xdg_surface *base;
 
 	struct wlr_xdg_toplevel *parent;
-	struct wl_listener parent_unmap;
 
 	struct wlr_xdg_toplevel_state current, pending;
 
@@ -223,6 +230,8 @@ struct wlr_xdg_toplevel {
 
 	struct {
 		struct wlr_surface_synced synced;
+
+		struct wl_listener parent_unmap;
 	} WLR_PRIVATE;
 };
 

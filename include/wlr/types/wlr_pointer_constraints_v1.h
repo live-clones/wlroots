@@ -86,9 +86,11 @@ struct wlr_pointer_constraints_v1 {
 		struct wl_signal new_constraint;
 	} events;
 
-	struct wl_listener display_destroy;
-
 	void *data;
+
+	struct {
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
 };
 
 struct wlr_pointer_constraints_v1 *wlr_pointer_constraints_v1_create(
