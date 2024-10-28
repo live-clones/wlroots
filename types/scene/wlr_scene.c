@@ -1802,6 +1802,18 @@ static void scene_buffer_send_dmabuf_feedback(const struct wlr_scene *scene,
 	wlr_linux_dmabuf_feedback_v1_finish(&feedback);
 }
 
+static bool transform_swaps_width_height(enum wl_output_transform transform) {
+	switch (transform) {
+	case WL_OUTPUT_TRANSFORM_90:
+	case WL_OUTPUT_TRANSFORM_270:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 		struct wlr_output_state *state, const struct render_data *data) {
 	struct wlr_scene_output *scene_output = data->output;
@@ -1868,7 +1880,21 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	// Translate the location from scene coordinates to output coordinates
 	pending.buffer_dst_box.x = entry->x - scene_output->x;
 	pending.buffer_dst_box.y = entry->y - scene_output->y;
-	scene_node_get_size(node, &pending.buffer_dst_box.width, &pending.buffer_dst_box.height);
+
+	if (buffer->dst_width > 0 && buffer->dst_height > 0) {
+		// We need to undo already applied transforms here
+		if (transform_swaps_width_height(buffer->transform)) {
+			pending.buffer_dst_box.width = buffer->dst_height;
+			pending.buffer_dst_box.height = buffer->dst_width;
+		} else {
+			pending.buffer_dst_box.width = buffer->dst_width;
+			pending.buffer_dst_box.height = buffer->dst_height;
+		}
+	} else {
+		pending.buffer_dst_box.width = buffer->buffer_width;
+		pending.buffer_dst_box.height = buffer->buffer_height;
+	}
+	scale_box(&pending.buffer_dst_box, scene_output->output->scale);
 
 	wlr_output_state_set_buffer(&pending, buffer->buffer);
 	if (buffer->wait_timeline != NULL) {
