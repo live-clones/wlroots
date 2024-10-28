@@ -439,15 +439,9 @@ static void atomic_connector_add(struct atomic *atom,
 		if (crtc->props.vrr_enabled != 0) {
 			atomic_add(atom, crtc->id, crtc->props.vrr_enabled, state->vrr_enabled);
 		}
-		if (state->base->committed & WLR_OUTPUT_STATE_BUFFER) {
-			struct wlr_fbox src_box;
-			struct wlr_box dst_box;
-			output_state_get_buffer_src_box(state->base, &src_box);
-			output_state_get_buffer_dst_box(state->base, &dst_box);
 
-			set_plane_props(atom, drm, crtc->primary, state->primary_fb, crtc->id,
-				&dst_box, &src_box);
-		}
+		set_plane_props(atom, drm, crtc->primary, state->primary_fb, crtc->id,
+			&state->primary_viewport.dst_box, &state->primary_viewport.src_box);
 		if (crtc->primary->props.fb_damage_clips != 0) {
 			atomic_add(atom, crtc->primary->id,
 				crtc->primary->props.fb_damage_clips, state->fb_damage_clips);

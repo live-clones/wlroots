@@ -15,6 +15,11 @@
 #include "backend/drm/properties.h"
 #include "backend/drm/renderer.h"
 
+struct wlr_drm_viewport {
+	struct wlr_fbox src_box;
+	struct wlr_box dst_box;
+};
+
 struct wlr_drm_plane {
 	uint32_t type;
 	uint32_t id;
@@ -24,8 +29,10 @@ struct wlr_drm_plane {
 
 	/* Buffer submitted to the kernel, will be presented on next vblank */
 	struct wlr_drm_fb *queued_fb;
+	struct wlr_drm_viewport queued_viewport;
 	/* Buffer currently displayed on screen */
 	struct wlr_drm_fb *current_fb;
+	struct wlr_drm_viewport current_viewport;
 
 	struct wlr_drm_format_set formats;
 
@@ -139,6 +146,7 @@ struct wlr_drm_connector_state {
 	bool active;
 	drmModeModeInfo mode;
 	struct wlr_drm_fb *primary_fb;
+	struct wlr_drm_viewport primary_viewport;
 	struct wlr_drm_fb *cursor_fb;
 
 	struct wlr_drm_syncobj_timeline *wait_timeline;
