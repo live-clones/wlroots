@@ -40,6 +40,7 @@ struct wlr_vk_device {
 
 	int drm_fd;
 
+	bool sync_file_import_export;
 	bool implicit_sync_interop;
 	bool sampler_ycbcr_conversion;
 
@@ -253,6 +254,8 @@ struct wlr_vk_command_buffer {
 
 	// For DMA-BUF implicit sync interop, may be NULL
 	VkSemaphore binary_semaphore;
+
+	struct wl_array wait_semaphores; // VkSemaphore
 };
 
 #define VULKAN_COMMAND_BUFFERS_CAP 64
@@ -367,6 +370,13 @@ VkCommandBuffer vulkan_record_stage_cb(struct wlr_vk_renderer *renderer);
 // finished execution.
 bool vulkan_submit_stage_wait(struct wlr_vk_renderer *renderer);
 
+struct wlr_vk_render_pass_texture {
+	struct wlr_vk_texture *texture;
+
+	struct wlr_drm_syncobj_timeline *wait_timeline;
+	uint64_t wait_point;
+};
+
 struct wlr_vk_render_pass {
 	struct wlr_render_pass base;
 	struct wlr_vk_renderer *renderer;
@@ -378,6 +388,11 @@ struct wlr_vk_render_pass {
 	bool failed;
 	bool srgb_pathway; // if false, rendering via intermediate blending buffer
 	struct wlr_color_transform *color_transform;
+
+	struct wlr_drm_syncobj_timeline *signal_timeline;
+	uint64_t signal_point;
+
+	struct wl_array textures; // struct wlr_vk_render_pass_texture
 };
 
 struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *renderer,
@@ -419,8 +434,10 @@ bool vulkan_wait_command_buffer(struct wlr_vk_command_buffer *cb,
 	struct wlr_vk_renderer *renderer);
 
 bool vulkan_sync_render_buffer(struct wlr_vk_renderer *renderer,
-	struct wlr_vk_render_buffer *render_buffer, struct wlr_vk_command_buffer *cb);
-bool vulkan_sync_foreign_texture(struct wlr_vk_texture *texture);
+	struct wlr_vk_render_buffer *render_buffer, struct wlr_vk_command_buffer *cb,
+	struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point);
+bool vulkan_sync_foreign_texture(struct wlr_vk_texture *texture,
+	int sync_file_fds[static WLR_DMABUF_MAX_PLANES]);
 
 bool vulkan_read_pixels(struct wlr_vk_renderer *vk_renderer,
 	VkFormat src_format, VkImage src_image,
@@ -450,8 +467,6 @@ struct wlr_vk_texture {
 	// If imported from a wlr_buffer
 	struct wlr_buffer *buffer;
 	struct wlr_addon buffer_addon;
-	// For DMA-BUF implicit sync interop
-	VkSemaphore foreign_semaphores[WLR_DMABUF_MAX_PLANES];
 
 	struct wl_list views; // struct wlr_vk_texture_ds.link
 };
