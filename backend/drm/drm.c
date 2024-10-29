@@ -557,7 +557,7 @@ static void drm_connector_apply_commit(const struct wlr_drm_connector_state *sta
 	struct wlr_drm_crtc *crtc = conn->crtc;
 
 	drm_fb_copy(&crtc->primary->queued_fb, state->primary_fb);
-	crtc->primary->queued_viewport = state->primary_viewport;
+	crtc->primary->viewport = state->primary_viewport;
 	if (crtc->cursor != NULL) {
 		drm_fb_copy(&crtc->cursor->queued_fb, state->cursor_fb);
 	}
@@ -674,10 +674,10 @@ static void drm_connector_state_init(struct wlr_drm_connector_state *state,
 		struct wlr_drm_plane *primary = conn->crtc->primary;
 		if (primary->queued_fb != NULL) {
 			state->primary_fb = drm_fb_lock(primary->queued_fb);
-			state->primary_viewport = primary->queued_viewport;
+			state->primary_viewport = primary->viewport;
 		} else if (primary->current_fb != NULL) {
 			state->primary_fb = drm_fb_lock(primary->current_fb);
-			state->primary_viewport = primary->current_viewport;
+			state->primary_viewport = primary->viewport;
 		}
 
 		if (conn->cursor_enabled) {
@@ -1962,7 +1962,6 @@ static void handle_page_flip(int fd, unsigned seq,
 	struct wlr_drm_plane *plane = conn->crtc->primary;
 	if (plane->queued_fb) {
 		drm_fb_move(&plane->current_fb, &plane->queued_fb);
-		plane->current_viewport = plane->queued_viewport;
 	}
 	if (conn->crtc->cursor && conn->crtc->cursor->queued_fb) {
 		drm_fb_move(&conn->crtc->cursor->current_fb,

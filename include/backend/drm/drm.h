@@ -29,10 +29,10 @@ struct wlr_drm_plane {
 
 	/* Buffer submitted to the kernel, will be presented on next vblank */
 	struct wlr_drm_fb *queued_fb;
-	struct wlr_drm_viewport queued_viewport;
 	/* Buffer currently displayed on screen */
 	struct wlr_drm_fb *current_fb;
-	struct wlr_drm_viewport current_viewport;
+	/* Viewport belonging to the last committed fb */
+	struct wlr_drm_viewport viewport;
 
 	struct wlr_drm_format_set formats;
 

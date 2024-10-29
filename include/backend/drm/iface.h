@@ -22,8 +22,6 @@ struct wlr_drm_interface {
 	bool (*commit)(struct wlr_drm_backend *drm,
 		const struct wlr_drm_device_state *state,
 		struct wlr_drm_page_flip *page_flip, uint32_t flags, bool test_only);
-	// Turn off everything
-	bool (*reset)(struct wlr_drm_backend *drm);
 };
 
 extern const struct wlr_drm_interface atomic_iface;
