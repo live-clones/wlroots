@@ -404,6 +404,8 @@ struct wlr_scene_surface *wlr_scene_surface_try_from_buffer(
 
 /**
  * Add a node displaying a solid-colored rectangle to the scene-graph.
+ *
+ * The color argument must be a premultiplied color value.
  */
 struct wlr_scene_rect *wlr_scene_rect_create(struct wlr_scene_tree *parent,
 		int width, int height, const float color[static 4]);
@@ -415,6 +417,8 @@ void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, int width, int height)
 
 /**
  * Change the color of an existing rectangle node.
+ *
+ * The color argument must be a premultiplied color value.
  */
 void wlr_scene_rect_set_color(struct wlr_scene_rect *rect, const float color[static 4]);
 
