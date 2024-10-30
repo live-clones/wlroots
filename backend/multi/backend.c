@@ -232,8 +232,11 @@ static void multi_backend_refresh_features(struct wlr_multi_backend *multi) {
 
 	struct subbackend_state *sub = NULL;
 	wl_list_for_each(sub, &multi->backends, link) {
-		multi->backend.features.timeline = multi->backend.features.timeline &&
-			sub->backend->features.timeline;
+		// timeline is only applicable to backends that support DMABUFs
+		if (backend_get_buffer_caps(sub->backend) & WLR_BUFFER_CAP_DMABUF) {
+			multi->backend.features.timeline = multi->backend.features.timeline &&
+				sub->backend->features.timeline;
+		}
 	}
 }
 
