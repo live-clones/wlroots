@@ -17,11 +17,15 @@
 struct wlr_buffer;
 struct wlr_renderer;
 
+/**
+ * Shared-memory attributes for a buffer.
+ */
 struct wlr_shm_attributes {
 	int fd;
-	uint32_t format;
-	int width, height, stride;
-	off_t offset;
+	uint32_t format; // FourCC code, see DRM_FORMAT_* in <drm_fourcc.h>
+	int width, height;
+	int stride; // Number of bytes between consecutive pixel lines
+	off_t offset; // Offset in bytes of the first pixel in FD
 };
 
 /**
@@ -130,6 +134,12 @@ enum wlr_buffer_data_ptr_access_flag {
  */
 bool wlr_buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags,
 	void **data, uint32_t *format, size_t *stride);
+/**
+ * Indicate that a pointer to a buffer's underlying memory will no longer be
+ * used.
+ *
+ * This function must be called after wlr_buffer_begin_data_ptr_access().
+ */
 void wlr_buffer_end_data_ptr_access(struct wlr_buffer *buffer);
 
 /**
