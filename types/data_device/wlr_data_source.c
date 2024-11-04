@@ -51,6 +51,7 @@ void wlr_data_source_destroy(struct wlr_data_source *source) {
 		source->impl->destroy(source);
 	} else {
 		free(source);
+		source = NULL;
 	}
 }
 
@@ -115,6 +116,7 @@ static void client_data_source_destroy(struct wlr_data_source *wlr_source) {
 	wl_data_source_send_cancelled(source->resource);
 	wl_resource_set_user_data(source->resource, NULL);
 	free(source);
+	source = NULL;
 }
 
 static void client_data_source_dnd_drop(struct wlr_data_source *wlr_source) {
