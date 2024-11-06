@@ -70,6 +70,7 @@ struct wlr_layer_surface_v1_state {
 
 	uint32_t configure_serial;
 	uint32_t actual_width, actual_height;
+	bool reserved_area;
 };
 
 struct wlr_layer_surface_v1_configure {

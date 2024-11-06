@@ -304,6 +304,17 @@ static void layer_surface_set_exclusive_edge(struct wl_client *client,
 	surface->pending.exclusive_edge = edge;
 }
 
+static void layer_surface_set_reserved_area(struct wl_client *client,
+		struct wl_resource *surface_resource, int32_t reserve) {
+	struct wlr_layer_surface_v1 *surface =
+		wlr_layer_surface_v1_from_resource(surface_resource);
+	if (!surface) {
+		return;
+	}
+
+	surface->pending.reserved_area = reserve;
+}
+
 static const struct zwlr_layer_surface_v1_interface layer_surface_implementation = {
 	.destroy = resource_handle_destroy,
 	.ack_configure = layer_surface_handle_ack_configure,
@@ -315,6 +326,7 @@ static const struct zwlr_layer_surface_v1_interface layer_surface_implementation
 	.get_popup = layer_surface_handle_get_popup,
 	.set_layer = layer_surface_set_layer,
 	.set_exclusive_edge = layer_surface_set_exclusive_edge,
+	.set_reserved_area = layer_surface_set_reserved_area,
 };
 
 uint32_t wlr_layer_surface_v1_configure(struct wlr_layer_surface_v1 *surface,

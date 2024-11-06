@@ -25,7 +25,7 @@
     THIS SOFTWARE.
   </copyright>
 
-  <interface name="zwlr_layer_shell_v1" version="5">
+  <interface name="zwlr_layer_shell_v1" version="6">
     <description summary="create surfaces that are layers of the desktop">
       Clients can use this interface to assign the surface_layer role to
       wl_surfaces. Such surfaces are assigned to a "layer" of the output and
@@ -100,7 +100,7 @@
     </request>
   </interface>
 
-  <interface name="zwlr_layer_surface_v1" version="5">
+  <interface name="zwlr_layer_surface_v1" version="6">
     <description summary="layer metadata interface">
       An interface that may be implemented by a wl_surface, for surfaces that
       are designed to be rendered as a layer of a stacked desktop-like
@@ -402,6 +402,31 @@
         invalid_exclusive_edge protocol error will be raised.
       </description>
       <arg name="edge" type="uint" enum="anchor"/>
+    </request>
+
+    <!-- Version 6 additions -->
+
+   <request name="set_reserved_area" since="6">
+      <description summary="reserves display area that affects maximized windows">
+        Indicates that this layer surface should reserve its area from the available
+        display space. When set, this area will be excluded from the maximum
+        available space for regular windows when they are maximized.
+
+        For example, if a layer surface with this property occupies a 30-pixel strip
+        at the top of the screen, maximized windows will be sized and positioned to
+        avoid overlapping with this 30-pixel reserved area.
+
+        This is particularly useful for UI elements like panels, docks, or status bars
+        that should always remain visible and not be covered by maximized windows.
+
+        The compositor will:
+        - Adjust the maximum available area for regular windows
+        - Position maximized windows to avoid the reserved area
+        - Maintain the layer surface's visibility in its reserved area
+
+        This setting is double-buffered, see wl_surface.commit.
+      </description>
+      <arg name="reserve" type="int" summary="1 to reserve area, 0 to release reservation"/>
     </request>
   </interface>
 </protocol>
