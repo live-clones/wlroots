@@ -10,6 +10,7 @@
 #include "wlr/types/wlr_keyboard.h"
 #include "wlr/types/wlr_keyboard_group.h"
 #include "wlr/util/log.h"
+#include "util/time.h"
 
 struct keyboard_group_device {
 	struct wlr_keyboard *keyboard;
@@ -183,10 +184,8 @@ static void refresh_state(struct keyboard_group_device *device,
 	wl_array_init(&keys);
 
 	for (size_t i = 0; i < device->keyboard->num_keycodes; i++) {
-		struct timespec now;
-		clock_gettime(CLOCK_MONOTONIC, &now);
 		struct wlr_keyboard_key_event event = {
-			.time_msec = (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000,
+			.time_msec = get_current_time_msec(),
 			.keycode = device->keyboard->keycodes[i],
 			.update_state = true,
 			.state = state

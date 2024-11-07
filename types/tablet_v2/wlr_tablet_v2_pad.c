@@ -7,6 +7,7 @@
 #include <wlr/types/wlr_tablet_pad.h>
 #include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/util/log.h>
+#include "util/time.h"
 #include "tablet-v2-protocol.h"
 
 static const struct wlr_tablet_pad_v2_grab_interface default_pad_grab_interface;
@@ -457,10 +458,7 @@ uint32_t wlr_send_tablet_v2_tablet_pad_enter(
 	zwp_tablet_pad_v2_send_enter(pad_client->resource, serial,
 		tablet_client->resource, surface->resource);
 
-	struct timespec now;
-	clock_gettime(CLOCK_MONOTONIC, &now);
-	uint32_t time = now.tv_nsec / 1000;
-
+	uint32_t time = get_current_time_msec();
 	for (size_t i = 0; i < pad->group_count; ++i) {
 		if (pad_client->groups[i]) {
 			zwp_tablet_pad_group_v2_send_mode_switch(
