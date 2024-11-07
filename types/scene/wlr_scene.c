@@ -1872,7 +1872,13 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	scene_node_get_size(node, &pending.buffer_dst_box.width, &pending.buffer_dst_box.height);
 	transform_output_box(&pending.buffer_dst_box, data);
 
-	wlr_output_state_set_buffer(&pending, buffer->buffer);
+	struct wlr_buffer *wlr_buffer = buffer->buffer;
+	struct wlr_client_buffer *client_buffer = wlr_client_buffer_get(wlr_buffer);
+	if (client_buffer != NULL && client_buffer->source != NULL) {
+		wlr_buffer = client_buffer->source;
+	}
+
+	wlr_output_state_set_buffer(&pending, wlr_buffer);
 	if (buffer->wait_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(&pending, buffer->wait_timeline, buffer->wait_point);
 	}
