@@ -28,6 +28,7 @@
 #include "render/vulkan/shaders/output.frag.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_matrix.h"
+#include "util/time.h"
 
 // TODO:
 // - simplify stage allocation, don't track allocations but use ringbuffer-like
@@ -322,7 +323,6 @@ struct wlr_vk_buffer_span vulkan_get_stage_span(struct wlr_vk_renderer *r,
 		goto error;
 	}
 
-	wlr_log(WLR_DEBUG, "Created new vk staging buffer of size %" PRIu64, bsize);
 	buf->buf_size = bsize;
 	wl_list_insert(&r->stage.buffers, &buf->link);
 
@@ -456,7 +456,7 @@ bool vulkan_wait_command_buffer(struct wlr_vk_command_buffer *cb,
 }
 
 static void release_command_buffer_resources(struct wlr_vk_command_buffer *cb,
-		struct wlr_vk_renderer *renderer) {
+		struct wlr_vk_renderer *renderer, int64_t now) {
 	struct wlr_vk_texture *texture, *texture_tmp;
 	wl_list_for_each_safe(texture, texture_tmp, &cb->destroy_textures, destroy_link) {
 		wl_list_remove(&texture->destroy_link);
@@ -467,6 +467,7 @@ static void release_command_buffer_resources(struct wlr_vk_command_buffer *cb,
 	struct wlr_vk_shared_buffer *buf, *buf_tmp;
 	wl_list_for_each_safe(buf, buf_tmp, &cb->stage_buffers, link) {
 		buf->allocs.size = 0;
+		buf->last_used_ms = now;
 
 		wl_list_remove(&buf->link);
 		wl_list_insert(&renderer->stage.buffers, &buf->link);
@@ -490,12 +491,22 @@ static struct wlr_vk_command_buffer *get_command_buffer(
 		return NULL;
 	}
 
+
+	// Garbage collect any buffers that have remained unused for too long
+	int64_t now = get_current_time_msec();
+	struct wlr_vk_shared_buffer *buf, *buf_tmp;
+	wl_list_for_each_safe(buf, buf_tmp, &renderer->stage.buffers, link) {
+		if (buf->allocs.size == 0 && buf->last_used_ms + 10000 < now) {
+			shared_buffer_destroy(renderer, buf);
+		}
+	}
+
 	// Destroy textures for completed command buffers
 	for (size_t i = 0; i < VULKAN_COMMAND_BUFFERS_CAP; i++) {
 		struct wlr_vk_command_buffer *cb = &renderer->command_buffers[i];
 		if (cb->vk != VK_NULL_HANDLE && !cb->recording &&
 				cb->timeline_point <= current_point) {
-			release_command_buffer_resources(cb, renderer);
+			release_command_buffer_resources(cb, renderer, now);
 		}
 	}
 
@@ -1055,7 +1066,7 @@ static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 		if (cb->vk == VK_NULL_HANDLE) {
 			continue;
 		}
-		release_command_buffer_resources(cb, renderer);
+		release_command_buffer_resources(cb, renderer, 0);
 		if (cb->binary_semaphore != VK_NULL_HANDLE) {
 			vkDestroySemaphore(renderer->dev->dev, cb->binary_semaphore, NULL);
 		}

@@ -500,6 +500,7 @@ struct wlr_vk_shared_buffer {
 	VkDeviceSize buf_size;
 	void *cpu_mapping;
 	struct wl_array allocs; // struct wlr_vk_allocation
+	int64_t last_used_ms;
 };
 
 // Suballocated range on a buffer.
