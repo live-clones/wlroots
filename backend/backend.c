@@ -14,7 +14,6 @@
 #include <wlr/util/log.h>
 #include "backend/backend.h"
 #include "backend/multi.h"
-#include "render/allocator/allocator.h"
 #include "types/wlr_output.h"
 #include "util/env.h"
 #include "util/time.h"

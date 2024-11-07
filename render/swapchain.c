@@ -1,9 +1,9 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <wlr/util/log.h>
+#include <wlr/render/allocator.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_buffer.h>
-#include "render/allocator/allocator.h"
 #include "render/drm_format_set.h"
 
 static void swapchain_handle_allocator_destroy(struct wl_listener *listener,

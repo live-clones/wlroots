@@ -3,11 +3,11 @@
 #include <drm_fourcc.h>
 #include <stdlib.h>
 #include <wlr/interfaces/wlr_output.h>
+#include <wlr/render/allocator.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_output_layer.h>
 #include <wlr/util/log.h>
-#include "render/allocator/allocator.h"
 #include "types/wlr_output.h"
 #include "util/env.h"
 #include "util/global.h"

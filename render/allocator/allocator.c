@@ -9,7 +9,6 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include "backend/backend.h"
-#include "render/allocator/allocator.h"
 #include "render/allocator/drm_dumb.h"
 #include "render/allocator/shm.h"
 #include "render/wlr_renderer.h"
@@ -91,10 +90,16 @@ static int reopen_drm_node(int drm_fd, bool allow_render_node) {
 	return new_fd;
 }
 
-struct wlr_allocator *allocator_autocreate_with_drm_fd(
-		uint32_t backend_caps, struct wlr_renderer *renderer,
-		int drm_fd) {
+struct wlr_allocator *wlr_allocator_autocreate(struct wlr_backend *backend,
+		struct wlr_renderer *renderer) {
+	uint32_t backend_caps = backend_get_buffer_caps(backend);
 	uint32_t renderer_caps = renderer->render_buffer_caps;
+
+	// Note, drm_fd may be negative if unavailable
+	int drm_fd = wlr_backend_get_drm_fd(backend);
+	if (drm_fd < 0) {
+		drm_fd = wlr_renderer_get_drm_fd(renderer);
+	}
 
 	struct wlr_allocator *alloc = NULL;
 
@@ -143,18 +148,6 @@ struct wlr_allocator *allocator_autocreate_with_drm_fd(
 
 	wlr_log(WLR_ERROR, "Failed to create allocator");
 	return NULL;
-}
-
-struct wlr_allocator *wlr_allocator_autocreate(struct wlr_backend *backend,
-		struct wlr_renderer *renderer) {
-	uint32_t backend_caps = backend_get_buffer_caps(backend);
-	// Note, drm_fd may be negative if unavailable
-	int drm_fd = wlr_backend_get_drm_fd(backend);
-	if (drm_fd < 0) {
-		drm_fd = wlr_renderer_get_drm_fd(renderer);
-	}
-
-	return allocator_autocreate_with_drm_fd(backend_caps, renderer, drm_fd);
 }
 
 void wlr_allocator_destroy(struct wlr_allocator *alloc) {

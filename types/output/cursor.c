@@ -2,6 +2,7 @@
 #include <drm_fourcc.h>
 #include <stdlib.h>
 #include <wlr/interfaces/wlr_output.h>
+#include <wlr/render/allocator.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/wlr_renderer.h>
@@ -9,7 +10,6 @@
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
-#include "render/allocator/allocator.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_output.h"
 

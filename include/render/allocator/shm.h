@@ -1,8 +1,8 @@
 #ifndef RENDER_ALLOCATOR_SHM_H
 #define RENDER_ALLOCATOR_SHM_H
 
+#include <wlr/render/allocator.h>
 #include <wlr/types/wlr_buffer.h>
-#include "render/allocator/allocator.h"
 
 struct wlr_shm_buffer {
 	struct wlr_buffer base;

@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <drm_fourcc.h>
+#include <wlr/render/allocator.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/render/wlr_renderer.h>
@@ -9,7 +10,6 @@
 #include "backend/drm/renderer.h"
 #include "backend/backend.h"
 #include "render/drm_format_set.h"
-#include "render/allocator/allocator.h"
 #include "render/pixel_format.h"
 #include "render/wlr_renderer.h"
 
@@ -21,9 +21,7 @@ bool init_drm_renderer(struct wlr_drm_backend *drm,
 		return false;
 	}
 
-	uint32_t backend_caps = backend_get_buffer_caps(&drm->backend);
-	renderer->allocator = allocator_autocreate_with_drm_fd(backend_caps,
-		renderer->wlr_rend, drm->fd);
+	renderer->allocator = wlr_allocator_autocreate(&drm->backend, renderer->wlr_rend);
 	if (renderer->allocator == NULL) {
 		wlr_log(WLR_ERROR, "Failed to create allocator");
 		wlr_renderer_destroy(renderer->wlr_rend);
