@@ -77,11 +77,8 @@ static void output_power_handle_set_mode(struct wl_client *client,
 		return;
 	}
 
-	switch (mode) {
-	case ZWLR_OUTPUT_POWER_V1_MODE_OFF:
-	case ZWLR_OUTPUT_POWER_V1_MODE_ON:
-		break;
-	default:
+	uint32_t version = wl_resource_get_version(output_power_resource);
+	if (!zwlr_output_power_v1_mode_is_valid(mode, version)) {
 		wlr_log(WLR_ERROR, "Invalid power mode %d", mode);
 		wl_resource_post_error(output_power_resource,
 			ZWLR_OUTPUT_POWER_V1_ERROR_INVALID_MODE,

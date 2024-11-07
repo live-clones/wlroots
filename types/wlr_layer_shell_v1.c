@@ -148,12 +148,8 @@ static void layer_surface_handle_set_size(struct wl_client *client,
 
 static void layer_surface_handle_set_anchor(struct wl_client *client,
 		struct wl_resource *resource, uint32_t anchor) {
-	const uint32_t max_anchor =
-		ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
-		ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
-		ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
-		ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-	if (anchor > max_anchor) {
+	uint32_t version = wl_resource_get_version(resource);
+	if (!zwlr_layer_surface_v1_anchor_is_valid(anchor, version)) {
 		wl_resource_post_error(resource,
 			ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_ANCHOR,
 			"invalid anchor %" PRIu32, anchor);
@@ -223,10 +219,11 @@ static void layer_surface_handle_set_keyboard_interactivity(
 	}
 
 	surface->pending.committed |= WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY;
-	if (wl_resource_get_version(resource) < ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND_SINCE_VERSION) {
+	uint32_t version = wl_resource_get_version(resource);
+	if (version < ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND_SINCE_VERSION) {
 		surface->pending.keyboard_interactive = !!interactive;
 	} else {
-		if (interactive > ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND) {
+		if (!zwlr_layer_surface_v1_keyboard_interactivity_is_valid(interactive, version)) {
 			wl_resource_post_error(resource,
 				ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_KEYBOARD_INTERACTIVITY,
 				"wrong keyboard interactivity value: %" PRIu32, interactive);
@@ -263,7 +260,8 @@ static void layer_surface_set_layer(struct wl_client *client,
 	if (!surface) {
 		return;
 	}
-	if (layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+	uint32_t version = wl_resource_get_version(surface->resource);
+	if (!zwlr_layer_shell_v1_layer_is_valid(layer, version)) {
 		// XXX: this sends a zwlr_layer_shell_v1 error to a zwlr_layer_surface_v1 object
 		wl_resource_post_error(surface->resource,
 				ZWLR_LAYER_SHELL_V1_ERROR_INVALID_LAYER,
@@ -286,14 +284,8 @@ static void layer_surface_set_exclusive_edge(struct wl_client *client,
 	if (!surface) {
 		return;
 	}
-	switch (edge) {
-	case 0:
-	case ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP:
-	case ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM:
-	case ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT:
-	case ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT:
-		break;
-	default:
+	uint32_t version = wl_resource_get_version(surface->resource);
+	if (!zwlr_layer_surface_v1_anchor_is_valid(edge, version)) {
 		wl_resource_post_error(surface->resource,
 				ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_EXCLUSIVE_EDGE,
 				"invalid exclusive edge %" PRIu32, edge);
@@ -450,7 +442,8 @@ static void layer_shell_handle_get_layer_surface(struct wl_client *wl_client,
 	struct wlr_surface *wlr_surface =
 		wlr_surface_from_resource(surface_resource);
 
-	if (layer > ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+	uint32_t version = wl_resource_get_version(client_resource);
+	if (!zwlr_layer_shell_v1_layer_is_valid(layer, version)) {
 		wl_resource_post_error(client_resource,
 			ZWLR_LAYER_SHELL_V1_ERROR_INVALID_LAYER,
 			"Invalid layer %" PRIu32, layer);

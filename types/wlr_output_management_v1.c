@@ -255,8 +255,7 @@ static void config_head_handle_set_transform(struct wl_client *client,
 		return;
 	}
 
-	if (transform < WL_OUTPUT_TRANSFORM_NORMAL ||
-			transform > WL_OUTPUT_TRANSFORM_FLIPPED_270) {
+	if (!wl_output_transform_is_valid(transform, 1)) {
 		wl_resource_post_error(config_head_resource,
 			ZWLR_OUTPUT_CONFIGURATION_HEAD_V1_ERROR_INVALID_TRANSFORM,
 			"invalid transform");
