@@ -86,6 +86,23 @@ bool wlr_drm_format_set_add(struct wlr_drm_format_set *set, uint32_t format,
 	return true;
 }
 
+bool wlr_drm_format_set_remove(struct wlr_drm_format_set *set, uint32_t format,
+		uint64_t modifier) {
+	struct wlr_drm_format *fmt = format_set_get(set, format);
+	if (fmt == NULL) {
+		return false;
+	}
+
+	for (size_t idx = 0; idx < fmt->len; idx++) {
+		if (fmt->modifiers[idx] == modifier) {
+			memmove(&fmt->modifiers[idx], &fmt->modifiers[idx+1], fmt->len - idx - 1);
+			fmt->len--;
+			return true;
+		}
+	}
+	return false;
+}
+
 void wlr_drm_format_init(struct wlr_drm_format *fmt, uint32_t format) {
 	*fmt = (struct wlr_drm_format){
 		.format = format,

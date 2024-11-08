@@ -17,14 +17,19 @@ bool init_drm_renderer(struct wlr_drm_backend *drm,
 		struct wlr_drm_renderer *renderer) {
 	renderer->wlr_rend = renderer_autocreate_with_drm_fd(drm->fd);
 	if (!renderer->wlr_rend) {
-		wlr_log(WLR_ERROR, "Failed to create renderer");
+		return false;
+	}
+	if (wlr_renderer_get_texture_formats(renderer->wlr_rend, WLR_BUFFER_CAP_DMABUF) == NULL) {
+		wlr_log(WLR_ERROR, "Renderer did not support importing DMA-BUFs");
+		wlr_renderer_destroy(renderer->wlr_rend);
+		renderer->wlr_rend = NULL;
 		return false;
 	}
 
 	renderer->allocator = wlr_allocator_autocreate(&drm->backend, renderer->wlr_rend);
 	if (renderer->allocator == NULL) {
-		wlr_log(WLR_ERROR, "Failed to create allocator");
 		wlr_renderer_destroy(renderer->wlr_rend);
+		renderer->wlr_rend = NULL;
 		return false;
 	}
 
