@@ -1874,7 +1874,7 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 
 	struct wlr_buffer *wlr_buffer = buffer->buffer;
 	struct wlr_client_buffer *client_buffer = wlr_client_buffer_get(wlr_buffer);
-	if (client_buffer != NULL && client_buffer->source != NULL) {
+	if (client_buffer != NULL && client_buffer->source != NULL && client_buffer->source->n_locks > 0) {
 		wlr_buffer = client_buffer->source;
 	}
 
