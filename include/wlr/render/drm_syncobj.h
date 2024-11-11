@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
+#include <wlr/util/addon.h>
 
 /**
  * A synchronization timeline.
@@ -28,6 +29,8 @@
 struct wlr_drm_syncobj_timeline {
 	int drm_fd;
 	uint32_t handle;
+
+	struct wlr_addon_set addons;
 
 	struct {
 		size_t n_refs;

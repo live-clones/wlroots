@@ -14,6 +14,7 @@
 #include <wlr/types/wlr_tablet_tool.h>
 #include <wlr/types/wlr_touch.h>
 #include <wlr/render/drm_format_set.h>
+#include <wlr/render/drm_syncobj.h>
 
 struct wlr_wl_backend {
 	struct wlr_backend backend;
@@ -40,6 +41,8 @@ struct wlr_wl_backend {
 	struct wp_presentation *presentation;
 	struct wl_shm *shm;
 	struct zwp_linux_dmabuf_v1 *zwp_linux_dmabuf_v1;
+	struct wp_linux_drm_syncobj_manager_v1 *drm_syncobj_manager_v1;
+	struct wl_list drm_syncobj_timelines; // wlr_wl_drm_syncobj_timeline.link
 	struct zwp_relative_pointer_manager_v1 *zwp_relative_pointer_manager_v1;
 	struct wl_list seats; // wlr_wl_seat.link
 	struct zwp_tablet_manager_v2 *tablet_manager;
@@ -58,6 +61,20 @@ struct wlr_wl_buffer {
 	bool released;
 	struct wl_list link; // wlr_wl_backend.buffers
 	struct wl_listener buffer_destroy;
+
+	bool has_drm_syncobj_waiter;
+	struct wlr_drm_syncobj_timeline_waiter drm_syncobj_waiter;
+	struct wl_listener drm_syncobj_ready;
+
+	struct wlr_drm_syncobj_timeline *fallback_signal_timeline;
+	uint64_t fallback_signal_point;
+};
+
+struct wlr_wl_drm_syncobj_timeline {
+	struct wlr_drm_syncobj_timeline *base;
+	struct wlr_addon addon;
+	struct wl_list link; // wlr_wl_backend.drm_syncobj_timelines
+	struct wp_linux_drm_syncobj_timeline_v1 *wl;
 };
 
 struct wlr_wl_presentation_feedback {
@@ -88,6 +105,7 @@ struct wlr_wl_output {
 	struct xdg_surface *xdg_surface;
 	struct xdg_toplevel *xdg_toplevel;
 	struct zxdg_toplevel_decoration_v1 *zxdg_toplevel_decoration_v1;
+	struct wp_linux_drm_syncobj_surface_v1 *drm_syncobj_surface_v1;
 	struct wl_list presentation_feedbacks;
 
 	char *title;
@@ -190,6 +208,7 @@ bool create_wl_seat(struct wl_seat *wl_seat, struct wlr_wl_backend *wl,
 	uint32_t global_name);
 void destroy_wl_seat(struct wlr_wl_seat *seat);
 void destroy_wl_buffer(struct wlr_wl_buffer *buffer);
+void destroy_wl_drm_syncobj_timeline(struct wlr_wl_drm_syncobj_timeline *timeline);
 
 extern const struct wlr_pointer_impl wl_pointer_impl;
 extern const struct wlr_tablet_pad_impl wl_tablet_pad_impl;

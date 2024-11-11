@@ -21,6 +21,7 @@
 
 #include "drm-client-protocol.h"
 #include "linux-dmabuf-v1-client-protocol.h"
+#include "linux-drm-syncobj-v1-client-protocol.h"
 #include "pointer-gestures-unstable-v1-client-protocol.h"
 #include "presentation-time-client-protocol.h"
 #include "xdg-activation-v1-client-protocol.h"
@@ -411,6 +412,9 @@ static void registry_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(iface, wp_viewporter_interface.name) == 0) {
 		wl->viewporter = wl_registry_bind(registry, name,
 			&wp_viewporter_interface, 1);
+	} else if (strcmp(iface, wp_linux_drm_syncobj_manager_v1_interface.name) == 0) {
+		wl->drm_syncobj_manager_v1 = wl_registry_bind(registry, name,
+			&wp_linux_drm_syncobj_manager_v1_interface, 1);
 	}
 }
 
@@ -484,6 +488,11 @@ static void backend_destroy(struct wlr_backend *backend) {
 		destroy_wl_buffer(buffer);
 	}
 
+	struct wlr_wl_drm_syncobj_timeline *timeline, *tmp_timeline;
+	wl_list_for_each_safe(timeline, tmp_timeline, &wl->drm_syncobj_timelines, link) {
+		destroy_wl_drm_syncobj_timeline(timeline);
+	}
+
 	wlr_backend_finish(backend);
 
 	wl_list_remove(&wl->event_loop_destroy.link);
@@ -517,6 +526,9 @@ static void backend_destroy(struct wlr_backend *backend) {
 	}
 	if (wl->zwp_linux_dmabuf_v1) {
 		zwp_linux_dmabuf_v1_destroy(wl->zwp_linux_dmabuf_v1);
+	}
+	if (wl->drm_syncobj_manager_v1) {
+		wp_linux_drm_syncobj_manager_v1_destroy(wl->drm_syncobj_manager_v1);
 	}
 	if (wl->legacy_drm != NULL) {
 		wl_drm_destroy(wl->legacy_drm);
@@ -592,6 +604,7 @@ struct wlr_backend *wlr_wl_backend_create(struct wl_event_loop *loop,
 	wl_list_init(&wl->outputs);
 	wl_list_init(&wl->seats);
 	wl_list_init(&wl->buffers);
+	wl_list_init(&wl->drm_syncobj_timelines);
 
 	if (remote_display != NULL) {
 		wl->remote_display = remote_display;
@@ -623,6 +636,8 @@ struct wlr_backend *wlr_wl_backend_create(struct wl_event_loop *loop,
 			"Remote Wayland compositor does not support xdg-shell");
 		goto error_registry;
 	}
+
+	wl->backend.features.timeline = wl->drm_syncobj_manager_v1 != NULL;
 
 	wl_display_roundtrip(wl->remote_display); // process initial event bursts
 
