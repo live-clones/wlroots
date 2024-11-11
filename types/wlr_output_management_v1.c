@@ -866,7 +866,7 @@ static void manager_send_head(struct wlr_output_manager_v1 *manager,
 		head_send_mode(head, head_resource, mode);
 	}
 
-	if (output->current_mode == NULL) {
+	if (head->state.mode == NULL && head->state.enabled) {
 		// Output doesn't have a fixed mode set. Send a virtual one.
 		head_send_mode(head, head_resource, NULL);
 	}
@@ -926,7 +926,7 @@ static bool manager_update_head(struct wlr_output_manager_v1 *manager,
 		}
 	}
 
-	if (next->mode == NULL && !head_has_custom_mode_resources(head)) {
+	if (next->mode == NULL && next->enabled && !head_has_custom_mode_resources(head)) {
 		struct wl_resource *resource;
 		wl_resource_for_each(resource, &head->resources) {
 			head_send_mode(head, resource, NULL);
