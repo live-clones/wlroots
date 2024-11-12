@@ -250,7 +250,6 @@ struct wlr_seat {
 	char *name;
 	uint32_t capabilities;
 	uint32_t accumulated_capabilities;
-	struct timespec last_event;
 
 	struct wlr_data_source *selection_source;
 	uint32_t selection_serial;

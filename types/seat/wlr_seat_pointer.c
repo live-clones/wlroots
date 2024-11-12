@@ -464,15 +464,12 @@ void wlr_seat_pointer_notify_clear_focus(struct wlr_seat *wlr_seat) {
 
 void wlr_seat_pointer_notify_motion(struct wlr_seat *wlr_seat, uint32_t time,
 		double sx, double sy) {
-	clock_gettime(CLOCK_MONOTONIC, &wlr_seat->last_event);
 	struct wlr_seat_pointer_grab *grab = wlr_seat->pointer_state.grab;
 	grab->interface->motion(grab, time, sx, sy);
 }
 
 uint32_t wlr_seat_pointer_notify_button(struct wlr_seat *wlr_seat,
 		uint32_t time, uint32_t button, enum wl_pointer_button_state state) {
-	clock_gettime(CLOCK_MONOTONIC, &wlr_seat->last_event);
-
 	struct wlr_seat_pointer_state* pointer_state = &wlr_seat->pointer_state;
 
 	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
@@ -527,14 +524,12 @@ void wlr_seat_pointer_notify_axis(struct wlr_seat *wlr_seat, uint32_t time,
 		enum wl_pointer_axis orientation, double value,
 		int32_t value_discrete, enum wl_pointer_axis_source source,
 		enum wl_pointer_axis_relative_direction relative_direction) {
-	clock_gettime(CLOCK_MONOTONIC, &wlr_seat->last_event);
 	struct wlr_seat_pointer_grab *grab = wlr_seat->pointer_state.grab;
 	grab->interface->axis(grab, time, orientation, value, value_discrete,
 		source, relative_direction);
 }
 
 void wlr_seat_pointer_notify_frame(struct wlr_seat *wlr_seat) {
-	clock_gettime(CLOCK_MONOTONIC, &wlr_seat->last_event);
 	struct wlr_seat_pointer_grab *grab = wlr_seat->pointer_state.grab;
 	if (grab->interface->frame) {
 		grab->interface->frame(grab);
