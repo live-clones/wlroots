@@ -148,8 +148,12 @@ static void layer_surface_handle_set_size(struct wl_client *client,
 
 static void layer_surface_handle_set_anchor(struct wl_client *client,
 		struct wl_resource *resource, uint32_t anchor) {
-	uint32_t version = wl_resource_get_version(resource);
-	if (!zwlr_layer_surface_v1_anchor_is_valid(anchor, version)) {
+	const uint32_t max_anchor =
+		ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP |
+		ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |
+		ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT |
+		ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
+	if (anchor > max_anchor) {
 		wl_resource_post_error(resource,
 			ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_ANCHOR,
 			"invalid anchor %" PRIu32, anchor);
