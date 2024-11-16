@@ -109,7 +109,7 @@ struct tinywl_keyboard {
 	struct wl_listener destroy;
 };
 
-static void focus_toplevel(struct tinywl_toplevel *toplevel, struct wlr_surface *surface) {
+static void focus_toplevel(struct tinywl_toplevel *toplevel) {
 	/* Note: this function only deals with keyboard focus. */
 	if (toplevel == NULL) {
 		return;
@@ -117,6 +117,7 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel, struct wlr_surface 
 	struct tinywl_server *server = toplevel->server;
 	struct wlr_seat *seat = server->seat;
 	struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
+	struct wlr_surface *surface = toplevel->xdg_toplevel->base->surface;
 	if (prev_surface == surface) {
 		/* Don't re-focus an already focused surface. */
 		return;
@@ -146,7 +147,7 @@ static void focus_toplevel(struct tinywl_toplevel *toplevel, struct wlr_surface 
 	 * clients without additional work on your part.
 	 */
 	if (keyboard != NULL) {
-		wlr_seat_keyboard_notify_enter(seat, toplevel->xdg_toplevel->base->surface,
+		wlr_seat_keyboard_notify_enter(seat, surface,
 			keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
 	}
 }
@@ -188,7 +189,7 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		}
 		struct tinywl_toplevel *next_toplevel =
 			wl_container_of(server->toplevels.prev, next_toplevel, link);
-		focus_toplevel(next_toplevel, next_toplevel->xdg_toplevel->base->surface);
+		focus_toplevel(next_toplevel);
 		break;
 	default:
 		return false;
@@ -520,16 +521,16 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
 	/* Notify the client with pointer focus that a button press has occurred */
 	wlr_seat_pointer_notify_button(server->seat,
 			event->time_msec, event->button, event->state);
-	double sx, sy;
-	struct wlr_surface *surface = NULL;
-	struct tinywl_toplevel *toplevel = desktop_toplevel_at(server,
-			server->cursor->x, server->cursor->y, &surface, &sx, &sy);
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
 		/* If you released any buttons, we exit interactive move/resize mode. */
 		reset_cursor_mode(server);
 	} else {
 		/* Focus that client if the button was _pressed_ */
-		focus_toplevel(toplevel, surface);
+		double sx, sy;
+		struct wlr_surface *surface = NULL;
+		struct tinywl_toplevel *toplevel = desktop_toplevel_at(server,
+				server->cursor->x, server->cursor->y, &surface, &sx, &sy);
+		focus_toplevel(toplevel);
 	}
 }
 
@@ -662,7 +663,7 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
 	wl_list_insert(&toplevel->server->toplevels, &toplevel->link);
 
-	focus_toplevel(toplevel, toplevel->xdg_toplevel->base->surface);
+	focus_toplevel(toplevel);
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
