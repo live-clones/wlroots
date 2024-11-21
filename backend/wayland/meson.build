@@ -1,6 +1,5 @@
 wayland_client = dependency('wayland-client',
-	fallback: 'wayland',
-	default_options: wayland_project_options,
+	kwargs: wayland_kwargs,
 )
 wlr_deps += wayland_client
 

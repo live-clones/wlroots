@@ -83,11 +83,16 @@ internal_features = {
 }
 internal_config = configuration_data()
 
-wayland_project_options = ['tests=false', 'documentation=false']
+wayland_kwargs = {
+	'version': '>=1.23.1',
+	'fallback': 'wayland',
+	'default_options': [
+		'tests=false',
+		'documentation=false',
+	],
+}
 wayland_server = dependency('wayland-server',
-	version: '>=1.23',
-	fallback: 'wayland',
-	default_options: wayland_project_options,
+	kwargs: wayland_kwargs,
 )
 
 drm = dependency('libdrm',
