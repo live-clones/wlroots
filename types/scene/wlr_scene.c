@@ -59,6 +59,11 @@ struct wlr_scene *scene_node_get_root(struct wlr_scene_node *node) {
 	while (tree->node.parent != NULL) {
 		tree = tree->node.parent;
 	}
+
+	if (!tree->is_root) {
+		return NULL;
+	}
+
 	struct wlr_scene *scene = wl_container_of(tree, scene, tree);
 	return scene;
 }
@@ -111,11 +116,11 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 	if (node->type == WLR_SCENE_NODE_BUFFER) {
 		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
-		uint64_t active = scene_buffer->active_outputs;
-		if (active) {
+		uint64_t active_outputs = scene_buffer->active_outputs;
+		if (scene != NULL && active_outputs) {
 			struct wlr_scene_output *scene_output;
 			wl_list_for_each(scene_output, &scene->outputs, link) {
-				if (active & (1ull << scene_output->index)) {
+				if (active_outputs & (1ull << scene_output->index)) {
 					wl_signal_emit_mutable(&scene_buffer->events.output_leave,
 						scene_output);
 				}
@@ -139,8 +144,6 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 			wl_list_remove(&scene->linux_dmabuf_v1_destroy.link);
 			wl_list_remove(&scene->gamma_control_manager_v1_destroy.link);
 			wl_list_remove(&scene->gamma_control_manager_v1_set_gamma.link);
-		} else {
-			assert(node->parent);
 		}
 
 		struct wlr_scene_node *child, *child_tmp;
@@ -149,8 +152,9 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 			wlr_scene_node_destroy(child);
 		}
 	}
-
-	wl_list_remove(&node->link);
+	if (node->parent != NULL) {
+		wl_list_remove(&node->link);
+	}
 	pixman_region32_fini(&node->visible);
 	free(node);
 }
@@ -169,6 +173,7 @@ struct wlr_scene *wlr_scene_create(void) {
 	}
 
 	scene_tree_init(&scene->tree, NULL);
+	scene->tree.is_root = true;
 
 	wl_list_init(&scene->outputs);
 	wl_list_init(&scene->linux_dmabuf_v1_destroy.link);
@@ -191,8 +196,6 @@ struct wlr_scene *wlr_scene_create(void) {
 }
 
 struct wlr_scene_tree *wlr_scene_tree_create(struct wlr_scene_tree *parent) {
-	assert(parent);
-
 	struct wlr_scene_tree *tree = calloc(1, sizeof(*tree));
 	if (tree == NULL) {
 		return NULL;
@@ -667,6 +670,9 @@ static void scene_update_region(struct wlr_scene *scene,
 static void scene_node_update(struct wlr_scene_node *node,
 		pixman_region32_t *damage) {
 	struct wlr_scene *scene = scene_node_get_root(node);
+	if (scene == NULL) {
+		return;
+	}
 
 	int x, y;
 	if (!wlr_scene_node_coords(node, &x, &y)) {
@@ -817,7 +823,6 @@ struct wlr_scene_buffer *wlr_scene_buffer_create(struct wlr_scene_tree *parent,
 	if (scene_buffer == NULL) {
 		return NULL;
 	}
-	assert(parent);
 	scene_node_init(&scene_buffer->node, WLR_SCENE_NODE_BUFFER, parent);
 
 	wl_signal_init(&scene_buffer->events.outputs_update);
@@ -1142,6 +1147,7 @@ void wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y) {
 void wlr_scene_node_place_above(struct wlr_scene_node *node,
 		struct wlr_scene_node *sibling) {
 	assert(node != sibling);
+	assert(node->parent);
 	assert(node->parent == sibling->parent);
 
 	if (node->link.prev == &sibling->link) {
@@ -1156,6 +1162,7 @@ void wlr_scene_node_place_above(struct wlr_scene_node *node,
 void wlr_scene_node_place_below(struct wlr_scene_node *node,
 		struct wlr_scene_node *sibling) {
 	assert(node != sibling);
+	assert(node->parent);
 	assert(node->parent == sibling->parent);
 
 	if (node->link.next == &sibling->link) {
@@ -1168,6 +1175,7 @@ void wlr_scene_node_place_below(struct wlr_scene_node *node,
 }
 
 void wlr_scene_node_raise_to_top(struct wlr_scene_node *node) {
+	assert(node->parent);
 	struct wlr_scene_node *current_top = wl_container_of(
 		node->parent->children.prev, current_top, link);
 	if (node == current_top) {
@@ -1177,6 +1185,7 @@ void wlr_scene_node_raise_to_top(struct wlr_scene_node *node) {
 }
 
 void wlr_scene_node_lower_to_bottom(struct wlr_scene_node *node) {
+	assert(node->parent);
 	struct wlr_scene_node *current_bottom = wl_container_of(
 		node->parent->children.next, current_bottom, link);
 	if (node == current_bottom) {
@@ -1187,8 +1196,6 @@ void wlr_scene_node_lower_to_bottom(struct wlr_scene_node *node) {
 
 void wlr_scene_node_reparent(struct wlr_scene_node *node,
 		struct wlr_scene_tree *new_parent) {
-	assert(new_parent != NULL);
-
 	if (node->parent == new_parent) {
 		return;
 	}
@@ -1199,17 +1206,31 @@ void wlr_scene_node_reparent(struct wlr_scene_node *node,
 		assert(&ancestor->node != node);
 	}
 
-	int x, y;
-	pixman_region32_t visible;
-	pixman_region32_init(&visible);
-	if (wlr_scene_node_coords(node, &x, &y)) {
-		scene_node_visibility(node, &visible);
+	if (node->parent != NULL) {
+		int x, y;
+		pixman_region32_t visible;
+		pixman_region32_init(&visible);
+		if (wlr_scene_node_coords(node, &x, &y)) {
+			scene_node_visibility(node, &visible);
+		}
+		scene_node_update(node, &visible);
+
+		wl_list_remove(&node->link);
 	}
 
-	wl_list_remove(&node->link);
 	node->parent = new_parent;
-	wl_list_insert(new_parent->children.prev, &node->link);
-	scene_node_update(node, &visible);
+
+	if (node->parent != NULL) {
+		wl_list_insert(new_parent->children.prev, &node->link);
+
+		int x, y;
+		pixman_region32_t visible;
+		pixman_region32_init(&visible);
+		if (wlr_scene_node_coords(node, &x, &y)) {
+			scene_node_visibility(node, &visible);
+		}
+		scene_node_update(node, &visible);
+	}
 }
 
 bool wlr_scene_node_coords(struct wlr_scene_node *node,
@@ -1223,6 +1244,7 @@ bool wlr_scene_node_coords(struct wlr_scene_node *node,
 		ly += node->y;
 		enabled = enabled && node->enabled;
 		if (node->parent == NULL) {
+			enabled = enabled && (scene_node_get_root(node) != NULL);
 			break;
 		}
 
