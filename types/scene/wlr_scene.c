@@ -1015,6 +1015,7 @@ void wlr_scene_buffer_set_source_box(struct wlr_scene_buffer *scene_buffer,
 	}
 
 	if (box != NULL) {
+		assert(box->x >= 0 && box->y >= 0 && box->width >= 0 && box->height >= 0);
 		scene_buffer->src_box = *box;
 	} else {
 		scene_buffer->src_box = (struct wlr_fbox){0};
@@ -1029,6 +1030,7 @@ void wlr_scene_buffer_set_dest_size(struct wlr_scene_buffer *scene_buffer,
 		return;
 	}
 
+	assert(width >= 0 && height >= 0);
 	scene_buffer->dst_width = width;
 	scene_buffer->dst_height = height;
 	scene_node_update(&scene_buffer->node, NULL);
@@ -1057,6 +1059,7 @@ void wlr_scene_buffer_set_opacity(struct wlr_scene_buffer *scene_buffer,
 		return;
 	}
 
+	assert(opacity >= 0 && opacity <= 1);
 	scene_buffer->opacity = opacity;
 	scene_node_update(&scene_buffer->node, NULL);
 }
