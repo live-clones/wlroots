@@ -378,7 +378,7 @@ static void reset_cursor_mode(struct tinywl_server *server) {
 	server->grabbed_toplevel = NULL;
 }
 
-static void process_cursor_move(struct tinywl_server *server, uint32_t time) {
+static void process_cursor_move(struct tinywl_server *server) {
 	/* Move the grabbed toplevel to the new position. */
 	struct tinywl_toplevel *toplevel = server->grabbed_toplevel;
 	wlr_scene_node_set_position(&toplevel->scene_tree->node,
@@ -386,7 +386,7 @@ static void process_cursor_move(struct tinywl_server *server, uint32_t time) {
 		server->cursor->y - server->grab_y);
 }
 
-static void process_cursor_resize(struct tinywl_server *server, uint32_t time) {
+static void process_cursor_resize(struct tinywl_server *server) {
 	/*
 	 * Resizing the grabbed toplevel can be a little bit complicated, because we
 	 * could be resizing from any corner or edge. This not only resizes the
@@ -440,10 +440,10 @@ static void process_cursor_resize(struct tinywl_server *server, uint32_t time) {
 static void process_cursor_motion(struct tinywl_server *server, uint32_t time) {
 	/* If the mode is non-passthrough, delegate to those functions. */
 	if (server->cursor_mode == TINYWL_CURSOR_MOVE) {
-		process_cursor_move(server, time);
+		process_cursor_move(server);
 		return;
 	} else if (server->cursor_mode == TINYWL_CURSOR_RESIZE) {
-		process_cursor_resize(server, time);
+		process_cursor_resize(server);
 		return;
 	}
 
