@@ -126,6 +126,12 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 		scene_buffer_set_texture(scene_buffer, NULL);
 		pixman_region32_fini(&scene_buffer->opaque_region);
 		wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
+
+		assert(wl_list_empty(&scene_buffer->events.output_leave.listener_list));
+		assert(wl_list_empty(&scene_buffer->events.output_enter.listener_list));
+		assert(wl_list_empty(&scene_buffer->events.outputs_update.listener_list));
+		assert(wl_list_empty(&scene_buffer->events.output_sample.listener_list));
+		assert(wl_list_empty(&scene_buffer->events.frame_done.listener_list));
 	} else if (node->type == WLR_SCENE_NODE_TREE) {
 		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
 
@@ -149,6 +155,8 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 			wlr_scene_node_destroy(child);
 		}
 	}
+
+	assert(wl_list_empty(&node->events.destroy.listener_list));
 
 	wl_list_remove(&node->link);
 	pixman_region32_fini(&node->visible);
@@ -1656,6 +1664,8 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
 
 	scene_node_output_update(&scene_output->scene->tree.node,
 		&scene_output->scene->outputs, scene_output, NULL);
+
+	assert(wl_list_empty(&scene_output->events.destroy.listener_list));
 
 	struct highlight_region *damage, *tmp_damage;
 	wl_list_for_each_safe(damage, tmp_damage, &scene_output->damage_highlight_regions, link) {
