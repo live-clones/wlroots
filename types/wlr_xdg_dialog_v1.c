@@ -76,6 +76,9 @@ static void dialog_destroy(struct wlr_xdg_dialog_v1 *dialog) {
 
 	wl_signal_emit_mutable(&dialog->events.destroy, NULL);
 
+	assert(wl_list_empty(&dialog->events.destroy.listener_list));
+	assert(wl_list_empty(&dialog->events.set_modal.listener_list));
+
 	wlr_addon_finish(&dialog->surface_addon);
 	wl_list_remove(&dialog->xdg_toplevel_destroy.link);
 
@@ -153,6 +156,9 @@ static void wm_bind(struct wl_client *client, void *data, uint32_t version, uint
 static void xdg_wm_dialog_handle_display_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_xdg_wm_dialog_v1 *wm = wl_container_of(listener, wm, display_destroy);
 	wl_signal_emit_mutable(&wm->events.destroy, NULL);
+
+	assert(wl_list_empty(&wm->events.destroy.listener_list));
+	assert(wl_list_empty(&wm->events.new_dialog.listener_list));
 
 	wl_list_remove(&wm->display_destroy.link);
 	wl_global_destroy(wm->global);
