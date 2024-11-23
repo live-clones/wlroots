@@ -577,6 +577,16 @@ static void drm_connector_apply_commit(const struct wlr_drm_connector_state *sta
 
 		conn->cursor_enabled = false;
 		conn->crtc = NULL;
+
+		// Legacy uAPI doesn't support requesting page-flip events when
+		// turning off a CRTC
+		if (page_flip != NULL && conn->backend->iface == &legacy_iface) {
+			drm_page_flip_pop(page_flip, crtc->id);
+			conn->pending_page_flip = NULL;
+			if (page_flip->connectors_len == 0) {
+				drm_page_flip_destroy(page_flip);
+			}
+		}
 	}
 }
 
