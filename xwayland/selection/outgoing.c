@@ -411,7 +411,7 @@ void xwm_handle_selection_request(struct wlr_xwm *xwm,
 	}
 
 	// No xwayland surface focused, deny access to clipboard
-	if (xwm->focus_surface == NULL && xwm->drag_focus == NULL) {
+	if (xwm->focus_surface == NULL && xwm->drop_focus == NULL) {
 		if (wlr_log_get_verbosity() >= WLR_DEBUG) {
 			char *selection_name = xwm_get_atom_name(xwm, selection->atom);
 			wlr_log(WLR_DEBUG, "denying read access to selection %u (%s): "

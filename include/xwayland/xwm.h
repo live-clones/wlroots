@@ -127,6 +127,7 @@ struct wlr_xwm {
 	struct wl_list pending_startup_ids; // pending_startup_id
 
 	struct wlr_drag *drag;
+	struct wlr_xwayland_surface *drop_focus;
 	struct wlr_xwayland_surface *drag_focus;
 
 	const xcb_query_extension_reply_t *xfixes;
