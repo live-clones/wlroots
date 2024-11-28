@@ -95,7 +95,7 @@ bool wlr_drm_format_set_remove(struct wlr_drm_format_set *set, uint32_t format,
 
 	for (size_t idx = 0; idx < fmt->len; idx++) {
 		if (fmt->modifiers[idx] == modifier) {
-			memmove(&fmt->modifiers[idx], &fmt->modifiers[idx+1], fmt->len - idx - 1);
+			memmove(&fmt->modifiers[idx], &fmt->modifiers[idx+1], (fmt->len - idx - 1) * sizeof(fmt->modifiers[0]));
 			fmt->len--;
 			return true;
 		}
