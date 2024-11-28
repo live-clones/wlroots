@@ -803,6 +803,22 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 		return false;
 	}
 
+	if ((state->committed & WLR_OUTPUT_STATE_BUFFER) && conn->backend->mgpu_renderer.wlr_rend) {
+		struct wlr_dmabuf_attributes dmabuf;
+		if (!wlr_buffer_get_dmabuf(state->buffer, &dmabuf)) {
+			wlr_drm_conn_log(conn, WLR_DEBUG, "Buffer is not a DMA-BUF");
+			return false;
+		}
+
+		if (!wlr_drm_format_set_has(&conn->backend->mgpu_formats, dmabuf.format, dmabuf.modifier)) {
+			wlr_drm_conn_log(conn, WLR_DEBUG,
+				"Buffer format 0x%"PRIX32" with modifier 0x%"PRIX64" cannot be "
+				"imported into multi-GPU renderer",
+				dmabuf.format, dmabuf.modifier);
+			return false;
+		}
+	}
+
 	if (test_only && conn->backend->parent) {
 		// If we're running as a secondary GPU, we can't perform an atomic
 		// commit without blitting a buffer.
