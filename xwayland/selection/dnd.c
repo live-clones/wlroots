@@ -271,14 +271,7 @@ static void seat_handle_drag_focus(struct wl_listener *listener, void *data) {
 
 	struct wlr_xwayland_surface *focus = NULL;
 	if (drag->focus != NULL) {
-		// TODO: check for subsurfaces?
-		struct wlr_xwayland_surface *surface;
-		wl_list_for_each(surface, &xwm->surfaces, link) {
-			if (surface->surface == drag->focus) {
-				focus = surface;
-				break;
-			}
-		}
+		focus = wlr_xwayland_surface_try_from_wlr_surface(drag->focus);
 	}
 
 	xwm_set_drag_focus(xwm, focus);
