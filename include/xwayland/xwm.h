@@ -144,6 +144,7 @@ struct wlr_xwm {
 	struct wl_listener seat_drag_drop;
 	struct wl_listener seat_drag_destroy;
 	struct wl_listener seat_drag_source_destroy;
+	struct wl_listener drag_focus_destroy;
 };
 
 struct wlr_xwm *xwm_create(struct wlr_xwayland *wlr_xwayland, int wm_fd);

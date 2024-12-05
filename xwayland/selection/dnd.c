@@ -234,6 +234,37 @@ int xwm_handle_selection_client_message(struct wlr_xwm *xwm,
 	}
 }
 
+static void xwm_set_drag_focus(struct wlr_xwm *xwm, struct wlr_xwayland_surface *focus);
+
+static void drag_focus_handle_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_xwm *xwm = wl_container_of(listener, xwm, drag_focus_destroy);
+	xwm_set_drag_focus(xwm, NULL);
+}
+
+static void xwm_set_drag_focus(struct wlr_xwm *xwm, struct wlr_xwayland_surface *focus) {
+	if (focus == xwm->drag_focus) {
+		return;
+	}
+
+	if (xwm->drag_focus != NULL) {
+		wlr_data_source_dnd_action(xwm->drag->source,
+			WL_DATA_DEVICE_MANAGER_DND_ACTION_NONE);
+		xwm_dnd_send_leave(xwm);
+	}
+
+	wl_list_remove(&xwm->drag_focus_destroy.link);
+	wl_list_init(&xwm->drag_focus_destroy.link);
+
+	xwm->drag_focus = focus;
+
+	if (xwm->drag_focus != NULL) {
+		xwm->drag_focus_destroy.notify = drag_focus_handle_destroy;
+		wl_signal_add(&xwm->drag_focus->events.destroy, &xwm->drag_focus_destroy);
+
+		xwm_dnd_send_enter(xwm);
+	}
+}
+
 static void seat_handle_drag_focus(struct wl_listener *listener, void *data) {
 	struct wlr_drag *drag = data;
 	struct wlr_xwm *xwm = wl_container_of(listener, xwm, seat_drag_focus);
@@ -250,21 +281,7 @@ static void seat_handle_drag_focus(struct wl_listener *listener, void *data) {
 		}
 	}
 
-	if (focus == xwm->drag_focus) {
-		return;
-	}
-
-	if (xwm->drag_focus != NULL) {
-		wlr_data_source_dnd_action(drag->source,
-			WL_DATA_DEVICE_MANAGER_DND_ACTION_NONE);
-		xwm_dnd_send_leave(xwm);
-	}
-
-	xwm->drag_focus = focus;
-
-	if (xwm->drag_focus != NULL) {
-		xwm_dnd_send_enter(xwm);
-	}
+	xwm_set_drag_focus(xwm, focus);
 }
 
 static void seat_handle_drag_motion(struct wl_listener *listener, void *data) {
@@ -316,10 +333,15 @@ static void seat_handle_drag_source_destroy(struct wl_listener *listener,
 
 	wl_list_remove(&xwm->seat_drag_source_destroy.link);
 	wl_list_init(&xwm->seat_drag_source_destroy.link);
+	wl_list_remove(&xwm->drag_focus_destroy.link);
+	wl_list_init(&xwm->drag_focus_destroy.link);
 	xwm->drag_focus = NULL;
 }
 
 void xwm_seat_handle_start_drag(struct wlr_xwm *xwm, struct wlr_drag *drag) {
+	wl_list_remove(&xwm->drag_focus_destroy.link);
+	wl_list_init(&xwm->drag_focus_destroy.link);
+
 	xwm->drag = drag;
 	xwm->drag_focus = NULL;
 
@@ -341,6 +363,7 @@ void xwm_seat_handle_start_drag(struct wlr_xwm *xwm, struct wlr_drag *drag) {
 
 void xwm_seat_unlink_drag_handlers(struct wlr_xwm *xwm) {
 	wl_list_remove(&xwm->seat_drag_source_destroy.link);
+	wl_list_remove(&xwm->drag_focus_destroy.link);
 
 	if (!xwm->drag) {
 		return;

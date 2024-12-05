@@ -2176,6 +2176,7 @@ struct wlr_xwm *xwm_create(struct wlr_xwayland *xwayland, int wm_fd) {
 	wl_list_init(&xwm->unpaired_surfaces);
 	wl_list_init(&xwm->pending_startup_ids);
 	wl_list_init(&xwm->seat_drag_source_destroy.link);
+	wl_list_init(&xwm->drag_focus_destroy.link);
 
 	xwm->ping_timeout = 10000;
 
