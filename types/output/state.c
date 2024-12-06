@@ -78,8 +78,9 @@ void wlr_output_state_set_subpixel(struct wlr_output_state *state,
 void wlr_output_state_set_buffer(struct wlr_output_state *state,
 		struct wlr_buffer *buffer) {
 	state->committed |= WLR_OUTPUT_STATE_BUFFER;
+	wlr_buffer_lock(buffer);
 	wlr_buffer_unlock(state->buffer);
-	state->buffer = wlr_buffer_lock(buffer);
+	state->buffer = buffer;
 }
 
 void wlr_output_state_set_damage(struct wlr_output_state *state,

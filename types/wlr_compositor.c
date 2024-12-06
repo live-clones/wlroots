@@ -342,10 +342,10 @@ static void surface_state_move(struct wlr_surface_state *state,
 		wlr_buffer_unlock(state->buffer);
 		state->buffer = NULL;
 		if (next->buffer) {
-			state->buffer = wlr_buffer_lock(next->buffer);
+			// Transferring ownership, so no need to lock/unlock
+			state->buffer = next->buffer;
+			next->buffer = NULL;
 		}
-		wlr_buffer_unlock(next->buffer);
-		next->buffer = NULL;
 	}
 	if (next->committed & WLR_SURFACE_STATE_SURFACE_DAMAGE) {
 		pixman_region32_copy(&state->surface_damage, &next->surface_damage);

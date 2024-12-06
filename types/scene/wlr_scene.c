@@ -763,10 +763,11 @@ static void scene_buffer_handle_buffer_release(struct wl_listener *listener,
 
 static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 		struct wlr_buffer *buffer) {
+	struct wlr_buffer *released_buffer = NULL;
 	wl_list_remove(&scene_buffer->buffer_release.link);
 	wl_list_init(&scene_buffer->buffer_release.link);
 	if (scene_buffer->own_buffer) {
-		wlr_buffer_unlock(scene_buffer->buffer);
+		released_buffer = scene_buffer->buffer;
 	}
 	scene_buffer->buffer = NULL;
 	scene_buffer->own_buffer = false;
@@ -774,6 +775,7 @@ static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 	scene_buffer->buffer_is_opaque = false;
 
 	if (!buffer) {
+		wlr_buffer_unlock(released_buffer);
 		return;
 	}
 
@@ -782,6 +784,7 @@ static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 	scene_buffer->buffer_width = buffer->width;
 	scene_buffer->buffer_height = buffer->height;
 	scene_buffer->buffer_is_opaque = buffer_is_opaque(buffer);
+	wlr_buffer_unlock(released_buffer);
 
 	scene_buffer->buffer_release.notify = scene_buffer_handle_buffer_release;
 	wl_signal_add(&buffer->events.release, &scene_buffer->buffer_release);
