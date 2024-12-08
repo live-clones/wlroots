@@ -20,8 +20,13 @@ packages:
   - xwayland-dev
   - libseat-dev
   - hwdata-dev
+  # for docs
+  - go
+  - zip
 sources:
   - https://gitlab.freedesktop.org/wlroots/wlroots.git
+artifacts:
+  - public.zip
 tasks:
   - setup: |
       cd wlroots
@@ -37,3 +42,15 @@ tasks:
   - tinywl: |
       cd wlroots/tinywl
       make
+  - docs: |
+      go install 'git.sr.ht/~emersion/gyosu@latest'
+      ~/go/bin/gyosu \
+        -DWLR_USE_UNSTABLE \
+        $(pkg-config --cflags-only-I wlroots) \
+        -Iwlroots/build/protocol/ \
+        -fexported-symbols='wlr_*' -fexported-symbols='WLR_*' \
+        -ffile-prefix-map=/usr/local/include/= \
+        -fsite-name=wlroots \
+        -o public \
+        /usr/local/include/wlr/
+      zip -r ~/public.zip public/

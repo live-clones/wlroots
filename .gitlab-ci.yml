@@ -5,3 +5,14 @@ archlinux:
   extends: .dalligi
 freebsd:
   extends: .dalligi
+
+pages:
+  stage: deploy
+  dependencies:
+    - alpine
+  script: [ "true" ]
+  artifacts:
+    paths:
+      - public
+  only:
+    - master
