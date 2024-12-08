@@ -940,15 +940,14 @@ void wlr_surface_unlock_cached(struct wlr_surface *surface, uint32_t seq) {
 		return;
 	}
 
-	bool found = false;
-	struct wlr_surface_state *cached;
-	wl_list_for_each(cached, &surface->cached, cached_state_link) {
-		if (cached->seq == seq) {
-			found = true;
+	struct wlr_surface_state *cached = NULL, *iter;
+	wl_list_for_each(iter, &surface->cached, cached_state_link) {
+		if (iter->seq == seq) {
+			cached = iter;
 			break;
 		}
 	}
-	assert(found);
+	assert(cached);
 
 	assert(cached->cached_state_locks > 0);
 	cached->cached_state_locks--;
@@ -1490,6 +1489,7 @@ void wlr_surface_synced_finish(struct wlr_surface_synced *synced) {
 		}
 	}
 	assert(found);
+	(void)found;
 
 	struct wlr_surface_state *cached;
 	wl_list_for_each(cached, &surface->cached, cached_state_link) {

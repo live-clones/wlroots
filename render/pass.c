@@ -18,8 +18,8 @@ void wlr_render_pass_add_texture(struct wlr_render_pass *render_pass,
 		const struct wlr_render_texture_options *options) {
 	// make sure the texture source box does not try and sample outside of the
 	// texture
-	if (!wlr_fbox_empty(&options->src_box)) {
-		const struct wlr_fbox *box = &options->src_box;
+	const struct wlr_fbox *box = &options->src_box;
+	if (!wlr_fbox_empty(box)) {
 		assert(box->x >= 0 && box->y >= 0 &&
 			box->x + box->width <= options->texture->width &&
 			box->y + box->height <= options->texture->height);

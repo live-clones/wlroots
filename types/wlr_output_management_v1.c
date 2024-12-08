@@ -759,16 +759,15 @@ static void head_send_state(struct wlr_output_head_v1 *head,
 	}
 
 	if (state & HEAD_STATE_MODE) {
-		bool found = false;
-		struct wl_resource *mode_resource;
-		wl_resource_for_each(mode_resource, &head->mode_resources) {
-			if (wl_resource_get_client(mode_resource) == client &&
-					mode_from_resource(mode_resource) == head->state.mode) {
-				found = true;
+		struct wl_resource *mode_resource = NULL, *iter;
+		wl_resource_for_each(iter, &head->mode_resources) {
+			if (wl_resource_get_client(iter) == client &&
+					mode_from_resource(iter) == head->state.mode) {
+				mode_resource = iter;
 				break;
 			}
 		}
-		assert(found);
+		assert(mode_resource);
 
 		if (head->state.mode == NULL) {
 			// Fake a single output mode if output doesn't support modes

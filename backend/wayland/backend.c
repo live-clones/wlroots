@@ -216,11 +216,10 @@ static void linux_dmabuf_feedback_v1_handle_tranche_formats(void *data,
 		return;
 	}
 
-	size_t table_cap = feedback_data->format_table_size /
-		sizeof(struct wlr_wl_linux_dmabuf_v1_table_entry);
 	uint16_t *index_ptr;
 	wl_array_for_each(index_ptr, indices_arr) {
-		assert(*index_ptr < table_cap);
+		assert(*index_ptr < feedback_data->format_table_size /
+			sizeof(struct wlr_wl_linux_dmabuf_v1_table_entry));
 		const struct wlr_wl_linux_dmabuf_v1_table_entry *entry =
 			&feedback_data->format_table[*index_ptr];
 		wlr_drm_format_set_add(&feedback_data->backend->linux_dmabuf_v1_formats,
