@@ -41,9 +41,21 @@ static bool client_buffer_get_dmabuf(struct wlr_buffer *buffer,
 	return wlr_buffer_get_dmabuf(client_buffer->source, attribs);
 }
 
+static bool client_buffer_get_shm(struct wlr_buffer *buffer,
+		struct wlr_shm_attributes *attribs) {
+	struct wlr_client_buffer *client_buffer = client_buffer_from_buffer(buffer);
+
+	if (client_buffer->source == NULL) {
+		return false;
+	}
+
+	return wlr_buffer_get_shm(client_buffer->source, attribs);
+}
+
 static const struct wlr_buffer_impl client_buffer_impl = {
 	.destroy = client_buffer_destroy,
 	.get_dmabuf = client_buffer_get_dmabuf,
+	.get_shm = client_buffer_get_shm,
 };
 
 static void client_buffer_handle_source_destroy(struct wl_listener *listener,
