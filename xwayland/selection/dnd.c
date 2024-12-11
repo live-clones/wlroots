@@ -212,10 +212,10 @@ int xwm_handle_selection_client_message(struct wlr_xwm *xwm,
 		bool performed = data->data32[1] & 1;
 		xcb_atom_t action_atom = data->data32[2];
 
-		if (xwm->drag_focus == NULL ||
-				target_window != xwm->drag_focus->window_id) {
+		if (xwm->drop_focus == NULL ||
+				target_window != xwm->drop_focus->window_id) {
 			wlr_log(WLR_DEBUG, "ignoring XdndFinished client message because "
-				"it doesn't match the finished drag focus window ID");
+				"it doesn't match the finished drop focus window ID");
 			return 1;
 		}
 
@@ -239,6 +239,13 @@ static void xwm_set_drag_focus(struct wlr_xwm *xwm, struct wlr_xwayland_surface 
 static void drag_focus_handle_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_xwm *xwm = wl_container_of(listener, xwm, drag_focus_destroy);
 	xwm_set_drag_focus(xwm, NULL);
+}
+
+static void drop_focus_handle_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_xwm *xwm = wl_container_of(listener, xwm, drop_focus_destroy);
+	wl_list_remove(&xwm->drop_focus_destroy.link);
+	wl_list_init(&xwm->drop_focus_destroy.link);
+	xwm->drop_focus = NULL;
 }
 
 static void xwm_set_drag_focus(struct wlr_xwm *xwm, struct wlr_xwayland_surface *focus) {
@@ -299,6 +306,12 @@ static void seat_handle_drag_drop(struct wl_listener *listener, void *data) {
 	}
 
 	wlr_log(WLR_DEBUG, "Wayland drag dropped over an Xwayland window");
+
+	xwm->drop_focus = xwm->drag_focus;
+	xwm->drop_focus_destroy.notify = drop_focus_handle_destroy;
+	wl_list_remove(&xwm->drop_focus_destroy.link);
+	wl_signal_add(&xwm->drop_focus->events.destroy, &xwm->drop_focus_destroy);
+
 	xwm_dnd_send_drop(xwm, event->time);
 }
 
@@ -329,14 +342,21 @@ static void seat_handle_drag_source_destroy(struct wl_listener *listener,
 	wl_list_remove(&xwm->drag_focus_destroy.link);
 	wl_list_init(&xwm->drag_focus_destroy.link);
 	xwm->drag_focus = NULL;
+
+	wl_list_remove(&xwm->drop_focus_destroy.link);
+	wl_list_init(&xwm->drop_focus_destroy.link);
+	xwm->drop_focus = NULL;
 }
 
 void xwm_seat_handle_start_drag(struct wlr_xwm *xwm, struct wlr_drag *drag) {
 	wl_list_remove(&xwm->drag_focus_destroy.link);
 	wl_list_init(&xwm->drag_focus_destroy.link);
+	wl_list_remove(&xwm->drop_focus_destroy.link);
+	wl_list_init(&xwm->drop_focus_destroy.link);
 
 	xwm->drag = drag;
 	xwm->drag_focus = NULL;
+	xwm->drop_focus = NULL;
 
 	if (drag != NULL) {
 		wl_signal_add(&drag->events.focus, &xwm->seat_drag_focus);
@@ -357,6 +377,7 @@ void xwm_seat_handle_start_drag(struct wlr_xwm *xwm, struct wlr_drag *drag) {
 void xwm_seat_unlink_drag_handlers(struct wlr_xwm *xwm) {
 	wl_list_remove(&xwm->seat_drag_source_destroy.link);
 	wl_list_remove(&xwm->drag_focus_destroy.link);
+	wl_list_remove(&xwm->drop_focus_destroy.link);
 
 	if (!xwm->drag) {
 		return;
