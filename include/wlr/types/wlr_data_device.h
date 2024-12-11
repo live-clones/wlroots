@@ -135,6 +135,7 @@ struct wlr_drag {
 	struct {
 		struct wl_listener source_destroy;
 		struct wl_listener seat_client_destroy;
+		struct wl_listener focus_destroy;
 		struct wl_listener icon_destroy;
 	} WLR_PRIVATE;
 };
