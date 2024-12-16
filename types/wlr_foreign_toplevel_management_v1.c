@@ -339,7 +339,7 @@ void wlr_foreign_toplevel_handle_v1_output_leave(
 }
 
 static bool fill_array_from_toplevel_state(struct wl_array *array,
-		uint32_t state) {
+		uint32_t state, uint32_t version) {
 	if (state & WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED) {
 		uint32_t *index = wl_array_add(array, sizeof(uint32_t));
 		if (index == NULL) {
@@ -361,6 +361,10 @@ static bool fill_array_from_toplevel_state(struct wl_array *array,
 		}
 		*index = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
 	}
+
+	if (version < ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN_SINCE_VERSION) {
+		return true;
+	}
 	if (state & WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN) {
 		uint32_t *index = wl_array_add(array, sizeof(uint32_t));
 		if (index == NULL) {
@@ -374,20 +378,26 @@ static bool fill_array_from_toplevel_state(struct wl_array *array,
 
 static void toplevel_send_state(struct wlr_foreign_toplevel_handle_v1 *toplevel) {
 	struct wl_array states;
+	uint32_t last_version = 0;
 	wl_array_init(&states);
-	bool r = fill_array_from_toplevel_state(&states, toplevel->state);
-	if (!r) {
-		struct wl_resource *resource;
-		wl_resource_for_each(resource, &toplevel->resources) {
-			wl_resource_post_no_memory(resource);
-		}
-
-		wl_array_release(&states);
-		return;
-	}
 
 	struct wl_resource *resource;
 	wl_resource_for_each(resource, &toplevel->resources) {
+		uint32_t version = wl_resource_get_version(resource);
+		if (version != last_version) {
+			/* Clients may have bound a version without FULLSCREEN state */
+			wl_array_release(&states);
+			wl_array_init(&states);
+			bool r = fill_array_from_toplevel_state(
+				&states, toplevel->state, version);
+			if (!r) {
+				wl_resource_post_no_memory(resource);
+				last_version = 0;
+				continue;
+			}
+			last_version = version;
+		}
+
 		zwlr_foreign_toplevel_handle_v1_send_state(resource, &states);
 	}
 
@@ -395,60 +405,37 @@ static void toplevel_send_state(struct wlr_foreign_toplevel_handle_v1 *toplevel)
 	toplevel_update_idle_source(toplevel);
 }
 
-void wlr_foreign_toplevel_handle_v1_set_maximized(
-		struct wlr_foreign_toplevel_handle_v1 *toplevel, bool maximized) {
-	if (maximized == !!(toplevel->state &
-			WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED)) {
+static void set_state(struct wlr_foreign_toplevel_handle_v1 *toplevel,
+		bool new_state_val, enum wlr_foreign_toplevel_handle_v1_state state) {
+	if (new_state_val == !!(toplevel->state & state)) {
 		return;
 	}
-	if (maximized) {
-		toplevel->state |= WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
+	if (new_state_val) {
+		toplevel->state |= state;
 	} else {
-		toplevel->state &= ~WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
+		toplevel->state &= ~state;
 	}
 	toplevel_send_state(toplevel);
+}
+
+void wlr_foreign_toplevel_handle_v1_set_maximized(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel, bool maximized) {
+	set_state(toplevel, maximized, WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED);
 }
 
 void wlr_foreign_toplevel_handle_v1_set_minimized(
 		struct wlr_foreign_toplevel_handle_v1 *toplevel, bool minimized) {
-	if (minimized == !!(toplevel->state &
-			WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED)) {
-		return;
-	}
-	if (minimized) {
-		toplevel->state |= WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
-	} else {
-		toplevel->state &= ~WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
-	}
-	toplevel_send_state(toplevel);
+	set_state(toplevel, minimized, WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED);
 }
 
 void wlr_foreign_toplevel_handle_v1_set_activated(
 		struct wlr_foreign_toplevel_handle_v1 *toplevel, bool activated) {
-	if (activated == !!(toplevel->state &
-			WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED)) {
-		return;
-	}
-	if (activated) {
-		toplevel->state |= WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
-	} else {
-		toplevel->state &= ~WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
-	}
-	toplevel_send_state(toplevel);
+	set_state(toplevel, activated, WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED);
 }
 
 void wlr_foreign_toplevel_handle_v1_set_fullscreen(
 		struct wlr_foreign_toplevel_handle_v1 * toplevel, bool fullscreen) {
-	if (fullscreen == !!(toplevel->state &
-			WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN)) {
-		return;
-	}
-	if (fullscreen) {
-		toplevel->state |= WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
-	} else {
-		toplevel->state &= ~WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
-	}
-	toplevel_send_state(toplevel);
+	set_state(toplevel, fullscreen, WLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN);
 }
 
 static void toplevel_resource_send_parent(
@@ -625,7 +612,8 @@ static void toplevel_send_details_to_toplevel_resource(
 
 	struct wl_array states;
 	wl_array_init(&states);
-	bool r = fill_array_from_toplevel_state(&states, toplevel->state);
+	bool r = fill_array_from_toplevel_state(&states,
+		toplevel->state, wl_resource_get_version(resource));
 	if (!r) {
 		wl_resource_post_no_memory(resource);
 		wl_array_release(&states);
