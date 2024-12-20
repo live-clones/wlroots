@@ -1,7 +1,16 @@
-include: https://git.sr.ht/~emersion/dalligi/blob/master/templates/multi.yml
+include:
+  - https://git.sr.ht/~emersion/dalligi/blob/master/templates/multi.yml
+  - https://git.sr.ht/~emersion/dalligi/blob/master/templates/pages.yml
+
 alpine:
   extends: .dalligi
 archlinux:
   extends: .dalligi
 freebsd:
   extends: .dalligi
+
+pages:
+  dependencies:
+    - alpine
+  only:
+    - master
