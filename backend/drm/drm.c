@@ -1353,6 +1353,12 @@ static void dealloc_crtc(struct wlr_drm_connector *conn) {
 		// On GPU unplug, disabling the CRTC can fail with EPERM
 		wlr_drm_conn_log(conn, WLR_ERROR, "Failed to disable CRTC %"PRIu32,
 			conn->crtc->id);
+		drm_plane_finish_surface(conn->crtc->primary);
+		drm_plane_finish_surface(conn->crtc->cursor);
+		drm_fb_clear(&conn->cursor_pending_fb);
+
+		conn->cursor_enabled = false;
+		conn->crtc = NULL;
 	}
 	wlr_output_state_finish(&state);
 }
@@ -1598,6 +1604,9 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	struct wlr_drm_backend *drm = wlr_conn->backend;
 	struct wlr_output *output = &wlr_conn->output;
 
+	if (wlr_conn->crtc == NULL) {
+		wlr_conn->crtc = connector_get_current_crtc(wlr_conn, drm_conn);
+	}
 	wlr_log(WLR_DEBUG, "Current CRTC: %d",
 		wlr_conn->crtc ? (int)wlr_conn->crtc->id : -1);
 
