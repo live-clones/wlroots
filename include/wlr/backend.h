@@ -25,9 +25,15 @@ struct wlr_backend_output_state {
 
 /**
  * A backend provides a set of input and output devices.
+ *
+ * Buffer capabilities and features can change over the lifetime of a backend,
+ * for instance when a child backend is added to a multi-backend.
  */
 struct wlr_backend {
 	const struct wlr_backend_impl *impl;
+
+	// Bitfield of supported buffer capabilities (see enum wlr_buffer_cap)
+	uint32_t buffer_caps;
 
 	struct {
 		// Whether wait/signal timelines are supported in output commits
