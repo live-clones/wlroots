@@ -98,7 +98,7 @@ noreturn static void exec_xwayland(struct wlr_xwayland_server *server,
 
 	argv[i++] = NULL;
 
-	assert(i < sizeof(argv) / sizeof(argv[0]));
+	assert(i <= sizeof(argv) / sizeof(argv[0]));
 
 	char wayland_socket_str[16];
 	snprintf(wayland_socket_str, sizeof(wayland_socket_str), "%d", server->wl_fd[1]);

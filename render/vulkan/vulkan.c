@@ -604,7 +604,7 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 		.ppEnabledExtensionNames = extensions,
 	};
 
-	assert(extensions_len < sizeof(extensions) / sizeof(extensions[0]));
+	assert(extensions_len <= sizeof(extensions) / sizeof(extensions[0]));
 
 	res = vkCreateDevice(phdev, &dev_info, NULL, &dev->dev);
 
