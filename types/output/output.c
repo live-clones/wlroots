@@ -418,6 +418,7 @@ void wlr_output_destroy(struct wlr_output *output) {
 	free(output->make);
 	free(output->model);
 	free(output->serial);
+	free(output->port);
 
 	if (output->impl && output->impl->destroy) {
 		output->impl->destroy(output);
