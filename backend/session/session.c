@@ -191,14 +191,22 @@ static int handle_udev_event(int fd, uint32_t mask, void *data) {
 		goto out;
 	}
 
+	dev_t devnum = udev_device_get_devnum(udev_dev);
 	if (strcmp(action, "add") == 0) {
+		struct wlr_device *dev;
+		wl_list_for_each(dev, &session->devices, link) {
+			if (dev->dev == devnum) {
+				wlr_log(WLR_DEBUG, "Skipping duplicate device %s", sysname);
+				goto out;
+			}
+		}
+
 		wlr_log(WLR_DEBUG, "DRM device %s added", sysname);
 		struct wlr_session_add_event event = {
 			.path = devnode,
 		};
 		wl_signal_emit_mutable(&session->events.add_drm_card, &event);
 	} else if (strcmp(action, "change") == 0 || strcmp(action, "remove") == 0) {
-		dev_t devnum = udev_device_get_devnum(udev_dev);
 		struct wlr_device *dev;
 		wl_list_for_each(dev, &session->devices, link) {
 			if (dev->dev != devnum) {
