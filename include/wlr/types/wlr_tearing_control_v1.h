@@ -34,8 +34,6 @@ struct wlr_tearing_control_v1 {
 		enum wp_tearing_control_v1_presentation_hint previous;
 		struct wlr_addon addon;
 		struct wlr_surface_synced synced;
-
-		struct wl_listener surface_commit;
 	} WLR_PRIVATE;
 };
 
