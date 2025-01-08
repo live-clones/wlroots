@@ -64,7 +64,6 @@ struct wlr_pointer_constraint_v1 {
 	void *data;
 
 	struct {
-		struct wl_listener surface_commit;
 		struct wl_listener surface_destroy;
 		struct wl_listener seat_destroy;
 
