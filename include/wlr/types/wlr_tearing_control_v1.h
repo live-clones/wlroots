@@ -45,7 +45,7 @@ struct wlr_tearing_control_manager_v1 {
 	struct wl_list surface_hints;  // wlr_tearing_control_v1.link
 
 	struct {
-		struct wl_signal new_object;  // struct wlr_tearing_control_v1*
+		struct wl_signal new_object;  // struct wlr_tearing_control_v1
 		struct wl_signal destroy;
 	} events;
 
