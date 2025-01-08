@@ -39,9 +39,14 @@ static void resource_destroy(struct wl_client *client,
 }
 
 static void pointer_constraint_destroy(struct wlr_pointer_constraint_v1 *constraint) {
-	if (constraint == NULL) {
+	if (constraint == NULL || constraint->destroying) {
 		return;
 	}
+
+	// Calling wlr_pointer_constraint_v1_send_deactivated() for a oneshot constraint
+	// that is being destroyed results in another pointer_constraint_destroy() call.
+	// Avoid finalizing the state twice by setting a flag.
+	constraint->destroying = true;
 
 	wlr_log(WLR_DEBUG, "destroying constraint %p", constraint);
 

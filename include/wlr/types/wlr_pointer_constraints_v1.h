@@ -70,6 +70,8 @@ struct wlr_pointer_constraint_v1 {
 		struct wl_listener seat_destroy;
 
 		struct wlr_surface_synced synced;
+
+		bool destroying;
 	} WLR_PRIVATE;
 };
 
