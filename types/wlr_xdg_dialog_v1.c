@@ -152,6 +152,8 @@ static void wm_bind(struct wl_client *client, void *data, uint32_t version, uint
 
 static void xdg_wm_dialog_handle_display_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_xdg_wm_dialog_v1 *wm = wl_container_of(listener, wm, display_destroy);
+	wl_signal_emit_mutable(&wm->events.destroy, NULL);
+
 	wl_list_remove(&wm->display_destroy.link);
 	wl_global_destroy(wm->global);
 	free(wm);
@@ -186,6 +188,7 @@ struct wlr_xdg_wm_dialog_v1 *wlr_xdg_wm_dialog_v1_create(struct wl_display *disp
 	wm->display_destroy.notify = xdg_wm_dialog_handle_display_destroy;
 	wl_display_add_destroy_listener(display, &wm->display_destroy);
 
+	wl_signal_init(&wm->events.destroy);
 	wl_signal_init(&wm->events.new_dialog);
 
 	return wm;

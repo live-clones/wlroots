@@ -35,6 +35,7 @@ struct wlr_xdg_wm_dialog_v1 {
 	struct wl_global *global;
 
 	struct {
+		struct wl_signal destroy;
 		struct wl_signal new_dialog; // struct wlr_xdg_dialog_v1
 	} events;
 
