@@ -191,32 +191,40 @@ static int handle_udev_event(int fd, uint32_t mask, void *data) {
 		goto out;
 	}
 
+	dev_t devnum = udev_device_get_devnum(udev_dev);
 	if (strcmp(action, "add") == 0) {
+		struct wlr_device *dev;
+		wl_list_for_each(dev, &session->devices, link) {
+			if (dev->dev == devnum) {
+				wlr_log(WLR_DEBUG, "Skipping duplicate device %s", sysname);
+				goto out;
+			}
+		}
+
 		wlr_log(WLR_DEBUG, "DRM device %s added", sysname);
 		struct wlr_session_add_event event = {
 			.path = devnode,
 		};
 		wl_signal_emit_mutable(&session->events.add_drm_card, &event);
-	} else if (strcmp(action, "change") == 0 || strcmp(action, "remove") == 0) {
-		dev_t devnum = udev_device_get_devnum(udev_dev);
+	} else if (strcmp(action, "change") == 0) {
 		struct wlr_device *dev;
 		wl_list_for_each(dev, &session->devices, link) {
-			if (dev->dev != devnum) {
-				continue;
-			}
-
-			if (strcmp(action, "change") == 0) {
+			if (dev->dev == devnum) {
 				wlr_log(WLR_DEBUG, "DRM device %s changed", sysname);
 				struct wlr_device_change_event event = {0};
 				read_udev_change_event(&event, udev_dev);
 				wl_signal_emit_mutable(&dev->events.change, &event);
-			} else if (strcmp(action, "remove") == 0) {
+				break;
+			}
+		}
+	} else if (strcmp(action, "remove") == 0) {
+		struct wlr_device *dev;
+		wl_list_for_each(dev, &session->devices, link) {
+			if (dev->dev == devnum) {
 				wlr_log(WLR_DEBUG, "DRM device %s removed", sysname);
 				wl_signal_emit_mutable(&dev->events.remove, NULL);
-			} else {
-				assert(0);
+				break;
 			}
-			break;
 		}
 	}
 
