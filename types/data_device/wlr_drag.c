@@ -362,6 +362,7 @@ static const struct wlr_keyboard_grab_interface
 static void drag_handle_icon_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_drag *drag = wl_container_of(listener, drag, icon_destroy);
 	drag->icon = NULL;
+	wl_list_remove(&drag->icon_destroy.link);
 }
 
 static void drag_handle_drag_source_destroy(struct wl_listener *listener,
