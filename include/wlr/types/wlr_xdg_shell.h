@@ -106,6 +106,7 @@ struct wlr_xdg_popup {
 
 	struct {
 		struct wl_signal destroy;
+		struct wl_signal reset;
 
 		struct wl_signal reposition;
 	} events;

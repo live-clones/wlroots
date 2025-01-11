@@ -409,6 +409,7 @@ void create_xdg_popup(struct wlr_xdg_surface *surface, struct wlr_xdg_surface *p
 	surface->popup->scheduled.rules = positioner->rules;
 
 	wl_signal_init(&surface->popup->events.destroy);
+	wl_signal_init(&surface->popup->events.reset);
 	wl_signal_init(&surface->popup->events.reposition);
 
 	if (parent) {
@@ -436,6 +437,8 @@ error_popup:
 }
 
 void reset_xdg_popup(struct wlr_xdg_popup *popup) {
+	wl_signal_emit_mutable(&popup->events.reset, NULL);
+
 	if (popup->seat != NULL) {
 		struct wlr_xdg_popup_grab *grab =
 			get_xdg_shell_popup_grab_from_seat(
