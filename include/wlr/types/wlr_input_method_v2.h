@@ -14,6 +14,8 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/box.h>
 
+struct wlr_text_input_v3;
+
 struct wlr_input_method_v2_preedit_string {
 	char *text;
 	int32_t cursor_begin;
@@ -104,6 +106,39 @@ struct wlr_input_method_manager_v2 {
 	} WLR_PRIVATE;
 };
 
+struct wlr_input_method_v2_input_router_layer {
+	struct wlr_input_router *router;
+	struct wlr_input_method_v2 *input_method;
+
+	struct {
+		struct wl_signal destroy;
+	} events;
+
+	struct {
+		struct wlr_input_router_keyboard_handler keyboard_handler;
+
+		struct wlr_keyboard *device;
+		struct wlr_input_method_keyboard_grab_v2 *grab;
+		bool device_grabbed;
+
+		uint32_t grab_keycodes[WLR_KEYBOARD_KEYS_CAP];
+		size_t num_grab_keycodes;
+
+		struct wlr_text_input_v3 *active_text_input;
+
+		struct wl_listener active_text_input_destroy;
+		struct wl_listener active_text_input_commit;
+
+		struct wl_listener input_method_destroy;
+		struct wl_listener input_method_commit;
+		struct wl_listener input_method_grab_keyboard;
+
+		struct wl_listener router_destroy;
+		struct wl_listener device_destroy;
+		struct wl_listener grab_destroy;
+	} WLR_PRIVATE;
+};
+
 struct wlr_input_method_manager_v2 *wlr_input_method_manager_v2_create(
 	struct wl_display *display);
 
@@ -146,5 +181,19 @@ void wlr_input_method_keyboard_grab_v2_set_keyboard(
 	struct wlr_keyboard *keyboard);
 void wlr_input_method_keyboard_grab_v2_destroy(
 	struct wlr_input_method_keyboard_grab_v2 *keyboard_grab);
+
+bool wlr_input_method_v2_input_router_layer_register(int32_t priority);
+
+struct wlr_input_method_v2_input_router_layer *wlr_input_method_v2_input_router_layer_create(
+		struct wlr_input_router *router);
+void wlr_input_method_v2_input_router_layer_destroy(
+		struct wlr_input_method_v2_input_router_layer *layer);
+
+void wlr_input_method_v2_input_router_layer_set_input_method(
+		struct wlr_input_method_v2_input_router_layer *layer,
+		struct wlr_input_method_v2 *input_method);
+void wlr_input_method_v2_input_router_layer_set_active_text_input(
+		struct wlr_input_method_v2_input_router_layer *layer,
+		struct wlr_text_input_v3 *text_input);
 
 #endif
