@@ -71,7 +71,7 @@ struct wlr_text_input_v3 {
 
 struct wlr_text_input_manager_v3 {
 	struct wl_global *global;
-	struct wl_list text_inputs; // struct wlr_text_input_v3.resource.link
+	struct wl_list text_inputs; // wlr_text_input_v3.link
 
 	struct {
 		struct wl_signal text_input; // struct wlr_text_input_v3
