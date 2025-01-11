@@ -348,6 +348,32 @@ struct wlr_xdg_toplevel_show_window_menu_event {
 };
 
 /**
+ * A input router layer which implements xdg_popup.grab semantics. It is
+ * destroyed automatically when the grab is dismissed.
+ */
+struct wlr_xdg_popup_grab_input_router_layer {
+	struct wlr_input_router *router;
+	struct wlr_xdg_popup *popup;
+
+	struct {
+		struct wl_signal destroy;
+	} events;
+
+	struct {
+		struct wlr_input_router_keyboard keyboard;
+		struct wlr_input_router_focus keyboard_focus;
+
+		struct wlr_input_router_pointer pointer;
+
+		struct wlr_input_router_touch touch;
+
+		struct wlr_addon router_addon;
+
+		struct wl_listener popup_destroy;
+	} WLR_PRIVATE;
+};
+
+/**
  * Create the xdg_wm_base global with the specified version.
  */
 struct wlr_xdg_shell *wlr_xdg_shell_create(struct wl_display *display,
@@ -586,5 +612,13 @@ void wlr_xdg_surface_for_each_popup_surface(struct wlr_xdg_surface *surface,
  * extending the shell.
  */
 uint32_t wlr_xdg_surface_schedule_configure(struct wlr_xdg_surface *surface);
+
+bool wlr_xdg_popup_grab_input_router_layer_register(int32_t priority);
+
+struct wlr_xdg_popup_grab_input_router_layer *wlr_xdg_popup_grab_input_router_layer_get_or_create(
+		struct wlr_input_router *router, struct wlr_xdg_popup *popup);
+
+void wlr_xdg_popup_grab_input_router_layer_destroy(
+		struct wlr_xdg_popup_grab_input_router_layer *layer);
 
 #endif
