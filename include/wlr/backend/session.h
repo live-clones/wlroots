@@ -43,11 +43,6 @@ struct wlr_session {
 	 */
 	bool active;
 
-	/*
-	 * 0 if virtual terminals are not supported
-	 * i.e. seat != "seat0"
-	 */
-	unsigned vtnr;
 	char seat[256];
 
 	struct udev *udev;
