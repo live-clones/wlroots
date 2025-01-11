@@ -17,14 +17,19 @@ void wlr_buffer_init(struct wlr_buffer *buffer,
 		.width = width,
 		.height = height,
 	};
+
 	wl_signal_init(&buffer->events.destroy);
 	wl_signal_init(&buffer->events.release);
+
 	wlr_addon_set_init(&buffer->addons);
 }
 
 void wlr_buffer_finish(struct wlr_buffer *buffer) {
 	wl_signal_emit_mutable(&buffer->events.destroy, NULL);
 	wlr_addon_set_finish(&buffer->addons);
+
+	assert(wl_list_empty(&buffer->events.destroy.listener_list));
+	assert(wl_list_empty(&buffer->events.release.listener_list));
 }
 
 static void buffer_consider_destroy(struct wlr_buffer *buffer) {
