@@ -26,6 +26,7 @@ struct wlr_xdg_shell {
 		struct wl_signal new_surface; // struct wlr_xdg_surface
 		struct wl_signal new_toplevel; // struct wlr_xdg_toplevel
 		struct wl_signal new_popup; // struct wlr_xdg_popup
+		struct wl_signal popup_grab; // struct wlr_xdg_shell_popup_grab_event
 		struct wl_signal destroy;
 	} events;
 
@@ -34,6 +35,12 @@ struct wlr_xdg_shell {
 	struct {
 		struct wl_listener display_destroy;
 	} WLR_PRIVATE;
+};
+
+struct wlr_xdg_shell_popup_grab_event {
+	struct wlr_xdg_popup *popup;
+	struct wlr_seat_client *seat_client;
+	uint32_t serial;
 };
 
 struct wlr_xdg_client {

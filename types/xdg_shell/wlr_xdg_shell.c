@@ -160,6 +160,7 @@ struct wlr_xdg_shell *wlr_xdg_shell_create(struct wl_display *display,
 	wl_signal_init(&xdg_shell->events.new_surface);
 	wl_signal_init(&xdg_shell->events.new_toplevel);
 	wl_signal_init(&xdg_shell->events.new_popup);
+	wl_signal_init(&xdg_shell->events.popup_grab);
 	wl_signal_init(&xdg_shell->events.destroy);
 
 	xdg_shell->display_destroy.notify = handle_display_destroy;
