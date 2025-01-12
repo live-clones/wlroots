@@ -115,6 +115,8 @@ struct wlr_xdg_popup {
 
 	struct {
 		struct wlr_surface_synced synced;
+
+		bool grabbing;
 	} WLR_PRIVATE;
 };
 

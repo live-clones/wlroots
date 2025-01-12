@@ -285,6 +285,8 @@ static void xdg_popup_handle_grab(struct wl_client *client,
 		return;
 	}
 
+	popup->grabbing = true;
+
 	struct wlr_xdg_popup_grab *popup_grab = get_xdg_shell_popup_grab_from_seat(
 		popup->base->client->shell, seat_client->seat);
 
