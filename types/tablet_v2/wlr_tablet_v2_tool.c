@@ -12,8 +12,11 @@
 
 static const struct wlr_tablet_tool_v2_grab_interface default_tool_grab_interface;
 
+static void tablet_tool_cursor_surface_handle_client_commit(struct wlr_surface *surface) {
+	pixman_region32_clear(&surface->pending.input);
+}
+
 static void tablet_tool_cursor_surface_handle_commit(struct wlr_surface *surface) {
-	pixman_region32_clear(&surface->input_region);
 	if (wlr_surface_has_buffer(surface)) {
 		wlr_surface_map(surface);
 	}
@@ -22,6 +25,7 @@ static void tablet_tool_cursor_surface_handle_commit(struct wlr_surface *surface
 static const struct wlr_surface_role tablet_tool_cursor_surface_role = {
 	.name = "wp_tablet_tool-cursor",
 	.no_object = true,
+	.client_commit = tablet_tool_cursor_surface_handle_client_commit,
 	.commit = tablet_tool_cursor_surface_handle_commit,
 };
 

@@ -69,8 +69,11 @@ struct wlr_seat_client *wlr_seat_client_from_pointer_resource(
 	return wl_resource_get_user_data(resource);
 }
 
+static void pointer_cursor_surface_handle_client_commit(struct wlr_surface *surface) {
+	pixman_region32_clear(&surface->pending.input);
+}
+
 static void pointer_cursor_surface_handle_commit(struct wlr_surface *surface) {
-	pixman_region32_clear(&surface->input_region);
 	if (wlr_surface_has_buffer(surface)) {
 		wlr_surface_map(surface);
 	}
@@ -79,6 +82,7 @@ static void pointer_cursor_surface_handle_commit(struct wlr_surface *surface) {
 static const struct wlr_surface_role pointer_cursor_surface_role = {
 	.name = "wl_pointer-cursor",
 	.no_object = true,
+	.client_commit = pointer_cursor_surface_handle_client_commit,
 	.commit = pointer_cursor_surface_handle_commit,
 };
 

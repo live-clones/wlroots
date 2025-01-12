@@ -371,10 +371,14 @@ static void drag_handle_drag_source_destroy(struct wl_listener *listener,
 	drag_destroy(drag);
 }
 
+static void drag_icon_surface_role_client_commit(struct wlr_surface *surface) {
+	assert(surface->role == &drag_icon_surface_role);
+	pixman_region32_clear(&surface->pending.input);
+}
+
 static void drag_icon_surface_role_commit(struct wlr_surface *surface) {
 	assert(surface->role == &drag_icon_surface_role);
 
-	pixman_region32_clear(&surface->input_region);
 	if (wlr_surface_has_buffer(surface)) {
 		wlr_surface_map(surface);
 	}
@@ -383,6 +387,7 @@ static void drag_icon_surface_role_commit(struct wlr_surface *surface) {
 const struct wlr_surface_role drag_icon_surface_role = {
 	.name = "wl_data_device-icon",
 	.no_object = true,
+	.client_commit = drag_icon_surface_role_client_commit,
 	.commit = drag_icon_surface_role_commit,
 };
 
