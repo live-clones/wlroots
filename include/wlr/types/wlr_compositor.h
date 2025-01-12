@@ -484,6 +484,8 @@ void wlr_surface_set_preferred_buffer_scale(struct wlr_surface *surface,
 void wlr_surface_set_preferred_buffer_transform(struct wlr_surface *surface,
 	enum wl_output_transform transform);
 
+struct wlr_surface_synced;
+
 /**
  * Implementation for struct wlr_surface_synced.
  *
@@ -500,6 +502,11 @@ struct wlr_surface_synced_impl {
 	void (*finish_state)(void *state);
 	// Move a state. If NULL, memcpy() is used.
 	void (*move_state)(void *dst, void *src);
+
+	// Called when the state is committed. If NULL, this is a no-op.
+	// If an object is a surface role object which has state synchronized with
+	// the surface state, the role commit hook should be preferred over this.
+	void (*commit)(struct wlr_surface_synced *synced);
 };
 
 /**
