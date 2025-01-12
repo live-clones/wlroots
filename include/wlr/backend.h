@@ -65,13 +65,12 @@ struct wlr_backend *wlr_backend_autocreate(struct wl_event_loop *loop,
 	struct wlr_session **session_ptr);
 /**
  * Start the backend. This may signal new_input or new_output immediately, but
- * may also wait until the display's event loop begins. Returns false on
- * failure.
+ * may also wait until the event loop is started. Returns false on failure.
  */
 bool wlr_backend_start(struct wlr_backend *backend);
 /**
  * Destroy the backend and clean up all of its resources. Normally called
- * automatically when the struct wl_display is destroyed.
+ * automatically when the event loop is destroyed.
  */
 void wlr_backend_destroy(struct wlr_backend *backend);
 /**
