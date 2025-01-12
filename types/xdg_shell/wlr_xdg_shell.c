@@ -133,6 +133,7 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	assert(wl_list_empty(&xdg_shell->events.new_surface.listener_list));
 	assert(wl_list_empty(&xdg_shell->events.new_toplevel.listener_list));
 	assert(wl_list_empty(&xdg_shell->events.new_popup.listener_list));
+	assert(wl_list_empty(&xdg_shell->events.popup_grab.listener_list));
 	assert(wl_list_empty(&xdg_shell->events.destroy.listener_list));
 
 	wl_list_remove(&xdg_shell->display_destroy.link);
@@ -166,6 +167,7 @@ struct wlr_xdg_shell *wlr_xdg_shell_create(struct wl_display *display,
 	wl_signal_init(&xdg_shell->events.new_surface);
 	wl_signal_init(&xdg_shell->events.new_toplevel);
 	wl_signal_init(&xdg_shell->events.new_popup);
+	wl_signal_init(&xdg_shell->events.popup_grab);
 	wl_signal_init(&xdg_shell->events.destroy);
 
 	xdg_shell->display_destroy.notify = handle_display_destroy;

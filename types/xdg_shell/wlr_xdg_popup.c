@@ -306,6 +306,14 @@ static void xdg_popup_handle_grab(struct wl_client *client,
 		&popup_grab->keyboard_grab);
 	wlr_seat_touch_start_grab(seat_client->seat,
 		&popup_grab->touch_grab);
+
+	struct wlr_xdg_shell_popup_grab_event event = {
+		.popup = popup,
+		.seat_client = seat_client,
+		.serial = serial,
+	};
+
+	wl_signal_emit_mutable(&popup->base->client->shell->events.popup_grab, &event);
 }
 
 static void xdg_popup_handle_reposition(
