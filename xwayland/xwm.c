@@ -2624,6 +2624,10 @@ bool wlr_xwayland_surface_override_redirect_wants_focus(
 		NET_WM_WINDOW_TYPE_UTILITY,
 	};
 
+	if (wlr_xwayland_surface_icccm_input_model(xsurface) == WLR_ICCCM_INPUT_MODEL_NONE) {
+		return false;
+	}
+
 	for (size_t i = 0; i < sizeof(needles) / sizeof(needles[0]); ++i) {
 		if (xwm_atoms_contains(xsurface->xwm, xsurface->window_type,
 				xsurface->window_type_len, needles[i])) {
