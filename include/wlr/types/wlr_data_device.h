@@ -10,6 +10,7 @@
 #define WLR_TYPES_WLR_DATA_DEVICE_H
 
 #include <wayland-server-core.h>
+#include <wlr/types/wlr_input_router.h>
 #include <wlr/types/wlr_seat.h>
 
 struct wlr_data_device_manager {
@@ -120,6 +121,8 @@ struct wlr_drag {
 	struct wlr_surface *focus; // can be NULL
 	struct wlr_data_source *source; // can be NULL
 
+	double sx, sy;
+
 	bool started, dropped, cancelling;
 	int32_t grab_touch_id, touch_id; // if WLR_DRAG_GRAB_TOUCH
 
@@ -149,6 +152,34 @@ struct wlr_drag_motion_event {
 struct wlr_drag_drop_event {
 	struct wlr_drag *drag;
 	uint32_t time;
+};
+
+struct wlr_drag_input_router_layer {
+	struct wlr_input_router *router;
+	struct wlr_input_router_implicit_grab *implicit_grab;
+	struct wlr_drag *drag;
+
+	enum wlr_drag_grab_type grab_type;
+
+	struct {
+		struct wl_signal destroy;
+	} events;
+
+	struct {
+		union {
+			struct {
+				struct wlr_input_router_pointer_handler handler;
+				uint32_t button;
+			} pointer;
+			struct {
+				struct wlr_input_router_touch_handler handler;
+				int32_t id;
+			} touch;
+		};
+
+		struct wl_listener router_destroy;
+		struct wl_listener drag_destroy;
+	} WLR_PRIVATE;
 };
 
 /**
@@ -210,6 +241,20 @@ void wlr_seat_start_pointer_drag(struct wlr_seat *seat, struct wlr_drag *drag,
 void wlr_seat_start_touch_drag(struct wlr_seat *seat, struct wlr_drag *drag,
 	uint32_t serial, struct wlr_touch_point *point);
 
+void wlr_drag_start(struct wlr_drag *drag);
+
+void wlr_drag_enter(struct wlr_drag *drag, struct wlr_surface *surface,
+	double sx, double sy);
+
+void wlr_drag_clear_focus(struct wlr_drag *drag);
+
+void wlr_drag_send_motion(struct wlr_drag *drag, uint32_t time_msec,
+	double sx, double sy);
+
+void wlr_drag_drop_and_destroy(struct wlr_drag *drag, uint32_t time_msec);
+
+void wlr_drag_destroy(struct wlr_drag *drag);
+
 /**
  * Initializes the data source with the provided implementation.
  */
@@ -260,5 +305,15 @@ void wlr_data_source_dnd_finish(struct wlr_data_source *source);
  */
 void wlr_data_source_dnd_action(struct wlr_data_source *source,
 	enum wl_data_device_manager_dnd_action action);
+
+bool wlr_drag_input_router_layer_register(int32_t priority);
+
+struct wlr_drag_input_router_layer *wlr_drag_input_router_layer_create_pointer(
+		struct wlr_input_router *router, struct wlr_drag *drag, uint32_t button);
+
+struct wlr_drag_input_router_layer *wlr_drag_input_router_layer_create_touch(
+		struct wlr_input_router *router, struct wlr_drag *drag, int32_t id);
+
+void wlr_drag_input_router_layer_destroy(struct wlr_drag_input_router_layer *layer);
 
 #endif

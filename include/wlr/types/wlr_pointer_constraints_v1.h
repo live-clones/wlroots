@@ -13,6 +13,7 @@
 #include <wayland-server-core.h>
 #include <pixman.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_input_router.h>
 #include <wlr/types/wlr_seat.h>
 #include "pointer-constraints-unstable-v1-protocol.h"
 
@@ -55,8 +56,7 @@ struct wlr_pointer_constraint_v1 {
 
 	struct {
 		/**
-		 * Called when a pointer constraint's region is updated,
-		 * post-surface-commit.
+		 * Emitted when a pointer constraint's region is updated.
 		 */
 		struct wl_signal set_region;
 		struct wl_signal destroy;
@@ -65,7 +65,6 @@ struct wlr_pointer_constraint_v1 {
 	void *data;
 
 	struct {
-		struct wl_listener surface_commit;
 		struct wl_listener surface_destroy;
 		struct wl_listener seat_destroy;
 
@@ -79,13 +78,7 @@ struct wlr_pointer_constraints_v1 {
 
 	struct {
 		struct wl_signal destroy;
-
-		/**
-		 * Called when a new pointer constraint is created.
-		 *
-		 * The data pointer is a struct wlr_pointer_constraint_v1.
-		 */
-		struct wl_signal new_constraint;
+		struct wl_signal new_constraint; // struct wlr_pointer_constraint_v1
 	} events;
 
 	void *data;
@@ -93,6 +86,45 @@ struct wlr_pointer_constraints_v1 {
 	struct {
 		struct wl_listener display_destroy;
 	} WLR_PRIVATE;
+};
+
+struct wlr_pointer_constraints_v1_input_router_layer {
+	struct wlr_input_router *router;
+	struct wlr_pointer_constraints_v1 *constraints;
+	struct wlr_seat *seat;
+
+	struct {
+		struct wl_signal destroy;
+
+		struct wl_signal cursor_hint;
+	} events;
+
+	struct {
+		struct wlr_input_router_pointer_handler pointer_handler;
+
+		struct wlr_surface *active_surface;
+		struct wlr_pointer_constraint_v1 *active;
+
+		double last_x, last_y;
+		double lock_sx, lock_sy;
+		bool lock_applied;
+
+		struct wl_listener active_surface_destroy;
+
+		struct wl_listener active_destroy;
+		struct wl_listener active_set_region;
+
+		struct wl_listener constraints_destroy;
+		struct wl_listener constraints_new_constraint;
+
+		struct wl_listener router_destroy;
+		struct wl_listener seat_destroy;
+	} WLR_PRIVATE;
+};
+
+struct wlr_pointer_constraints_v1_input_router_layer_cursor_hint_event {
+	// Global coordinates to warp the cursor to
+	double x, y;
 };
 
 struct wlr_pointer_constraints_v1 *wlr_pointer_constraints_v1_create(
@@ -110,5 +142,18 @@ void wlr_pointer_constraint_v1_send_activated(
  */
 void wlr_pointer_constraint_v1_send_deactivated(
 	struct wlr_pointer_constraint_v1 *constraint);
+
+bool wlr_pointer_constraints_v1_input_router_layer_register(int32_t priority);
+
+struct wlr_pointer_constraints_v1_input_router_layer *
+wlr_pointer_constraints_v1_input_router_layer_create(
+		struct wlr_input_router *router, struct wlr_pointer_constraints_v1 *constraints,
+		struct wlr_seat *seat);
+void wlr_pointer_constraints_v1_input_router_layer_destroy(
+		struct wlr_pointer_constraints_v1_input_router_layer *layer);
+
+void wlr_pointer_constraints_v1_input_router_layer_set_active_surface(
+		struct wlr_pointer_constraints_v1_input_router_layer *layer,
+		struct wlr_surface *surface);
 
 #endif

@@ -26,6 +26,7 @@ struct wlr_xdg_shell {
 		struct wl_signal new_surface; // struct wlr_xdg_surface
 		struct wl_signal new_toplevel; // struct wlr_xdg_toplevel
 		struct wl_signal new_popup; // struct wlr_xdg_popup
+		struct wl_signal popup_grab; // struct wlr_xdg_shell_popup_grab_event
 		struct wl_signal destroy;
 	} events;
 
@@ -34,6 +35,12 @@ struct wlr_xdg_shell {
 	struct {
 		struct wl_listener display_destroy;
 	} WLR_PRIVATE;
+};
+
+struct wlr_xdg_shell_popup_grab_event {
+	struct wlr_xdg_popup *popup;
+	struct wlr_seat_client *seat_client;
+	uint32_t serial;
 };
 
 struct wlr_xdg_client {
@@ -106,6 +113,7 @@ struct wlr_xdg_popup {
 
 	struct {
 		struct wl_signal destroy;
+		struct wl_signal reset;
 
 		struct wl_signal reposition;
 	} events;
@@ -114,6 +122,8 @@ struct wlr_xdg_popup {
 
 	struct {
 		struct wlr_surface_synced synced;
+
+		bool grabbing;
 	} WLR_PRIVATE;
 };
 
@@ -338,6 +348,29 @@ struct wlr_xdg_toplevel_show_window_menu_event {
 	struct wlr_seat_client *seat;
 	uint32_t serial;
 	int32_t x, y;
+};
+
+struct wlr_xdg_popup_grab_input_router_layer {
+	struct wlr_input_router *router;
+	struct wlr_xdg_popup *popup;
+
+	struct {
+		struct wl_signal destroy;
+	} events;
+
+	struct {
+		struct wlr_input_router_keyboard_handler keyboard_handler;
+		struct wlr_input_router_focus keyboard_focus;
+
+		struct wlr_input_router_pointer_handler pointer_handler;
+		struct wlr_input_router_focus pointer_focus;
+
+		struct wlr_input_router_touch_handler touch_handler;
+
+		struct wlr_addon router_addon;
+
+		struct wl_listener popup_reset;
+	} WLR_PRIVATE;
 };
 
 /**
@@ -579,5 +612,13 @@ void wlr_xdg_surface_for_each_popup_surface(struct wlr_xdg_surface *surface,
  * extending the shell.
  */
 uint32_t wlr_xdg_surface_schedule_configure(struct wlr_xdg_surface *surface);
+
+bool wlr_xdg_popup_grab_input_router_layer_register(int32_t priority);
+
+struct wlr_xdg_popup_grab_input_router_layer *wlr_xdg_popup_grab_input_router_layer_get_or_create(
+		struct wlr_input_router *router, struct wlr_xdg_popup *popup);
+
+void wlr_xdg_popup_grab_input_router_layer_destroy(
+		struct wlr_xdg_popup_grab_input_router_layer *layer);
 
 #endif

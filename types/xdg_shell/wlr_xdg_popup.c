@@ -285,6 +285,8 @@ static void xdg_popup_handle_grab(struct wl_client *client,
 		return;
 	}
 
+	popup->grabbing = true;
+
 	struct wlr_xdg_popup_grab *popup_grab = get_xdg_shell_popup_grab_from_seat(
 		popup->base->client->shell, seat_client->seat);
 
@@ -306,6 +308,14 @@ static void xdg_popup_handle_grab(struct wl_client *client,
 		&popup_grab->keyboard_grab);
 	wlr_seat_touch_start_grab(seat_client->seat,
 		&popup_grab->touch_grab);
+
+	struct wlr_xdg_shell_popup_grab_event event = {
+		.popup = popup,
+		.seat_client = seat_client,
+		.serial = serial,
+	};
+
+	wl_signal_emit_mutable(&popup->base->client->shell->events.popup_grab, &event);
 }
 
 static void xdg_popup_handle_reposition(
@@ -409,6 +419,7 @@ void create_xdg_popup(struct wlr_xdg_surface *surface, struct wlr_xdg_surface *p
 	surface->popup->scheduled.rules = positioner->rules;
 
 	wl_signal_init(&surface->popup->events.destroy);
+	wl_signal_init(&surface->popup->events.reset);
 	wl_signal_init(&surface->popup->events.reposition);
 
 	if (parent) {
@@ -436,6 +447,8 @@ error_popup:
 }
 
 void reset_xdg_popup(struct wlr_xdg_popup *popup) {
+	wl_signal_emit_mutable(&popup->events.reset, NULL);
+
 	if (popup->seat != NULL) {
 		struct wlr_xdg_popup_grab *grab =
 			get_xdg_shell_popup_grab_from_seat(

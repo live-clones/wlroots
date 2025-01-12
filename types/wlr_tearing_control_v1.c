@@ -39,7 +39,6 @@ static void destroy_tearing_hint(struct wlr_tearing_control_v1 *hint) {
 
 	wlr_addon_finish(&hint->addon);
 	wlr_surface_synced_finish(&hint->synced);
-	wl_list_remove(&hint->surface_commit.link);
 
 	free(hint);
 }
@@ -77,12 +76,8 @@ static const struct wp_tearing_control_v1_interface tearing_control_impl = {
 	.set_presentation_hint = tearing_control_handle_set_presentation_hint,
 };
 
-static const struct wlr_surface_synced_impl surface_synced_impl = {
-	.state_size = sizeof(enum wp_tearing_control_v1_presentation_hint),
-};
-
-static void hint_handle_surface_commit(struct wl_listener *listener, void *data) {
-	struct wlr_tearing_control_v1 *hint = wl_container_of(listener, hint, surface_commit);
+static void surface_synced_commit(struct wlr_surface_synced *synced) {
+	struct wlr_tearing_control_v1 *hint = wl_container_of(synced, hint, synced);
 
 	if (hint->current != hint->previous) {
 		wl_signal_emit_mutable(&hint->events.set_hint, NULL);
@@ -90,6 +85,11 @@ static void hint_handle_surface_commit(struct wl_listener *listener, void *data)
 
 	hint->previous = hint->current;
 }
+
+static const struct wlr_surface_synced_impl surface_synced_impl = {
+	.state_size = sizeof(enum wp_tearing_control_v1_presentation_hint),
+	.commit = surface_synced_commit,
+};
 
 static void tearing_control_manager_handle_get_tearing_control(
 		struct wl_client *client, struct wl_resource *resource, uint32_t id,
@@ -137,9 +137,6 @@ static void tearing_control_manager_handle_get_tearing_control(
 
 	wl_signal_init(&hint->events.set_hint);
 	wl_signal_init(&hint->events.destroy);
-
-	hint->surface_commit.notify = hint_handle_surface_commit;
-	wl_signal_add(&surface->events.commit, &hint->surface_commit);
 
 	wl_list_insert(&manager->surface_hints, &hint->link);
 
