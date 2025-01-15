@@ -149,4 +149,5 @@ void wlr_ext_image_capture_source_v1_cursor_init(struct wlr_ext_image_capture_so
 
 void wlr_ext_image_capture_source_v1_cursor_finish(struct wlr_ext_image_capture_source_v1_cursor *source_cursor) {
 	wlr_ext_image_capture_source_v1_finish(&source_cursor->base);
+	assert(wl_list_empty(&source_cursor->events.update.listener_list));
 }

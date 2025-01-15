@@ -229,6 +229,9 @@ static void manager_handle_display_destroy(struct wl_listener *listener, void *d
 
 	wl_signal_emit_mutable(&manager->events.destroy, NULL);
 
+	assert(wl_list_empty(&manager->events.set_icon.listener_list));
+	assert(wl_list_empty(&manager->events.destroy.listener_list));
+
 	wl_list_remove(&manager->display_destroy.link);
 	wl_global_destroy(manager->global);
 

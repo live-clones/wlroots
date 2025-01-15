@@ -303,6 +303,11 @@ void wlr_session_destroy(struct wlr_session *session) {
 	}
 
 	wl_signal_emit_mutable(&session->events.destroy, session);
+
+	assert(wl_list_empty(&session->events.active.listener_list));
+	assert(wl_list_empty(&session->events.add_drm_card.listener_list));
+	assert(wl_list_empty(&session->events.destroy.listener_list));
+
 	wl_list_remove(&session->event_loop_destroy.link);
 
 	wl_event_source_remove(session->udev_event);
@@ -360,6 +365,10 @@ void wlr_session_close_file(struct wlr_session *session,
 	if (libseat_close_device(session->seat_handle, dev->device_id) == -1) {
 		wlr_log_errno(WLR_ERROR, "Failed to close device %d", dev->device_id);
 	}
+
+	assert(wl_list_empty(&dev->events.change.listener_list));
+	assert(wl_list_empty(&dev->events.remove.listener_list));
+
 	close(dev->fd);
 	wl_list_remove(&dev->link);
 	free(dev);
