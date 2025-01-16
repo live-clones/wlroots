@@ -55,6 +55,7 @@ static void backend_destroy(struct wlr_backend *backend) {
 	wl_list_remove(&drm->dev_remove.link);
 
 	if (drm->mgpu_renderer.wlr_rend) {
+		wlr_drm_format_set_finish(&drm->mgpu_formats);
 		finish_drm_renderer(&drm->mgpu_renderer);
 	}
 
