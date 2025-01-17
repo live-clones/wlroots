@@ -552,6 +552,13 @@ static void surface_commit_state(struct wlr_surface *surface,
 		surface->pending.seq++;
 	}
 
+	struct wlr_surface_synced *synced;
+	wl_list_for_each(synced, &surface->synced, link) {
+		if (synced->impl->commit) {
+			synced->impl->commit(synced);
+		}
+	}
+
 	if (surface->role != NULL && surface->role->commit != NULL &&
 			(surface->role_resource != NULL || surface->role->no_object)) {
 		surface->role->commit(surface);
