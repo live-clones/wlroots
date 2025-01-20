@@ -213,6 +213,27 @@ reinitialized to be used again.
 it, and free the memory. Such functions should always be able to accept a NULL
 pointer.
 
+If the object has signals, the destructor function must assert that their
+listener lists are empty.
+
+```c
+void wlr_thing_init(struct wlr_thing *thing) {
+	*thing = (struct wlr_thing){
+		// ...
+	};
+
+	wl_signal_init(&thing->events.destroy);
+	wl_signal_init(&thing->events.foo);
+}
+
+void wlr_thing_finish(struct wlr_thing *thing) {
+	wl_signal_emit_mutable(&thing->events.destroy, NULL);
+
+	assert(wl_list_empty(&thing->events.destroy.listener_list));
+	assert(wl_list_empty(&thing->events.foo.listener_list));
+}
+```
+
 ### Error Codes
 
 For functions not returning a value, they should return a (stdbool.h) bool to
