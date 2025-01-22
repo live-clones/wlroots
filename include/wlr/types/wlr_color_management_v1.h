@@ -13,6 +13,8 @@
 
 #include "color-management-v1-protocol.h"
 
+struct wlr_surface;
+
 struct wlr_image_description_v1_data {
 	uint32_t tf_named; // enum wp_color_manager_v1_transfer_function, zero if unset
 	uint32_t primaries_named; // enum wp_color_manager_v1_primaries, zero if unset
@@ -69,5 +71,8 @@ struct wlr_color_manager_v1 {
 
 struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *display,
 	uint32_t version, const struct wlr_color_manager_v1_options *options);
+
+const struct wlr_image_description_v1_data *
+wlr_surface_get_image_description_v1_data(struct wlr_surface *surface);
 
 #endif
