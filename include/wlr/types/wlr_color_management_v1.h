@@ -1,0 +1,64 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
+#ifndef WLR_TYPES_WLR_COLOR_MANAGEMENT_V1_H
+#define WLR_TYPES_WLR_COLOR_MANAGEMENT_V1_H
+
+#include <wayland-server.h>
+
+#include "color-management-v1-protocol.h"
+
+struct wlr_color_manager_v1_features {
+	bool icc_v2_v4;
+	bool parametric;
+	bool set_primaries;
+	bool set_tf_power;
+	bool set_luminances;
+	bool set_mastering_display_primaries;
+	bool extended_target_volume;
+	bool windows_scrgb;
+};
+
+struct wlr_color_manager_v1_options {
+	struct wlr_color_manager_v1_features features;
+
+	const enum wp_color_manager_v1_render_intent *render_intents;
+	size_t render_intents_len;
+
+	const enum wp_color_manager_v1_transfer_function *transfer_functions;
+	size_t transfer_functions_len;
+
+	const enum wp_color_manager_v1_primaries *primaries;
+	size_t primaries_len;
+};
+
+struct wlr_color_manager_v1 {
+	struct wl_global *global;
+
+	struct {
+		struct wlr_color_manager_v1_features features;
+
+		enum wp_color_manager_v1_render_intent *render_intents;
+		size_t render_intents_len;
+
+		enum wp_color_manager_v1_transfer_function *transfer_functions;
+		size_t transfer_functions_len;
+
+		enum wp_color_manager_v1_primaries *primaries;
+		size_t primaries_len;
+
+		struct wl_list outputs; // wlr_color_management_output_v1.link
+
+		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
+};
+
+struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *display,
+	uint32_t version, const struct wlr_color_manager_v1_options *options);
+
+#endif
