@@ -13,6 +13,7 @@
 struct wlr_color_management_output_v1 {
 	struct wl_resource *resource;
 	struct wlr_output *output;
+	struct wlr_color_manager_v1 *manager;
 	struct wl_list link;
 
 	struct wl_listener output_destroy;
@@ -29,8 +30,14 @@ struct wlr_color_management_surface_v1 {
 struct wlr_color_management_surface_feedback_v1 {
 	struct wl_resource *resource;
 	struct wlr_surface *surface;
+	struct wlr_color_manager_v1 *manager;
 
 	struct wl_listener surface_destroy;
+};
+
+struct wlr_image_description_v1 {
+	struct wl_resource *resource;
+	struct wlr_image_description_v1_data data; // immutable
 };
 
 static void resource_handle_destroy(struct wl_client *client, struct wl_resource *resource) {
@@ -65,8 +72,23 @@ static int32_t encode_cie1931_coord(float value) {
 	return round(value * 1000 * 1000);
 }
 
+static const struct wp_image_description_v1_interface image_desc_impl;
+
+static struct wlr_image_description_v1 *image_desc_from_resource(struct wl_resource *resource) {
+	assert(wl_resource_instance_of(resource, &wp_image_description_v1_interface, &image_desc_impl));
+	return wl_resource_get_user_data(resource);
+}
+
 static void image_desc_handle_get_information(struct wl_client *client,
 		struct wl_resource *image_desc_resource, uint32_t id) {
+	struct wlr_image_description_v1 *image_desc = image_desc_from_resource(image_desc_resource);
+	if (image_desc == NULL) {
+		wl_resource_post_error(image_desc_resource,
+			WP_IMAGE_DESCRIPTION_V1_ERROR_NOT_READY,
+			"image description is in failed state");
+		return;
+	}
+
 	uint32_t version = wl_resource_get_version(image_desc_resource);
 	struct wl_resource *resource = wl_resource_create(client,
 		&wp_image_description_info_v1_interface, version, id);
@@ -75,24 +97,19 @@ static void image_desc_handle_get_information(struct wl_client *client,
 		return;
 	}
 
-	enum wp_color_manager_v1_primaries primaries_named =
-		WP_COLOR_MANAGER_V1_PRIMARIES_SRGB;
-	enum wp_color_manager_v1_transfer_function transfer_function =
-		WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB;
-
 	struct wlr_color_primaries primaries;
-	wlr_color_primaries_from_named(&primaries, named_primaries_to_wlr(primaries_named));
+	wlr_color_primaries_from_named(&primaries, named_primaries_to_wlr(image_desc->data.primaries_named));
 
 	struct wlr_color_luminances luminances;
-	wlr_color_transfer_function_get_default_luminance(transfer_function_to_wlr(transfer_function), &luminances);
+	wlr_color_transfer_function_get_default_luminance(transfer_function_to_wlr(image_desc->data.tf_named), &luminances);
 
-	wp_image_description_info_v1_send_primaries_named(resource, primaries_named);
+	wp_image_description_info_v1_send_primaries_named(resource, image_desc->data.primaries_named);
 	wp_image_description_info_v1_send_primaries(resource,
 		encode_cie1931_coord(primaries.red.x), encode_cie1931_coord(primaries.red.y),
 		encode_cie1931_coord(primaries.green.x), encode_cie1931_coord(primaries.green.y),
 		encode_cie1931_coord(primaries.blue.x), encode_cie1931_coord(primaries.blue.y),
 		encode_cie1931_coord(primaries.white.x), encode_cie1931_coord(primaries.white.y));
-	wp_image_description_info_v1_send_tf_named(resource, transfer_function);
+	wp_image_description_info_v1_send_tf_named(resource, image_desc->data.tf_named);
     wp_image_description_info_v1_send_luminances(resource,
 		round(luminances.min * 10000), round(luminances.max),
 		round(luminances.reference));
@@ -106,18 +123,54 @@ static const struct wp_image_description_v1_interface image_desc_impl = {
 	.get_information = image_desc_handle_get_information,
 };
 
-static void image_desc_create_ready(struct wl_resource *parent_resource, uint32_t id) {
+static void image_desc_handle_resource_destroy(struct wl_resource *resource) {
+	struct wlr_image_description_v1 *image_desc = image_desc_from_resource(resource);
+	free(image_desc);
+}
+
+static struct wl_resource *image_desc_create_resource(
+		struct wl_resource *parent_resource, uint32_t id) {
 	struct wl_client *client = wl_resource_get_client(parent_resource);
 	uint32_t version = wl_resource_get_version(parent_resource);
-	struct wl_resource *resource = wl_resource_create(client,
-		&wp_image_description_v1_interface, version, id);
-	if (!resource) {
-		wl_client_post_no_memory(client);
+	return wl_resource_create(client, &wp_image_description_v1_interface,
+		version, id);
+}
+
+static void image_desc_create_ready(struct wlr_color_manager_v1 *manager,
+		struct wl_resource *parent_resource, uint32_t id,
+		const struct wlr_image_description_v1_data *data) {
+	struct wlr_image_description_v1 *image_desc = calloc(1, sizeof(*image_desc));
+	if (image_desc == NULL) {
+		wl_resource_post_no_memory(parent_resource);
+		return;
+	}
+
+	image_desc->data = *data;
+
+	image_desc->resource = image_desc_create_resource(parent_resource, id);
+	if (!image_desc->resource) {
+		wl_resource_post_no_memory(parent_resource);
+		free(image_desc);
+		return;
+	}
+	wl_resource_set_implementation(image_desc->resource, &image_desc_impl,
+		image_desc, image_desc_handle_resource_destroy);
+
+	// TODO: de-duplicate identity
+	uint32_t identity = ++manager->last_image_desc_identity;
+	wp_image_description_v1_send_ready(image_desc->resource, identity);
+}
+
+static void image_desc_create_failed(struct wl_resource *parent_resource, uint32_t id,
+		enum wp_image_description_v1_cause cause, const char *msg) {
+	struct wl_resource *resource = image_desc_create_resource(parent_resource, id);
+	if (resource == NULL) {
+		wl_resource_post_no_memory(parent_resource);
 		return;
 	}
 	wl_resource_set_implementation(resource, &image_desc_impl, NULL, NULL);
 
-	wp_image_description_v1_send_ready(resource, 0);
+	wp_image_description_v1_send_failed(resource, cause, msg);
 }
 
 static const struct wp_color_management_output_v1_interface cm_output_impl;
@@ -129,7 +182,19 @@ static struct wlr_color_management_output_v1 *cm_output_from_resource(struct wl_
 
 static void cm_output_handle_get_image_description(struct wl_client *client,
 		struct wl_resource *cm_output_resource, uint32_t id) {
-	image_desc_create_ready(cm_output_resource, id);
+	struct wlr_color_management_output_v1 *cm_output = cm_output_from_resource(cm_output_resource);
+	if (cm_output == NULL) {
+		image_desc_create_failed(cm_output_resource, id,
+			WP_IMAGE_DESCRIPTION_V1_CAUSE_NO_OUTPUT,
+			"output has been destroyed");
+		return;
+	}
+
+	struct wlr_image_description_v1_data data = {
+		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB,
+		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
+	};
+	image_desc_create_ready(cm_output->manager, cm_output_resource, id, &data);
 }
 
 static const struct wp_color_management_output_v1_interface cm_output_impl = {
@@ -245,7 +310,21 @@ static struct wlr_color_management_surface_feedback_v1 *surface_feedback_from_re
 
 static void surface_feedback_handle_get_preferred(struct wl_client *client,
 		struct wl_resource *surface_feedback_resource, uint32_t id) {
-	image_desc_create_ready(surface_feedback_resource, id);
+	struct wlr_color_management_surface_feedback_v1 *surface_feedback =
+		surface_feedback_from_resource(surface_feedback_resource);
+	if (surface_feedback == NULL) {
+		wl_resource_post_error(surface_feedback_resource,
+			WP_COLOR_MANAGEMENT_SURFACE_FEEDBACK_V1_ERROR_INERT,
+			"get_preferred sent on inert feedback surface");
+		return;
+	}
+
+	struct wlr_image_description_v1_data data = {
+		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB,
+		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
+	};
+	image_desc_create_ready(surface_feedback->manager,
+		surface_feedback_resource, id, &data);
 }
 
 static const struct wp_color_management_surface_feedback_v1_interface surface_feedback_impl = {
@@ -292,6 +371,8 @@ static void manager_handle_get_output(struct wl_client *client,
 		wl_client_post_no_memory(client);
 		return;
 	}
+
+	cm_output->manager = manager;
 
 	uint32_t version = wl_resource_get_version(manager_resource);
 	cm_output->resource = wl_resource_create(client,
@@ -348,6 +429,7 @@ static void manager_handle_get_surface(struct wl_client *client,
 static void manager_handle_get_surface_feedback(struct wl_client *client,
 		struct wl_resource *manager_resource, uint32_t id,
 		struct wl_resource *surface_resource) {
+	struct wlr_color_manager_v1 *manager = manager_from_resource(manager_resource);
 	struct wlr_surface *surface = wlr_surface_from_resource(surface_resource);
 
 	struct wlr_color_management_surface_feedback_v1 *surface_feedback =
@@ -356,6 +438,8 @@ static void manager_handle_get_surface_feedback(struct wl_client *client,
 		wl_client_post_no_memory(client);
 		return;
 	}
+
+	surface_feedback->manager = manager;
 
 	uint32_t version = wl_resource_get_version(manager_resource);
 	surface_feedback->resource = wl_resource_create(client,
