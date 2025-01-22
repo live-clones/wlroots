@@ -40,6 +40,12 @@ struct wlr_image_description_v1 {
 	struct wlr_image_description_v1_data data; // immutable
 };
 
+struct wlr_image_description_creator_params_v1 {
+	struct wl_resource *resource;
+	struct wlr_color_manager_v1 *manager;
+	struct wlr_image_description_v1_data data;
+};
+
 static void resource_handle_destroy(struct wl_client *client, struct wl_resource *resource) {
 	wl_resource_destroy(resource);
 }
@@ -353,6 +359,176 @@ static void surface_feedback_handle_surface_destroy(struct wl_listener *listener
 	surface_feedback_destroy(surface_feedback);
 }
 
+static const struct wp_image_description_creator_params_v1_interface image_desc_creator_params_impl;
+
+static struct wlr_image_description_creator_params_v1 *
+image_desc_creator_params_from_resource(struct wl_resource *resource) {
+	assert(wl_resource_instance_of(resource,
+		&wp_image_description_creator_params_v1_interface,
+		&image_desc_creator_params_impl));
+	return wl_resource_get_user_data(resource);
+}
+
+static void image_desc_creator_params_handle_create(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t id) {
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+
+	if (params->data.tf_named == 0) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INCOMPLETE_SET,
+			"missing transfer function");
+		return;
+	}
+	if (params->data.primaries_named == 0) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INCOMPLETE_SET,
+			"missing primaries");
+		return;
+	}
+
+	if (params->data.max_cll != 0 && params->data.max_fall != 0 &&
+			params->data.max_fall > params->data.max_cll) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE,
+			"max_fall must be less or equal to max_cll");
+		return;
+	}
+
+	image_desc_create_ready(params->manager, params_resource, id, &params->data);
+}
+
+static void image_desc_creator_params_handle_set_tf_named(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t tf) {
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+
+	if (params->data.tf_named != 0) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+			"transfer function already set");
+		return;
+	}
+
+	bool found = false;
+	for (size_t i = 0; i < params->manager->transfer_functions_len; i++) {
+		if (params->manager->transfer_functions[i] == tf) {
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_TF,
+			"invalid transfer function");
+		return;
+	}
+
+	params->data.tf_named = tf;
+}
+
+static void image_desc_creator_params_handle_set_tf_power(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t eexp) {
+	wl_resource_post_error(params_resource,
+		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+		"set_tf_power is not supported");
+}
+
+static void image_desc_creator_params_handle_set_primaries_named(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t primaries) {
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+
+	if (params->data.primaries_named != 0) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+			"primaries already set");
+		return;
+	}
+
+	bool found = false;
+	for (size_t i = 0; i < params->manager->primaries_len; i++) {
+		if (params->manager->primaries[i] == primaries) {
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_PRIMARIES_NAMED,
+			"invalid primaries");
+		return;
+	}
+
+	params->data.primaries_named = primaries;
+}
+
+static void image_desc_creator_params_handle_set_primaries(struct wl_client *client,
+		struct wl_resource *params_resource, int32_t r_x, int32_t r_y,
+		int32_t g_x, int32_t g_y, int32_t b_x, int32_t b_y,
+		int32_t w_x, int32_t w_y) {
+	wl_resource_post_error(params_resource,
+		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+		"set_primaries is not supported");
+}
+
+static void image_desc_creator_params_handle_set_luminances(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t min_lum,
+		uint32_t max_lum, uint32_t reference_lum) {
+	wl_resource_post_error(params_resource,
+		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+		"set_luminances is not supported");
+}
+
+static void image_desc_creator_params_handle_set_mastering_display_primaries(
+		struct wl_client *client, struct wl_resource *params_resource,
+		int32_t r_x, int32_t r_y, int32_t g_x, int32_t g_y,
+		int32_t b_x, int32_t b_y, int32_t w_x, int32_t w_y) {
+	wl_resource_post_error(params_resource,
+		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+		"set_mastering_display_primaries is not supported");
+}
+
+static void image_desc_creator_params_handle_set_mastering_luminance(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t min_lum, uint32_t max_lum) {
+	wl_resource_post_error(params_resource,
+		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+		"set_mastering_luminance is not supported");
+}
+
+static void image_desc_creator_params_handle_set_max_cll(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t max_cll) {
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+	params->data.max_cll = max_cll;
+}
+
+static void image_desc_creator_params_handle_set_max_fall(struct wl_client *client,
+		struct wl_resource *params_resource, uint32_t max_fall) {
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+	params->data.max_fall = max_fall;
+}
+
+static const struct wp_image_description_creator_params_v1_interface image_desc_creator_params_impl = {
+	.create = image_desc_creator_params_handle_create,
+	.set_tf_named = image_desc_creator_params_handle_set_tf_named,
+	.set_tf_power = image_desc_creator_params_handle_set_tf_power,
+	.set_primaries_named = image_desc_creator_params_handle_set_primaries_named,
+	.set_primaries = image_desc_creator_params_handle_set_primaries,
+	.set_luminances = image_desc_creator_params_handle_set_luminances,
+	.set_mastering_display_primaries = image_desc_creator_params_handle_set_mastering_display_primaries,
+	.set_mastering_luminance = image_desc_creator_params_handle_set_mastering_luminance,
+	.set_max_cll = image_desc_creator_params_handle_set_max_cll,
+	.set_max_fall = image_desc_creator_params_handle_set_max_fall,
+};
+
+static void image_desc_creator_params_handle_resource_destroy(struct wl_resource *resource) {
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(resource);
+	free(params);
+}
+
 static const struct wp_color_manager_v1_interface manager_impl;
 
 static struct wlr_color_manager_v1 *manager_from_resource(struct wl_resource *resource) {
@@ -467,9 +643,32 @@ static void manager_handle_create_icc_creator(struct wl_client *client,
 
 static void manager_handle_create_parametric_creator(struct wl_client *client,
 		struct wl_resource *manager_resource, uint32_t id) {
-	wl_resource_post_error(manager_resource,
-		WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE,
-		"new_parametric_creator is not supported");
+	struct wlr_color_manager_v1 *manager = manager_from_resource(manager_resource);
+	if (!manager->features.parametric) {
+		wl_resource_post_error(manager_resource,
+			WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE,
+			"new_parametric_creator is not supported");
+		return;
+	}
+
+	struct wlr_image_description_creator_params_v1 *params = calloc(1, sizeof(*params));
+	if (params == NULL) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	params->manager = manager;
+
+	uint32_t version = wl_resource_get_version(manager_resource);
+	params->resource = wl_resource_create(client,
+		&wp_image_description_creator_params_v1_interface, version, id);
+	if (!params->resource) {
+		wl_client_post_no_memory(client);
+		free(params);
+		return;
+	}
+	wl_resource_set_implementation(params->resource, &image_desc_creator_params_impl,
+		params, image_desc_creator_params_handle_resource_destroy);
 }
 
 static void manager_handle_create_windows_scrgb(struct wl_client *client,
@@ -567,7 +766,6 @@ struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *disp
 
 	// TODO: add support for all of these features
 	assert(!options->features.icc_v2_v4);
-	assert(!options->features.parametric);
 	assert(!options->features.set_primaries);
 	assert(!options->features.set_tf_power);
 	assert(!options->features.set_luminances);
