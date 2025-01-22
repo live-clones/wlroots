@@ -13,6 +13,13 @@
 
 #include "color-management-v1-protocol.h"
 
+struct wlr_image_description_v1_data {
+	uint32_t tf_named; // enum wp_color_manager_v1_transfer_function, zero if unset
+	uint32_t primaries_named; // enum wp_color_manager_v1_primaries, zero if unset
+
+	uint32_t max_cll, max_fall; // cd/m², zero if unset
+};
+
 struct wlr_color_manager_v1_features {
 	bool icc_v2_v4;
 	bool parametric;
@@ -53,6 +60,8 @@ struct wlr_color_manager_v1 {
 		size_t primaries_len;
 
 		struct wl_list outputs; // wlr_color_management_output_v1.link
+
+		uint32_t last_image_desc_identity;
 
 		struct wl_listener display_destroy;
 	} WLR_PRIVATE;
