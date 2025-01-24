@@ -37,6 +37,9 @@ struct wlr_color_management_feedback_surface_v1 {
 	struct wl_resource *resource;
 	struct wlr_surface *surface;
 	struct wlr_color_manager_v1 *manager;
+	struct wl_list link;
+
+	struct wlr_image_description_v1_data data;
 
 	struct wl_listener surface_destroy;
 };
@@ -375,12 +378,8 @@ static void feedback_surface_handle_get_preferred(struct wl_client *client,
 		return;
 	}
 
-	struct wlr_image_description_v1_data data = {
-		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB,
-		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
-	};
 	image_desc_create_ready(feedback_surface->manager,
-		feedback_surface_resource, id, &data, true);
+		feedback_surface_resource, id, &feedback_surface->data, true);
 }
 
 static const struct wp_color_management_feedback_surface_v1_interface feedback_surface_impl = {
@@ -394,6 +393,7 @@ static void feedback_surface_destroy(struct wlr_color_management_feedback_surfac
 	}
 	wl_resource_set_user_data(feedback_surface->resource, NULL); // make inert
 	wl_list_remove(&feedback_surface->surface_destroy.link);
+	wl_list_remove(&feedback_surface->link);
 	free(feedback_surface);
 }
 
@@ -772,9 +772,15 @@ static void manager_handle_get_feedback_surface(struct wl_client *client,
 		feedback_surface, feedback_surface_handle_resource_destroy);
 
 	feedback_surface->surface = surface;
+	feedback_surface->data = (struct wlr_image_description_v1_data){
+		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB,
+		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
+	};
 
 	feedback_surface->surface_destroy.notify = feedback_surface_handle_surface_destroy;
 	wl_signal_add(&surface->events.destroy, &feedback_surface->surface_destroy);
+
+	wl_list_insert(&manager->feedback_surfaces, &feedback_surface->link);
 }
 
 static void manager_handle_create_icc_creator(struct wl_client *client,
@@ -960,4 +966,20 @@ wlr_surface_get_image_description_v1_data(struct wlr_surface *surface) {
 		return NULL;
 	}
 	return &cm_surface->current.image_desc_data;
+}
+
+void wlr_color_manager_v1_set_surface_preferred_image_description(
+		struct wlr_color_manager_v1 *manager, struct wlr_surface *surface,
+		struct wlr_image_description_v1_data *data) {
+	// TODO: de-duplicate identity
+	uint32_t identity = ++manager->last_image_desc_identity;
+
+	struct wlr_color_management_feedback_surface_v1 *feedback_surface;
+	wl_list_for_each(feedback_surface, &manager->feedback_surfaces, link) {
+		if (feedback_surface->surface == surface) {
+			feedback_surface->data = *data;
+			wp_color_management_feedback_surface_v1_send_preferred_changed(
+				feedback_surface->resource, identity);
+		}
+	}
 }
