@@ -714,14 +714,14 @@ static const struct wl_callback_listener unmap_callback_listener = {
 	.done = unmap_callback_handle_done,
 };
 
-static bool output_commit(struct wlr_output *wlr_output,
-		const struct wlr_output_state *state) {
-	struct wlr_wl_output *output =
-		get_wl_output_from_output(wlr_output);
+static bool output_commit(struct wlr_output *wlr_output, const struct wlr_output_state *state) {
+	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
 
 	if (!output_test(wlr_output, state)) {
 		return false;
 	}
+
+	struct wlr_wl_backend *wl = output->backend;
 
 	bool pending_enabled = output_pending_enabled(wlr_output, state);
 
@@ -747,9 +747,9 @@ static bool output_commit(struct wlr_output *wlr_output,
 		wl_surface_commit(output->surface);
 		output->initialized = true;
 
-		wl_display_flush(output->backend->remote_display);
+		wl_display_flush(wl->remote_display);
 		while (!output->configured) {
-			if (wl_display_dispatch(output->backend->remote_display) == -1) {
+			if (wl_display_dispatch(wl->remote_display) == -1) {
 				wlr_log(WLR_ERROR, "wl_display_dispatch() failed");
 				return false;
 			}
@@ -764,7 +764,7 @@ static bool output_commit(struct wlr_output *wlr_output,
 		}
 
 		struct wlr_buffer *wlr_buffer = state->buffer;
-		buffer = get_or_create_wl_buffer(output->backend, wlr_buffer);
+		buffer = get_or_create_wl_buffer(wl, wlr_buffer);
 		if (buffer == NULL) {
 			return false;
 		}
@@ -775,23 +775,23 @@ static bool output_commit(struct wlr_output *wlr_output,
 
 	if (state->committed & WLR_OUTPUT_STATE_WAIT_TIMELINE) {
 		struct wlr_wl_drm_syncobj_timeline *wait_timeline =
-			get_or_create_drm_syncobj_timeline(output->backend, state->wait_timeline);
+			get_or_create_drm_syncobj_timeline(wl, state->wait_timeline);
 
 		struct wlr_wl_drm_syncobj_timeline *signal_timeline;
 		uint64_t signal_point;
 		if (state->committed & WLR_OUTPUT_STATE_SIGNAL_TIMELINE) {
-			signal_timeline = get_or_create_drm_syncobj_timeline(output->backend, state->signal_timeline);
+			signal_timeline = get_or_create_drm_syncobj_timeline(wl, state->signal_timeline);
 			signal_point = state->signal_point;
 		} else {
 			if (buffer->fallback_signal_timeline == NULL) {
 				buffer->fallback_signal_timeline =
-					wlr_drm_syncobj_timeline_create(output->backend->drm_fd);
+					wlr_drm_syncobj_timeline_create(wl->drm_fd);
 				if (buffer->fallback_signal_timeline == NULL) {
 					return false;
 				}
 			}
 			signal_timeline =
-				get_or_create_drm_syncobj_timeline(output->backend, buffer->fallback_signal_timeline);
+				get_or_create_drm_syncobj_timeline(wl, buffer->fallback_signal_timeline);
 			signal_point = ++buffer->fallback_signal_point;
 		}
 
@@ -801,7 +801,7 @@ static bool output_commit(struct wlr_output *wlr_output,
 
 		if (output->drm_syncobj_surface_v1 == NULL) {
 			output->drm_syncobj_surface_v1 = wp_linux_drm_syncobj_manager_v1_get_surface(
-				output->backend->drm_syncobj_manager_v1, output->surface);
+				wl->drm_syncobj_manager_v1, output->surface);
 			if (output->drm_syncobj_surface_v1 == NULL) {
 				return false;
 			}
@@ -818,7 +818,7 @@ static bool output_commit(struct wlr_output *wlr_output,
 			signal_timeline->wl, signal_point_hi, signal_point_lo);
 
 		if (!wlr_drm_syncobj_timeline_waiter_init(&buffer->drm_syncobj_waiter,
-				signal_timeline->base, signal_point, 0, output->backend->event_loop,
+				signal_timeline->base, signal_point, 0, wl->event_loop,
 				buffer_handle_drm_syncobj_ready)) {
 			return false;
 		}
@@ -843,9 +843,8 @@ static bool output_commit(struct wlr_output *wlr_output,
 		wl_callback_add_listener(output->frame_callback, &frame_listener, output);
 
 		struct wp_presentation_feedback *wp_feedback = NULL;
-		if (output->backend->presentation != NULL) {
-			wp_feedback = wp_presentation_feedback(output->backend->presentation,
-				output->surface);
+		if (wl->presentation != NULL) {
+			wp_feedback = wp_presentation_feedback(wl->presentation, output->surface);
 		}
 
 		if (output->has_configure_serial) {
@@ -878,7 +877,7 @@ static bool output_commit(struct wlr_output *wlr_output,
 		}
 	}
 
-	wl_display_flush(output->backend->remote_display);
+	wl_display_flush(wl->remote_display);
 
 	return true;
 }
