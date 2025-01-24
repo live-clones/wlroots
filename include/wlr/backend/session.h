@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <wayland-server-core.h>
+#include <wlr/types/wlr_input_router.h>
 
 struct libseat;
 
@@ -88,6 +89,27 @@ struct wlr_device_change_event {
 	};
 };
 
+/**
+ * A session input router layer which handles key presses for keysyms from
+ * XKB_KEY_XF86Switch_VT_1 to XKB_KEY_XF86Switch_VT_12 inclusive and calls
+ * wlr_session_change_vt() accordingly.
+ */
+struct wlr_session_input_router_layer {
+	struct wlr_input_router *router;
+	struct wlr_session *session;
+
+	struct {
+		struct wl_signal destroy;
+	} events;
+
+	struct {
+		struct wlr_input_router_keyboard keyboard;
+
+		struct wl_listener router_destroy;
+		struct wl_listener session_destroy;
+	} WLR_PRIVATE;
+};
+
 /*
  * Opens a session, taking control of the current virtual terminal.
  * This should not be called if another program is already in control
@@ -142,5 +164,13 @@ bool wlr_session_change_vt(struct wlr_session *session, unsigned vt);
  */
 ssize_t wlr_session_find_gpus(struct wlr_session *session,
 	size_t ret_len, struct wlr_device **ret);
+
+bool wlr_session_input_router_layer_register(int32_t priority);
+
+struct wlr_session_input_router_layer *wlr_session_input_router_layer_create(
+		struct wlr_input_router *router, struct wlr_session *session);
+
+void wlr_session_input_router_layer_destroy(
+		struct wlr_session_input_router_layer *layer);
 
 #endif

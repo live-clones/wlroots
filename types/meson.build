@@ -5,6 +5,19 @@ wlr_files += files(
 	'data_device/wlr_drag.c',
 	'ext_image_capture_source_v1/base.c',
 	'ext_image_capture_source_v1/output.c',
+	'input_router/drag.c',
+	'input_router/focus.c',
+	'input_router/implicit_grab.c',
+	'input_router/input_method.c',
+	'input_router/keyboard.c',
+	'input_router/pointer.c',
+	'input_router/pointer_constraints.c',
+	'input_router/relative_pointer.c',
+	'input_router/router.c',
+	'input_router/seat.c',
+	'input_router/text_input.c',
+	'input_router/touch.c',
+	'input_router/xdg_popup_grab.c',
 	'output/cursor.c',
 	'output/output.c',
 	'output/render.c',
@@ -105,5 +118,11 @@ wlr_files += files(
 if features.get('drm-backend')
 	wlr_files += files(
 		'wlr_drm_lease_v1.c',
+	)
+endif
+
+if features.get('session')
+	wlr_files += files(
+		'input_router/session.c',
 	)
 endif
