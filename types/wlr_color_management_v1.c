@@ -75,6 +75,14 @@ static void primaries_from_named(struct wlr_color_manager_v1_primaries *out,
 			.white = { 0.3127, 0.3290 },
 		};
 		break;
+	case WP_COLOR_MANAGER_V1_PRIMARIES_BT2020: // code point 9
+		*out = (struct wlr_color_manager_v1_primaries){
+			.red = { 0.708, 0.292 },
+			.green = { 0.170, 0.797 },
+			.blue = { 0.131, 0.046 },
+			.white = { 0.3127, 0.3290 },
+		};
+		break;
 	default:
 		abort(); // TODO: more primaries
 	}
