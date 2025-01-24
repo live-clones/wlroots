@@ -243,15 +243,24 @@ static struct wl_buffer *import_dmabuf(struct wlr_wl_backend *wl,
 	zwp_linux_buffer_params_v1_add_listener(params, &dmabuf_listener, &data);
 	zwp_linux_buffer_params_v1_create(params, dmabuf->width, dmabuf->height, dmabuf->format, 0);
 
+	struct wl_event_queue *display_queue =
+		wl_proxy_get_queue((struct wl_proxy *)wl->remote_display);
+	wl_proxy_set_queue((struct wl_proxy *)params, wl->busy_loop_queue);
+
 	while (!data.done) {
-		if (wl_display_dispatch(wl->remote_display) < 0) {
-			wlr_log(WLR_ERROR, "wl_display_dispatch() failed");
+		if (wl_display_dispatch_queue(wl->remote_display, wl->busy_loop_queue) < 0) {
+			wlr_log(WLR_ERROR, "wl_display_dispatch_queue() failed");
 			break;
 		}
 	}
 
+	struct wl_buffer *buffer = data.wl_buffer;
+	if (buffer != NULL) {
+		wl_proxy_set_queue((struct wl_proxy *)buffer, display_queue);
+	}
+
 	zwp_linux_buffer_params_v1_destroy(params);
-	return data.wl_buffer;
+	return buffer;
 }
 
 static struct wl_buffer *import_shm(struct wlr_wl_backend *wl,
@@ -747,12 +756,24 @@ static bool output_commit(struct wlr_output *wlr_output, const struct wlr_output
 		wl_surface_commit(output->surface);
 		output->initialized = true;
 
+		struct wl_event_queue *display_queue =
+			wl_proxy_get_queue((struct wl_proxy *)wl->remote_display);
+		wl_proxy_set_queue((struct wl_proxy *)output->xdg_surface, wl->busy_loop_queue);
+		wl_proxy_set_queue((struct wl_proxy *)output->xdg_toplevel, wl->busy_loop_queue);
+
 		wl_display_flush(wl->remote_display);
 		while (!output->configured) {
-			if (wl_display_dispatch(wl->remote_display) == -1) {
-				wlr_log(WLR_ERROR, "wl_display_dispatch() failed");
-				return false;
+			if (wl_display_dispatch_queue(wl->remote_display, wl->busy_loop_queue) == -1) {
+				wlr_log(WLR_ERROR, "wl_display_dispatch_queue() failed");
+				break;
 			}
+		}
+
+		wl_proxy_set_queue((struct wl_proxy *)output->xdg_surface, display_queue);
+		wl_proxy_set_queue((struct wl_proxy *)output->xdg_toplevel, display_queue);
+
+		if (!output->configured) {
+			return false;
 		}
 	}
 
