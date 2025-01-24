@@ -71,6 +71,7 @@ struct wlr_color_manager_v1 {
 		size_t primaries_len;
 
 		struct wl_list outputs; // wlr_color_management_output_v1.link
+		struct wl_list surface_feedbacks; // wlr_color_management_surface_feedback_v1.link
 
 		uint32_t last_image_desc_identity;
 
@@ -83,5 +84,9 @@ struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *disp
 
 const struct wlr_image_description_v1_data *
 wlr_surface_get_image_description_v1_data(struct wlr_surface *surface);
+
+void wlr_color_manager_v1_set_surface_preferred_image_description(
+	struct wlr_color_manager_v1 *manager, struct wlr_surface *surface,
+	struct wlr_image_description_v1_data *data);
 
 #endif
