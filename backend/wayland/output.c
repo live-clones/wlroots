@@ -134,6 +134,12 @@ static const struct wp_presentation_feedback_listener
 	.discarded = presentation_feedback_handle_discarded,
 };
 
+static void buffer_remove_drm_syncobj_waiter(struct wlr_wl_buffer *buffer) {
+	wl_list_remove(&buffer->drm_syncobj_ready.link);
+	wlr_drm_syncobj_timeline_waiter_finish(&buffer->drm_syncobj_waiter);
+	buffer->has_drm_syncobj_waiter = false;
+}
+
 void destroy_wl_buffer(struct wlr_wl_buffer *buffer) {
 	if (buffer == NULL) {
 		return;
@@ -141,6 +147,9 @@ void destroy_wl_buffer(struct wlr_wl_buffer *buffer) {
 	wl_list_remove(&buffer->buffer_destroy.link);
 	wl_list_remove(&buffer->link);
 	wl_buffer_destroy(buffer->wl_buffer);
+	if (buffer->has_drm_syncobj_waiter) {
+		buffer_remove_drm_syncobj_waiter(buffer);
+	}
 	if (!buffer->released) {
 		wlr_buffer_unlock(buffer->buffer);
 	}
@@ -170,11 +179,7 @@ static const struct wl_buffer_listener buffer_listener = {
 
 static void buffer_handle_drm_syncobj_ready(struct wl_listener *listener, void *data) {
 	struct wlr_wl_buffer *buffer = wl_container_of(listener, buffer, drm_syncobj_ready);
-
-	wl_list_remove(&buffer->drm_syncobj_ready.link);
-	wlr_drm_syncobj_timeline_waiter_finish(&buffer->drm_syncobj_waiter);
-	buffer->has_drm_syncobj_waiter = false;
-
+	buffer_remove_drm_syncobj_waiter(buffer);
 	buffer_release(buffer);
 }
 
