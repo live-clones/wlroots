@@ -64,7 +64,6 @@ struct wlr_wl_buffer {
 
 	bool has_drm_syncobj_waiter;
 	struct wlr_drm_syncobj_timeline_waiter drm_syncobj_waiter;
-	struct wl_listener drm_syncobj_ready;
 
 	struct wlr_drm_syncobj_timeline *fallback_signal_timeline;
 	uint64_t fallback_signal_point;

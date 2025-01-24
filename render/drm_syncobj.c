@@ -193,6 +193,9 @@ static int handle_eventfd_ready(int ev_fd, uint32_t mask, void *data) {
 	}
 
 	wl_signal_emit_mutable(&waiter->events.ready, NULL);
+	if (waiter->ready_callback) {
+		waiter->ready_callback(waiter);
+	}
 	return 0;
 }
 

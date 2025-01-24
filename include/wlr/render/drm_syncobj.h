@@ -42,6 +42,13 @@ struct wlr_drm_syncobj_timeline_waiter {
 		struct wl_signal ready;
 	} events;
 
+	/**
+	 * An optional callback that will be called after the ready event is emitted.
+	 * Can be used by the owner of the waiter to destroy it immediately once it's
+	 * ready.
+	 */
+	void (*ready_callback)(struct wlr_drm_syncobj_timeline_waiter *waiter);
+
 	struct {
 		int ev_fd;
 		struct wl_event_source *event_source;
