@@ -210,7 +210,7 @@ bool wlr_drm_syncobj_timeline_waiter_init(struct wlr_drm_syncobj_timeline_waiter
 	wlr_log(WLR_ERROR, "eventfd() is unavailable");
 #endif
 	if (ev_fd < 0) {
-		return NULL;
+		return false;
 	}
 
 	struct drm_syncobj_eventfd syncobj_eventfd = {
@@ -222,14 +222,14 @@ bool wlr_drm_syncobj_timeline_waiter_init(struct wlr_drm_syncobj_timeline_waiter
 	if (drmIoctl(timeline->drm_fd, DRM_IOCTL_SYNCOBJ_EVENTFD, &syncobj_eventfd) != 0) {
 		wlr_log_errno(WLR_ERROR, "DRM_IOCTL_SYNCOBJ_EVENTFD failed");
 		close(ev_fd);
-		return NULL;
+		return false;
 	}
 
 	struct wl_event_source *source = wl_event_loop_add_fd(loop, ev_fd, WL_EVENT_READABLE, handle_eventfd_ready, waiter);
 	if (source == NULL) {
 		wlr_log(WLR_ERROR, "Failed to add FD to event loop");
 		close(ev_fd);
-		return NULL;
+		return false;
 	}
 
 	*waiter = (struct wlr_drm_syncobj_timeline_waiter){
