@@ -1035,6 +1035,12 @@ static void xdg_surface_handle_configure(void *data,
 	output->has_configure_serial = true;
 	output->configure_serial = serial;
 
+	if (!output->wlr_output.enabled) {
+		// We're waiting for a configure event after an initial commit to enable
+		// the output. Do not notify the compositor about the requested state.
+		return;
+	}
+
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
 	wlr_output_state_set_custom_mode(&state, req_width, req_height, 0);
