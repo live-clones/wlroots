@@ -10,6 +10,7 @@
 #define WLR_TYPES_WLR_COLOR_MANAGEMENT_V1_H
 
 #include <wayland-server.h>
+#include <wlr/render/color.h>
 
 #include "color-management-v1-protocol.h"
 
@@ -18,6 +19,14 @@ struct wlr_surface;
 struct wlr_image_description_v1_data {
 	uint32_t tf_named; // enum wp_color_manager_v1_transfer_function, zero if unset
 	uint32_t primaries_named; // enum wp_color_manager_v1_primaries, zero if unset
+
+	bool has_mastering_display_primaries;
+	struct wlr_color_primaries mastering_display_primaries;
+
+	bool has_mastering_luminance;
+	struct {
+		float min, max; // cd/m²
+	} mastering_luminance;
 
 	uint32_t max_cll, max_fall; // cd/m², zero if unset
 };

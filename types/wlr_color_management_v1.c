@@ -87,6 +87,10 @@ static int32_t encode_cie1931_coord(float value) {
 	return round(value * 1000 * 1000);
 }
 
+static float decode_cie1931_coord(int32_t raw) {
+	return (float)raw / (1000 * 1000);
+}
+
 static const struct wp_image_description_v1_interface image_desc_impl;
 
 static struct wlr_image_description_v1 *image_desc_from_resource(struct wl_resource *resource) {
@@ -395,6 +399,31 @@ image_desc_creator_params_from_resource(struct wl_resource *resource) {
 	return wl_resource_get_user_data(resource);
 }
 
+static bool check_mastering_luminance_range(struct wl_resource *params_resource,
+		const struct wlr_image_description_v1_data *data,
+		float value, const char *name) {
+	if (!data->has_mastering_luminance || value == 0) {
+		return true;
+	}
+
+	if (value <= data->mastering_luminance.min) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE,
+			"%s must be greater than min L of the mastering luminance range",
+			name);
+		return false;
+	}
+	if (value > data->mastering_luminance.max) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE,
+			"%s must be less or equal to max L of the mastering luminance range",
+			name);
+		return false;
+	}
+
+	return true;
+}
+
 static void image_desc_creator_params_handle_create(struct wl_client *client,
 		struct wl_resource *params_resource, uint32_t id) {
 	struct wlr_image_description_creator_params_v1 *params =
@@ -420,6 +449,14 @@ static void image_desc_creator_params_handle_create(struct wl_client *client,
 			"max_fall must be less or equal to max_cll");
 		return;
 	}
+
+	if (!check_mastering_luminance_range(params_resource, &params->data, params->data.max_cll, "max_cll") ||
+			!check_mastering_luminance_range(params_resource, &params->data, params->data.max_fall, "max_fall")) {
+		return;
+	}
+
+	// TODO: check that the target color volume is contained within the
+	// primary color volume
 
 	image_desc_create_ready(params->manager, params_resource, id, &params->data, false);
 }
@@ -510,16 +547,59 @@ static void image_desc_creator_params_handle_set_mastering_display_primaries(
 		struct wl_client *client, struct wl_resource *params_resource,
 		int32_t r_x, int32_t r_y, int32_t g_x, int32_t g_y,
 		int32_t b_x, int32_t b_y, int32_t w_x, int32_t w_y) {
-	wl_resource_post_error(params_resource,
-		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
-		"set_mastering_display_primaries is not supported");
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+	if (!params->manager->features.set_mastering_display_primaries) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+			"set_mastering_display_primaries is not supported");
+		return;
+	}
+
+	if (params->data.has_mastering_display_primaries) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+			"mastering display primaries already set");
+		return;
+	}
+
+	params->data.has_mastering_display_primaries = true;
+	params->data.mastering_display_primaries = (struct wlr_color_primaries){
+		.red = { decode_cie1931_coord(r_x), decode_cie1931_coord(r_y) },
+		.green = { decode_cie1931_coord(g_x), decode_cie1931_coord(g_y) },
+		.blue = { decode_cie1931_coord(b_x), decode_cie1931_coord(b_y) },
+		.white = { decode_cie1931_coord(w_x), decode_cie1931_coord(w_y) },
+	};
 }
 
 static void image_desc_creator_params_handle_set_mastering_luminance(struct wl_client *client,
 		struct wl_resource *params_resource, uint32_t min_lum, uint32_t max_lum) {
-	wl_resource_post_error(params_resource,
-		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
-		"set_mastering_luminance is not supported");
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+	if (!params->manager->features.set_mastering_display_primaries) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+			"set_mastering_luminance is not supported");
+		return;
+	}
+
+	if (params->data.has_mastering_luminance) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+			"mastering luminance already set");
+		return;
+	}
+
+	params->data.has_mastering_luminance = true;
+	params->data.mastering_luminance.min = (float)min_lum / 10000;
+	params->data.mastering_luminance.max = max_lum;
+
+	if (params->data.mastering_luminance.max <= params->data.mastering_luminance.min) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE,
+			"max luminance must be greater than min luminance");
+		return;
+	}
 }
 
 static void image_desc_creator_params_handle_set_max_cll(struct wl_client *client,
@@ -812,7 +892,6 @@ struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *disp
 	assert(!options->features.set_primaries);
 	assert(!options->features.set_tf_power);
 	assert(!options->features.set_luminances);
-	assert(!options->features.set_mastering_display_primaries);
 	assert(!options->features.extended_target_volume);
 	assert(!options->features.windows_scrgb);
 
