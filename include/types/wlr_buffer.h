@@ -57,7 +57,7 @@ bool dmabuf_buffer_drop(struct wlr_dmabuf_buffer *buffer);
  * reverse is not true: false may be returned in cases where the buffer is fully
  * opaque.
  */
-bool buffer_is_opaque(struct wlr_buffer *buffer);
+bool wlr_buffer_is_opaque(struct wlr_buffer *buffer);
 
 /**
  * Creates a struct wlr_client_buffer from a given struct wlr_buffer by creating

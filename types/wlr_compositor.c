@@ -415,7 +415,7 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 		return;
 	}
 
-	surface->opaque = buffer_is_opaque(surface->current.buffer);
+	surface->opaque = wlr_buffer_is_opaque(surface->current.buffer);
 
 	if (surface->buffer != NULL) {
 		if (wlr_client_buffer_apply_damage(surface->buffer,

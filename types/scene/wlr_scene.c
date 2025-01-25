@@ -781,7 +781,7 @@ static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 	scene_buffer->buffer = wlr_buffer_lock(buffer);
 	scene_buffer->buffer_width = buffer->width;
 	scene_buffer->buffer_height = buffer->height;
-	scene_buffer->buffer_is_opaque = buffer_is_opaque(buffer);
+	scene_buffer->buffer_is_opaque = wlr_buffer_is_opaque(buffer);
 
 	scene_buffer->buffer_release.notify = scene_buffer_handle_buffer_release;
 	wl_signal_add(&buffer->events.release, &scene_buffer->buffer_release);
