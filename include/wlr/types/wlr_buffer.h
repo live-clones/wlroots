@@ -110,6 +110,15 @@ bool wlr_buffer_get_shm(struct wlr_buffer *buffer,
 struct wlr_buffer *wlr_buffer_try_from_resource(struct wl_resource *resource);
 
 /**
+ * Check whether a buffer is fully opaque.
+ *
+ * When true is returned, the buffer is guaranteed to be fully opaque, but the
+ * reverse is not true: false may be returned in cases where the buffer is fully
+ * opaque.
+ */
+bool wlr_buffer_is_opaque(struct wlr_buffer *buffer);
+
+/**
  * Buffer data pointer access flags.
  */
 enum wlr_buffer_data_ptr_access_flag {
