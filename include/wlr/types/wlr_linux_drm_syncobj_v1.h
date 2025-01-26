@@ -37,8 +37,8 @@ struct wlr_linux_drm_syncobj_manager_v1 {
  * Advertise explicit synchronization support to clients.
  *
  * The compositor must be prepared to handle fences coming from clients and to
- * send release fences correctly. In particular, both the renderer and the
- * backend need to support explicit synchronization.
+ * send release fences correctly when not using wlr_scene. In particular, both
+ * the renderer and the backend need to support explicit synchronization.
  */
 struct wlr_linux_drm_syncobj_manager_v1 *wlr_linux_drm_syncobj_manager_v1_create(
 	struct wl_display *display, uint32_t version, int drm_fd);
