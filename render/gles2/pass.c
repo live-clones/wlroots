@@ -4,7 +4,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <wlr/render/drm_syncobj.h>
-#include <wlr/types/wlr_matrix.h>
 #include <wlr/util/transform.h>
 #include "render/egl.h"
 #include "render/gles2.h"
