@@ -37,14 +37,16 @@ struct wlr_drm_syncobj_timeline {
 	} WLR_PRIVATE;
 };
 
-struct wlr_drm_syncobj_timeline_waiter {
-	struct {
-		struct wl_signal ready;
-	} events;
+struct wlr_drm_syncobj_timeline_waiter;
 
+typedef void (*wlr_drm_syncobj_timeline_ready_callback)(
+	struct wlr_drm_syncobj_timeline_waiter *waiter);
+
+struct wlr_drm_syncobj_timeline_waiter {
 	struct {
 		int ev_fd;
 		struct wl_event_source *event_source;
+		wlr_drm_syncobj_timeline_ready_callback callback;
 	} WLR_PRIVATE;
 };
 
@@ -92,10 +94,12 @@ bool wlr_drm_syncobj_timeline_check(struct wlr_drm_syncobj_timeline *timeline,
  * Asynchronously wait for a timeline point.
  *
  * See wlr_drm_syncobj_timeline_check() for a definition of flags.
+ *
+ * A callback must be provided that will be invoked when the waiter has finished.
  */
 bool wlr_drm_syncobj_timeline_waiter_init(struct wlr_drm_syncobj_timeline_waiter *waiter,
 	struct wlr_drm_syncobj_timeline *timeline, uint64_t point, uint32_t flags,
-	struct wl_event_loop *loop);
+	struct wl_event_loop *loop, wlr_drm_syncobj_timeline_ready_callback callback);
 /**
  * Cancel a timeline waiter.
  */

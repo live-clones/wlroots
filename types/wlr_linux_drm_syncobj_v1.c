@@ -29,7 +29,6 @@ struct wlr_linux_drm_syncobj_surface_v1_commit {
 	struct wlr_drm_syncobj_timeline_waiter waiter;
 	uint32_t cached_seq;
 
-	struct wl_listener waiter_ready;
 	struct wl_listener surface_destroy;
 };
 
@@ -194,14 +193,13 @@ static struct wlr_linux_drm_syncobj_surface_v1 *surface_from_wlr_surface(
 static void surface_commit_destroy(struct wlr_linux_drm_syncobj_surface_v1_commit *commit) {
 	wlr_surface_unlock_cached(commit->surface->surface, commit->cached_seq);
 	wl_list_remove(&commit->surface_destroy.link);
-	wl_list_remove(&commit->waiter_ready.link);
 	wlr_drm_syncobj_timeline_waiter_finish(&commit->waiter);
 	free(commit);
 }
 
-static void surface_commit_handle_waiter_ready(struct wl_listener *listener, void *data) {
+static void surface_commit_handle_waiter_ready(struct wlr_drm_syncobj_timeline_waiter *waiter) {
 	struct wlr_linux_drm_syncobj_surface_v1_commit *commit =
-		wl_container_of(listener, commit, waiter_ready);
+		wl_container_of(waiter, commit, waiter);
 	surface_commit_destroy(commit);
 }
 
@@ -233,16 +231,13 @@ static bool lock_surface_commit(struct wlr_linux_drm_syncobj_surface_v1 *surface
 	struct wl_display *display = wl_client_get_display(client);
 	struct wl_event_loop *loop = wl_display_get_event_loop(display);
 	if (!wlr_drm_syncobj_timeline_waiter_init(&commit->waiter, timeline, point,
-			flags, loop)) {
+			flags, loop, surface_commit_handle_waiter_ready)) {
 		free(commit);
 		return false;
 	}
 
 	commit->surface = surface;
 	commit->cached_seq = wlr_surface_lock_pending(surface->surface);
-
-	commit->waiter_ready.notify = surface_commit_handle_waiter_ready;
-	wl_signal_add(&commit->waiter.events.ready, &commit->waiter_ready);
 
 	commit->surface_destroy.notify = surface_commit_handle_surface_destroy;
 	wl_signal_add(&surface->surface->events.destroy, &commit->surface_destroy);

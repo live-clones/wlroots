@@ -135,7 +135,6 @@ static const struct wp_presentation_feedback_listener
 };
 
 static void buffer_remove_drm_syncobj_waiter(struct wlr_wl_buffer *buffer) {
-	wl_list_remove(&buffer->drm_syncobj_ready.link);
 	wlr_drm_syncobj_timeline_waiter_finish(&buffer->drm_syncobj_waiter);
 	buffer->has_drm_syncobj_waiter = false;
 }
@@ -177,8 +176,8 @@ static const struct wl_buffer_listener buffer_listener = {
 	.release = buffer_handle_release,
 };
 
-static void buffer_handle_drm_syncobj_ready(struct wl_listener *listener, void *data) {
-	struct wlr_wl_buffer *buffer = wl_container_of(listener, buffer, drm_syncobj_ready);
+static void buffer_handle_drm_syncobj_ready(struct wlr_drm_syncobj_timeline_waiter *waiter) {
+	struct wlr_wl_buffer *buffer = wl_container_of(waiter, buffer, drm_syncobj_waiter);
 	buffer_remove_drm_syncobj_waiter(buffer);
 	buffer_release(buffer);
 }
@@ -819,14 +818,11 @@ static bool output_commit(struct wlr_output *wlr_output,
 			signal_timeline->wl, signal_point_hi, signal_point_lo);
 
 		if (!wlr_drm_syncobj_timeline_waiter_init(&buffer->drm_syncobj_waiter,
-				signal_timeline->base, signal_point, 0, output->backend->event_loop)) {
+				signal_timeline->base, signal_point, 0, output->backend->event_loop,
+				buffer_handle_drm_syncobj_ready)) {
 			return false;
 		}
 		buffer->has_drm_syncobj_waiter = true;
-
-		buffer->drm_syncobj_ready.notify = buffer_handle_drm_syncobj_ready;
-		wl_signal_add(&buffer->drm_syncobj_waiter.events.ready,
-			&buffer->drm_syncobj_ready);
 	} else {
 		if (output->drm_syncobj_surface_v1 != NULL) {
 			wp_linux_drm_syncobj_surface_v1_destroy(output->drm_syncobj_surface_v1);
