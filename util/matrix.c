@@ -3,15 +3,6 @@
 #include <wlr/util/box.h>
 #include "util/matrix.h"
 
-void wlr_matrix_identity(float mat[static 9]) {
-	static const float identity[9] = {
-		1.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 1.0f,
-	};
-	memcpy(mat, identity, sizeof(identity));
-}
-
 void wlr_matrix_multiply(float mat[static 9], const float a[static 9],
 		const float b[static 9]) {
 	float product[9];
@@ -29,24 +20,6 @@ void wlr_matrix_multiply(float mat[static 9], const float a[static 9],
 	product[8] = a[6]*b[2] + a[7]*b[5] + a[8]*b[8];
 
 	memcpy(mat, product, sizeof(product));
-}
-
-void wlr_matrix_translate(float mat[static 9], float x, float y) {
-	float translate[9] = {
-		1.0f, 0.0f, x,
-		0.0f, 1.0f, y,
-		0.0f, 0.0f, 1.0f,
-	};
-	wlr_matrix_multiply(mat, mat, translate);
-}
-
-void wlr_matrix_scale(float mat[static 9], float x, float y) {
-	float scale[9] = {
-		x,    0.0f, 0.0f,
-		0.0f, y,    0.0f,
-		0.0f, 0.0f, 1.0f,
-	};
-	wlr_matrix_multiply(mat, mat, scale);
 }
 
 static const float transforms[][9] = {
@@ -112,9 +85,17 @@ void matrix_projection(float mat[static 9], int width, int height) {
 }
 
 void wlr_matrix_project_fbox(float mat[static 9], const struct wlr_fbox *box) {
-	wlr_matrix_identity(mat);
-	wlr_matrix_translate(mat, box->x, box->y);
-	wlr_matrix_scale(mat, box->width, box->height);
+	mat[0] = box->width;
+	mat[1] = 0.0f;
+	mat[2] = box->x;
+
+	mat[3] = 0.0f;
+	mat[4] = box->height;
+	mat[5] = box->y;
+
+	mat[6] = 0.0f;
+	mat[7] = 0.0f;
+	mat[8] = 1.0f;
 }
 
 void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box) {

@@ -6,18 +6,9 @@
 struct wlr_box;
 struct wlr_fbox;
 
-/** Writes the identity matrix into mat */
-void wlr_matrix_identity(float mat[static 9]);
-
 /** mat ← a × b */
 void wlr_matrix_multiply(float mat[static 9], const float a[static 9],
 	const float b[static 9]);
-
-/** Writes a 2D translation matrix to mat of magnitude (x, y) */
-void wlr_matrix_translate(float mat[static 9], float x, float y);
-
-/** Writes a 2D scale matrix to mat of magnitude (x, y) */
-void wlr_matrix_scale(float mat[static 9], float x, float y);
 
 /** Writes a transformation matrix which applies the specified
  *  wl_output_transform to mat */
