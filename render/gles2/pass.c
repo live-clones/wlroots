@@ -139,7 +139,6 @@ static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
 	wlr_matrix_identity(tex_matrix);
 	wlr_matrix_translate(tex_matrix, box->x, box->y);
 	wlr_matrix_scale(tex_matrix, box->width, box->height);
-	wlr_matrix_translate(tex_matrix, .5, .5);
 
 	// since textures have a different origin point we have to transform
 	// differently if we are rotating
@@ -148,7 +147,6 @@ static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
 	} else {
 		wlr_matrix_transform(tex_matrix, trans);
 	}
-	wlr_matrix_translate(tex_matrix, -.5, -.5);
 
 	glUniformMatrix3fv(loc, 1, GL_FALSE, tex_matrix);
 }
