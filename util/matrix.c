@@ -71,17 +71,16 @@ void wlr_matrix_transform(float mat[static 9],
 }
 
 void matrix_projection(float mat[static 9], int width, int height) {
-	memset(mat, 0, sizeof(*mat) * 9);
+	struct wlr_fbox fbox = {
+		.x = -1.0f,
+		.y = -1.0f,
+		.width = 2.0f / width,
+		.height = 2.0f / height,
+	};
 
-	mat[0] = 2.0f / width;
-	mat[4] = 2.0f / height;
-
-	// Translation
-	mat[2] = -copysign(1.0f, mat[0] + mat[1]);
-	mat[5] = -copysign(1.0f, mat[3] + mat[4]);
-
-	// Identity
-	mat[8] = 1.0f;
+	float trans[9];
+	wlr_matrix_project_fbox(trans, &fbox);
+	wlr_matrix_multiply(mat, trans, mat);
 }
 
 void wlr_matrix_project_fbox(float mat[static 9], const struct wlr_fbox *box) {
