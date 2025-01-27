@@ -119,8 +119,7 @@ void matrix_projection(float mat[static 9], int width, int height,
 	mat[8] = 1.0f;
 }
 
-void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
-		enum wl_output_transform transform, const float projection[static 9]) {
+void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box) {
 	int x = box->x;
 	int y = box->y;
 	int width = box->width;
@@ -130,10 +129,4 @@ void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
 	wlr_matrix_translate(mat, x, y);
 
 	wlr_matrix_scale(mat, width, height);
-
-	if (transform != WL_OUTPUT_TRANSFORM_NORMAL) {
-		wlr_matrix_transform(mat, transform);
-	}
-
-	wlr_matrix_multiply(mat, projection, mat);
 }
