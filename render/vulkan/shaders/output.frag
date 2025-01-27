@@ -8,8 +8,9 @@ layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
 
 /* struct wlr_vk_frag_output_pcr_data */
-layout(push_constant) uniform UBO {
-	layout(offset = 80) float lut_3d_offset;
+layout(push_constant, row_major) uniform UBO {
+	layout(offset = 80) mat4 matrix;
+	float lut_3d_offset;
 	float lut_3d_scale;
 } data;
 
@@ -39,6 +40,9 @@ vec4 linear_color_to_srgb(vec4 color) {
 
 void main() {
 	vec4 val = subpassLoad(in_color).rgba;
+
+	val.rgb = mat3(data.matrix) * val.rgb;
+
 	if (OUTPUT_TRANSFORM == OUTPUT_TRANSFORM_LUT_3D) {
 		if (val.a == 0) {
 			out_color = vec4(0);
