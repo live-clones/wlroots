@@ -97,19 +97,11 @@ void wlr_matrix_transform(float mat[static 9],
 	wlr_matrix_multiply(mat, mat, transforms[transform]);
 }
 
-void matrix_projection(float mat[static 9], int width, int height,
-		enum wl_output_transform transform) {
+void matrix_projection(float mat[static 9], int width, int height) {
 	memset(mat, 0, sizeof(*mat) * 9);
 
-	const float *t = transforms[transform];
-	float x = 2.0f / width;
-	float y = 2.0f / height;
-
-	// Rotation + reflection
-	mat[0] = x * t[0];
-	mat[1] = x * t[1];
-	mat[3] = y * -t[3];
-	mat[4] = y * -t[4];
+	mat[0] = 2.0f / width;
+	mat[4] = 2.0f / height;
 
 	// Translation
 	mat[2] = -copysign(1.0f, mat[0] + mat[1]);
