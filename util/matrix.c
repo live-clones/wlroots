@@ -57,21 +57,21 @@ static const float transforms[][9] = {
 	},
 	[WL_OUTPUT_TRANSFORM_90] = {
 		0.0f, 1.0f, 0.0f,
-		-1.0f, 0.0f, 0.0f,
+		-1.0f, 0.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_180] = {
-		-1.0f, 0.0f, 0.0f,
-		0.0f, -1.0f, 0.0f,
+		-1.0f, 0.0f, 1.0f,
+		0.0f, -1.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_270] = {
-		0.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 1.0f,
 		1.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_FLIPPED] = {
-		-1.0f, 0.0f, 0.0f,
+		-1.0f, 0.0f, 1.0f,
 		0.0f, 1.0f, 0.0f,
 		0.0f, 0.0f, 1.0f,
 	},
@@ -82,12 +82,12 @@ static const float transforms[][9] = {
 	},
 	[WL_OUTPUT_TRANSFORM_FLIPPED_180] = {
 		1.0f, 0.0f, 0.0f,
-		0.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_FLIPPED_270] = {
-		0.0f, -1.0f, 0.0f,
-		-1.0f, 0.0f, 0.0f,
+		0.0f, -1.0f, 1.0f,
+		-1.0f, 0.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 };
@@ -132,9 +132,7 @@ void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
 	wlr_matrix_scale(mat, width, height);
 
 	if (transform != WL_OUTPUT_TRANSFORM_NORMAL) {
-		wlr_matrix_translate(mat, 0.5, 0.5);
 		wlr_matrix_transform(mat, transform);
-		wlr_matrix_translate(mat, -0.5, -0.5);
 	}
 
 	wlr_matrix_multiply(mat, projection, mat);
