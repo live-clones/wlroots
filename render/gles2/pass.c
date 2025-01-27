@@ -134,9 +134,7 @@ static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box)
 static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
 		const struct wlr_fbox *box) {
 	float tex_matrix[9];
-	wlr_matrix_identity(tex_matrix);
-	wlr_matrix_translate(tex_matrix, box->x, box->y);
-	wlr_matrix_scale(tex_matrix, box->width, box->height);
+	wlr_matrix_project_fbox(tex_matrix, box);
 
 	// since textures have a different origin point we have to transform
 	// differently if we are rotating
