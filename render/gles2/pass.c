@@ -126,9 +126,7 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 
 static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box) {
 	float gl_matrix[9];
-	wlr_matrix_identity(gl_matrix);
-	wlr_matrix_translate(gl_matrix, box->x, box->y);
-	wlr_matrix_scale(gl_matrix, box->width, box->height);
+	wlr_matrix_project_box(gl_matrix, box);
 	wlr_matrix_multiply(gl_matrix, proj, gl_matrix);
 	glUniformMatrix3fv(loc, 1, GL_FALSE, gl_matrix);
 }
