@@ -51,17 +51,21 @@ struct wlr_color_primaries {
 struct wlr_color_transform;
 
 /**
- * Initialize a color transformation to convert linear
- * (with sRGB(?) primaries) to an ICC profile. Returns NULL on failure.
+ * Initialize a color transformation to convert linear (with sRGB primaries) to
+ * a color volume (via provided primaries) and an ICC profile. Returns NULL on
+ * failure.
  */
 struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
+	enum wlr_color_named_primaries primaries,
 	const void *data, size_t size);
 
 /**
- * Initialize a color transformation to apply sRGB encoding.
- * Returns NULL on failure.
+ * Initialize a color transformation to convert linear (with sRGB primaries) to
+ * a color volume (via provided primaries) and apply sRGB encoding. Returns
+ * NULL on failure.
  */
-struct wlr_color_transform *wlr_color_transform_init_srgb(void);
+struct wlr_color_transform *wlr_color_transform_init_srgb(
+	enum wlr_color_named_primaries primaries);
 
 /**
  * Increase the reference count of the color transform by 1.
