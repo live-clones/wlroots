@@ -15,6 +15,7 @@ struct wlr_color_transform {
 	struct wlr_addon_set addons; // per-renderer helper state
 
 	enum wlr_color_transform_type type;
+	enum wlr_color_named_primaries primaries;
 };
 
 /**
