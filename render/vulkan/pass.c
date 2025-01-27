@@ -619,7 +619,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	switch (options->blend_mode) {
 	case WLR_RENDER_BLEND_MODE_PREMULTIPLIED:;
 		float matrix[9];
-		wlr_matrix_project_box(matrix, &box);
+		matrix_project_box(matrix, &box);
 		matrix_projection(matrix,
 			pass->render_buffer->wlr_buffer->width,
 			pass->render_buffer->wlr_buffer->height);
@@ -711,8 +711,8 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	float alpha = wlr_render_texture_options_get_alpha(options);
 
 	float matrix[9];
-	wlr_matrix_project_box(matrix, &dst_box);
-	wlr_matrix_transform(matrix, options->transform);
+	matrix_project_box(matrix, &dst_box);
+	matrix_transform(matrix, options->transform);
 	matrix_projection(matrix,
 		pass->render_buffer->wlr_buffer->width,
 		pass->render_buffer->wlr_buffer->height);

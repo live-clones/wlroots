@@ -3,7 +3,7 @@
 #include <wlr/util/box.h>
 #include "util/matrix.h"
 
-void wlr_matrix_multiply(float mat[static 9], const float a[static 9],
+void matrix_multiply(float mat[static 9], const float a[static 9],
 		const float b[static 9]) {
 	float product[9];
 
@@ -65,9 +65,9 @@ static const float transforms[][9] = {
 	},
 };
 
-void wlr_matrix_transform(float mat[static 9],
+void matrix_transform(float mat[static 9],
 		enum wl_output_transform transform) {
-	wlr_matrix_multiply(mat, mat, transforms[transform]);
+	matrix_multiply(mat, mat, transforms[transform]);
 }
 
 void matrix_projection(float mat[static 9], int width, int height) {
@@ -79,11 +79,11 @@ void matrix_projection(float mat[static 9], int width, int height) {
 	};
 
 	float trans[9];
-	wlr_matrix_project_fbox(trans, &fbox);
-	wlr_matrix_multiply(mat, trans, mat);
+	matrix_project_fbox(trans, &fbox);
+	matrix_multiply(mat, trans, mat);
 }
 
-void wlr_matrix_project_fbox(float mat[static 9], const struct wlr_fbox *box) {
+void matrix_project_fbox(float mat[static 9], const struct wlr_fbox *box) {
 	mat[0] = box->width;
 	mat[1] = 0.0f;
 	mat[2] = box->x;
@@ -97,7 +97,7 @@ void wlr_matrix_project_fbox(float mat[static 9], const struct wlr_fbox *box) {
 	mat[8] = 1.0f;
 }
 
-void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box) {
+void matrix_project_box(float mat[static 9], const struct wlr_box *box) {
 	struct wlr_fbox fbox = {
 		.x = box->x,
 		.y = box->y,
@@ -105,5 +105,5 @@ void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box) {
 		.height = box->height,
 	};
 
-	wlr_matrix_project_fbox(mat, &fbox);
+	matrix_project_fbox(mat, &fbox);
 }
