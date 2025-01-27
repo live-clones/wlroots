@@ -2,6 +2,7 @@
 #define RENDER_COLOR_H
 
 #include <stdint.h>
+#include <wlr/render/color.h>
 #include <wlr/util/addon.h>
 
 enum wlr_color_transform_type {
