@@ -6,10 +6,6 @@
 struct wlr_box;
 struct wlr_fbox;
 
-/** mat ← a × b */
-void wlr_matrix_multiply(float mat[static 9], const float a[static 9],
-	const float b[static 9]);
-
 /** Writes a transformation matrix which applies the specified
  *  wl_output_transform to mat */
 void wlr_matrix_transform(float mat[static 9],
