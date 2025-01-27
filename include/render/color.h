@@ -45,4 +45,9 @@ struct wlr_color_transform_lut3d {
 struct wlr_color_transform_lut3d *wlr_color_transform_lut3d_from_base(
 	struct wlr_color_transform *tr);
 
+/**
+ * Compute the matrix to convert RGB color values to CIE 1931 XYZ.
+ */
+void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, float matrix[static 9]);
+
 #endif

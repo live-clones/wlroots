@@ -13,6 +13,20 @@
 #include <sys/types.h>
 
 /**
+ * CIE 1931 xy chromaticity coordinates.
+ */
+struct wlr_color_cie1931_xy {
+	float x, y;
+};
+
+/**
+ * Color primaries and white point describing a color volume.
+ */
+struct wlr_color_primaries {
+	struct wlr_color_cie1931_xy red, green, blue, white;
+};
+
+/**
  * A color transformation formula, which maps a linear color space with
  * sRGB primaries to an output color space.
  *
