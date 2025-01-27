@@ -124,10 +124,10 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 	pixman_region32_fini(&region);
 }
 
-static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box) {
+static void set_proj_matrix(GLint loc, struct wlr_gles2_buffer *buffer, const struct wlr_box *box) {
 	float gl_matrix[9];
 	wlr_matrix_project_box(gl_matrix, box);
-	wlr_matrix_multiply(gl_matrix, proj, gl_matrix);
+	matrix_projection(gl_matrix, buffer->buffer->width, buffer->buffer->height);
 	glUniformMatrix3fv(loc, 1, GL_FALSE, gl_matrix);
 }
 
@@ -238,7 +238,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 
 	glUniform1i(shader->tex, 0);
 	glUniform1f(shader->alpha, alpha);
-	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
+	set_proj_matrix(shader->proj, pass->buffer, &dst_box);
 	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
 
 	render(&dst_box, options->clip, shader->pos_attrib);
@@ -261,7 +261,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 	glUseProgram(renderer->shaders.quad.program);
 
-	set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
+	set_proj_matrix(renderer->shaders.quad.proj, pass->buffer, &box);
 	glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
 
 	render(&box, options->clip, renderer->shaders.quad.pos_attrib);
@@ -322,8 +322,6 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 		pass->signal_timeline = wlr_drm_syncobj_timeline_ref(signal_timeline);
 		pass->signal_point = signal_point;
 	}
-
-	matrix_projection(pass->projection_matrix, wlr_buffer->width, wlr_buffer->height);
 
 	push_gles2_debug(renderer);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
