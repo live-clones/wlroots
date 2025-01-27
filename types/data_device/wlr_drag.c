@@ -10,6 +10,8 @@
 #include <wlr/util/log.h>
 #include "types/wlr_data_device.h"
 
+// TODO: drop seat grabs
+
 static void drag_handle_seat_client_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_drag *drag =
@@ -538,4 +540,55 @@ void wlr_seat_start_touch_drag(struct wlr_seat *seat, struct wlr_drag *drag,
 	drag_set_focus(drag, point->surface, point->sx, point->sy);
 
 	wlr_seat_start_drag(seat, drag, serial);
+}
+
+void wlr_drag_start(struct wlr_drag *drag) {
+	wlr_seat_start_drag(drag->seat, drag, 0);
+}
+
+void wlr_drag_enter(struct wlr_drag *drag, struct wlr_surface *surface,
+		double sx, double sy) {
+	drag_set_focus(drag, surface, sx, sy);
+}
+
+void wlr_drag_clear_focus(struct wlr_drag *drag) {
+	drag_set_focus(drag, NULL, 0, 0);
+}
+
+void wlr_drag_send_motion(struct wlr_drag *drag, uint32_t time_msec,
+		double sx, double sy) {
+	if (drag->focus != NULL && drag->focus_client != NULL) {
+		struct wl_resource *resource;
+		wl_resource_for_each(resource, &drag->focus_client->data_devices) {
+			wl_data_device_send_motion(resource, time_msec, wl_fixed_from_double(sx),
+				wl_fixed_from_double(sy));
+		}
+
+		struct wlr_drag_motion_event event = {
+			.drag = drag,
+			.time = time_msec,
+			.sx = sx,
+			.sy = sy,
+		};
+		wl_signal_emit_mutable(&drag->events.motion, &event);
+	}
+}
+
+void wlr_drag_drop_and_destroy(struct wlr_drag *drag, uint32_t time_msec) {
+	if (drag->source != NULL) {
+		if (drag->focus_client != NULL && drag->source->current_dnd_action &&
+				drag->source->accepted) {
+			drag_drop(drag, time_msec);
+		} else if (drag->source->impl->dnd_finish) {
+			// This will end the grab and free `drag`
+			wlr_data_source_destroy(drag->source);
+			return;
+		}
+	}
+
+	drag_destroy(drag);
+}
+
+void wlr_drag_destroy(struct wlr_drag *drag) {
+	drag_destroy(drag);
 }

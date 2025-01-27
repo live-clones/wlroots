@@ -10,6 +10,7 @@
 #define WLR_TYPES_WLR_RELATIVE_POINTER_V1_H
 
 #include <wayland-server-core.h>
+#include <wlr/types/wlr_input_router.h>
 
 /**
  * This protocol specifies a set of interfaces used for making clients able to
@@ -61,6 +62,29 @@ struct wlr_relative_pointer_v1 {
 	} WLR_PRIVATE;
 };
 
+/**
+ * A zwp_relative_pointer_v1 input router layer which
+ * zwp_relative_pointer_v1.relative_motion events based on pointer position
+ * events.
+ */
+struct wlr_relative_pointer_v1_input_router_layer {
+	struct wlr_input_router *router;
+	struct wlr_relative_pointer_manager_v1 *manager;
+	struct wlr_seat *seat;
+
+	struct {
+		struct wl_signal destroy;
+	} events;
+
+	struct {
+		struct wlr_input_router_pointer pointer;
+
+		struct wl_listener router_destroy;
+		struct wl_listener manager_destroy;
+		struct wl_listener seat_destroy;
+	} WLR_PRIVATE;
+};
+
 struct wlr_relative_pointer_manager_v1 *wlr_relative_pointer_manager_v1_create(
 	struct wl_display *display);
 
@@ -78,5 +102,14 @@ void wlr_relative_pointer_manager_v1_send_relative_motion(
  */
 struct wlr_relative_pointer_v1 *wlr_relative_pointer_v1_from_resource(
 	struct wl_resource *resource);
+
+bool wlr_relative_pointer_v1_input_router_layer_register(int32_t priority);
+
+struct wlr_relative_pointer_v1_input_router_layer *
+wlr_relative_pointer_v1_input_router_layer_create(
+		struct wlr_input_router *router, struct wlr_relative_pointer_manager_v1 *manager,
+		struct wlr_seat *seat);
+void wlr_relative_pointer_v1_input_router_layer_destroy(
+		struct wlr_relative_pointer_v1_input_router_layer *layer);
 
 #endif
