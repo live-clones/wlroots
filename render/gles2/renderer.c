@@ -18,7 +18,6 @@
 #include "render/egl.h"
 #include "render/gles2.h"
 #include "render/pixel_format.h"
-#include "types/wlr_matrix.h"
 #include "util/time.h"
 
 #include "common_vert_src.h"

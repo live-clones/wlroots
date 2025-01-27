@@ -7,7 +7,7 @@
 #include <wlr/util/transform.h>
 #include "render/egl.h"
 #include "render/gles2.h"
-#include "types/wlr_matrix.h"
+#include "util/matrix.h"
 
 #define MAX_QUADS 86 // 4kb
 

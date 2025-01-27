@@ -5,6 +5,7 @@ wlr_files += files(
 	'env.c',
 	'global.c',
 	'log.c',
+	'matrix.c',
 	'rect_union.c',
 	'region.c',
 	'set.c',

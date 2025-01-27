@@ -1,5 +1,5 @@
-#ifndef TYPES_WLR_MATRIX_H
-#define TYPES_WLR_MATRIX_H
+#ifndef UTIL_MATRIX_H
+#define UTIL_MATRIX_H
 
 #include <wayland-server-protocol.h>
 

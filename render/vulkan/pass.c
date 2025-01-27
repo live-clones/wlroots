@@ -8,7 +8,7 @@
 
 #include "render/color.h"
 #include "render/vulkan.h"
-#include "types/wlr_matrix.h"
+#include "util/matrix.h"
 
 static const struct wlr_render_pass_impl render_pass_impl;
 static const struct wlr_addon_interface vk_color_transform_impl;

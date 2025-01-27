@@ -27,7 +27,6 @@
 #include "render/vulkan/shaders/quad.frag.h"
 #include "render/vulkan/shaders/output.frag.h"
 #include "types/wlr_buffer.h"
-#include "types/wlr_matrix.h"
 #include "util/time.h"
 
 // TODO:
