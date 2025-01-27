@@ -327,8 +327,7 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 		pass->signal_point = signal_point;
 	}
 
-	matrix_projection(pass->projection_matrix, wlr_buffer->width, wlr_buffer->height,
-		WL_OUTPUT_TRANSFORM_FLIPPED_180);
+	matrix_projection(pass->projection_matrix, wlr_buffer->width, wlr_buffer->height);
 
 	push_gles2_debug(renderer);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);

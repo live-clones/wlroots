@@ -31,12 +31,10 @@ void wlr_matrix_transform(float mat[static 9],
 void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box);
 
 /**
- * Writes a 2D orthographic projection matrix to mat of (width, height) with a
- * specified wl_output_transform.
+ * Writes a 2D orthographic projection matrix to mat of (width, height).
  *
  * Equivalent to glOrtho(0, width, 0, height, 1, -1) with the transform applied.
  */
-void matrix_projection(float mat[static 9], int width, int height,
-	enum wl_output_transform transform);
+void matrix_projection(float mat[static 9], int width, int height);
 
 #endif

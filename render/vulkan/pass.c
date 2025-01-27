@@ -1131,9 +1131,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		.maxDepth = 1,
 	});
 
-	// matrix_projection() assumes a GL coordinate system so we need
-	// to pass WL_OUTPUT_TRANSFORM_FLIPPED_180 to adjust it for vulkan.
-	matrix_projection(pass->projection, width, height, WL_OUTPUT_TRANSFORM_FLIPPED_180);
+	matrix_projection(pass->projection, width, height);
 
 	wlr_buffer_lock(buffer->wlr_buffer);
 	pass->render_buffer = buffer;
