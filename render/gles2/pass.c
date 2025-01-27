@@ -126,7 +126,7 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 
 static void set_proj_matrix(GLint loc, struct wlr_gles2_buffer *buffer, const struct wlr_box *box) {
 	float gl_matrix[9];
-	wlr_matrix_project_box(gl_matrix, box);
+	matrix_project_box(gl_matrix, box);
 	matrix_projection(gl_matrix, buffer->buffer->width, buffer->buffer->height);
 	glUniformMatrix3fv(loc, 1, GL_FALSE, gl_matrix);
 }
@@ -134,14 +134,14 @@ static void set_proj_matrix(GLint loc, struct wlr_gles2_buffer *buffer, const st
 static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
 		const struct wlr_fbox *box) {
 	float tex_matrix[9];
-	wlr_matrix_project_fbox(tex_matrix, box);
+	matrix_project_fbox(tex_matrix, box);
 
 	// since textures have a different origin point we have to transform
 	// differently if we are rotating
 	if (trans & WL_OUTPUT_TRANSFORM_90) {
-		wlr_matrix_transform(tex_matrix, wlr_output_transform_invert(trans));
+		matrix_transform(tex_matrix, wlr_output_transform_invert(trans));
 	} else {
-		wlr_matrix_transform(tex_matrix, trans);
+		matrix_transform(tex_matrix, trans);
 	}
 
 	glUniformMatrix3fv(loc, 1, GL_FALSE, tex_matrix);
