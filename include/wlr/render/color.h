@@ -21,6 +21,14 @@ enum wlr_color_named_primaries {
 };
 
 /**
+ * Well-known color transfer functions.
+ */
+enum wlr_color_transfer_function {
+	WLR_COLOR_TRANSFER_FUNCTION_SRGB = 1 << 0,
+	WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ = 1 << 1,
+};
+
+/**
  * CIE 1931 xy chromaticity coordinates.
  */
 struct wlr_color_cie1931_xy {
