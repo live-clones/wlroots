@@ -211,11 +211,27 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		}
 		mat3_to_mat4(matrix, frag_pcr_data.matrix);
 
+		VkPipeline pipeline = VK_NULL_HANDLE;
 		if (pass->color_transform && pass->color_transform->type == COLOR_TRANSFORM_LUT_3D) {
-			bind_pipeline(pass, render_buffer->plain.render_setup->output_pipe_lut3d);
+			pipeline = render_buffer->plain.render_setup->output_pipe_lut3d;
 		} else {
-			bind_pipeline(pass, render_buffer->plain.render_setup->output_pipe_srgb);
+			enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+			if (pass->color_transform && pass->color_transform->type == COLOR_TRANSFORM_INVERSE_EOTF) {
+				struct wlr_color_transform_inverse_eotf *inverse_eotf =
+					wlr_color_transform_inverse_eotf_from_base(pass->color_transform);
+				tf = inverse_eotf->tf;
+			}
+
+			switch (tf) {
+			case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
+				pipeline = render_buffer->plain.render_setup->output_pipe_srgb;
+				break;
+			case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
+				pipeline = render_buffer->plain.render_setup->output_pipe_pq;
+				break;
+			}
 		}
+		bind_pipeline(pass, pipeline);
 		vkCmdPushConstants(render_cb->vk, renderer->output_pipe_layout,
 			VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vert_pcr_data), &vert_pcr_data);
 		vkCmdPushConstants(render_cb->vk, renderer->output_pipe_layout,
