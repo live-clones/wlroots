@@ -39,6 +39,10 @@ struct wlr_color_transform_lut3d {
 	size_t dim_len;
 };
 
+void wlr_color_transform_init(struct wlr_color_transform *tr,
+	enum wlr_color_transform_type type,
+	enum wlr_color_named_primaries primaries);
+
 /**
  * Gets a wlr_color_transform_lut3d from a generic wlr_color_transform.
  * Asserts that the base type is COLOR_TRANSFORM_LUT_3D
