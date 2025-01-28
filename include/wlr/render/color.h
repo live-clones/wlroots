@@ -69,11 +69,12 @@ struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
 
 /**
  * Initialize a color transformation to convert linear (with sRGB primaries) to
- * a color volume (via provided primaries) and apply sRGB encoding. Returns
+ * a color volume (via provided primaries) and apply EOTF⁻¹ encoding. Returns
  * NULL on failure.
  */
-struct wlr_color_transform *wlr_color_transform_init_srgb(
-	enum wlr_color_named_primaries primaries);
+struct wlr_color_transform *wlr_color_transform_init_linear_to_inverse_eotf(
+	enum wlr_color_named_primaries primaries,
+	enum wlr_color_transfer_function tf);
 
 /**
  * Increase the reference count of the color transform by 1.
