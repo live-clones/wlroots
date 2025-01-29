@@ -280,7 +280,7 @@ static void frame_handle_capture(struct wl_client *client,
 
 	frame->capturing = true;
 
-	bool need_frame = pixman_region32_not_empty(&frame->session->damage);
+	bool need_frame = !pixman_region32_empty(&frame->session->damage);
 	struct wlr_ext_image_capture_source_v1 *source = frame->session->source;
 	if (need_frame && source->impl->schedule_frame) {
 		source->impl->schedule_frame(source);
@@ -423,7 +423,7 @@ static void session_handle_source_frame(struct wl_listener *listener, void *data
 
 	struct wlr_ext_image_copy_capture_frame_v1 *frame = session->frame;
 	if (frame != NULL && frame->capturing &&
-			pixman_region32_not_empty(&session->damage)) {
+			!pixman_region32_empty(&session->damage)) {
 		pixman_region32_union(&frame->buffer_damage,
 			&frame->buffer_damage, &session->damage);
 

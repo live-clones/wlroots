@@ -116,7 +116,7 @@ void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
 			pixman_region32_intersect(&cursor_damage, &cursor_damage, damage);
 		}
 
-		if (!pixman_region32_not_empty(&cursor_damage)) {
+		if (pixman_region32_empty(&cursor_damage)) {
 			pixman_region32_fini(&cursor_damage);
 			continue;
 		}

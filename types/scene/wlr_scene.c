@@ -370,7 +370,7 @@ static void scene_output_damage(struct wlr_scene_output *scene_output,
 	pixman_region32_init(&clipped);
 	pixman_region32_intersect_rect(&clipped, damage, 0, 0, output->width, output->height);
 
-	if (pixman_region32_not_empty(&clipped)) {
+	if (!pixman_region32_empty(&clipped)) {
 		wlr_output_schedule_frame(scene_output->output);
 		wlr_damage_ring_add(&scene_output->damage_ring, &clipped);
 
@@ -391,7 +391,7 @@ static void scene_output_damage_whole(struct wlr_scene_output *scene_output) {
 }
 
 static void scene_damage_outputs(struct wlr_scene *scene, pixman_region32_t *damage) {
-	if (!pixman_region32_not_empty(damage)) {
+	if (pixman_region32_empty(damage)) {
 		return;
 	}
 
@@ -453,7 +453,7 @@ static void update_node_update_outputs(struct wlr_scene_node *node,
 		pixman_region32_intersect_rect(&intersection, &node->visible,
 			output_box.x, output_box.y, output_box.width, output_box.height);
 
-		if (pixman_region32_not_empty(&intersection)) {
+		if (!pixman_region32_empty(&intersection)) {
 			uint32_t overlap = region_area(&intersection);
 			if (overlap >= largest_overlap) {
 				largest_overlap = overlap;
@@ -1049,7 +1049,7 @@ void wlr_scene_buffer_set_transform(struct wlr_scene_buffer *scene_buffer,
 
 void wlr_scene_buffer_send_frame_done(struct wlr_scene_buffer *scene_buffer,
 		struct timespec *now) {
-	if (pixman_region32_not_empty(&scene_buffer->node.visible)) {
+	if (!pixman_region32_empty(&scene_buffer->node.visible)) {
 		wl_signal_emit_mutable(&scene_buffer->events.frame_done, now);
 	}
 }
@@ -1344,7 +1344,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	pixman_region32_translate(&render_region, -data->logical.x, -data->logical.y);
 	logical_to_buffer_coords(&render_region, data);
 	pixman_region32_intersect(&render_region, &render_region, &data->damage);
-	if (!pixman_region32_not_empty(&render_region)) {
+	if (pixman_region32_empty(&render_region)) {
 		pixman_region32_fini(&render_region);
 		return;
 	}
@@ -1406,7 +1406,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			.alpha = &scene_buffer->opacity,
 			.filter_mode = scene_buffer->filter_mode,
 			.blend_mode = !data->output->scene->calculate_visibility ||
-					pixman_region32_not_empty(&opaque) ?
+					!pixman_region32_empty(&opaque) ?
 				WLR_RENDER_BLEND_MODE_PREMULTIPLIED : WLR_RENDER_BLEND_MODE_NONE,
 			.wait_timeline = scene_buffer->wait_timeline,
 			.wait_point = scene_buffer->wait_point,
@@ -1763,7 +1763,7 @@ static bool construct_render_list_iterator(struct wlr_scene_node *node,
 	pixman_region32_intersect_rect(&intersection, &node->visible,
 			data->box.x, data->box.y,
 			data->box.width, data->box.height);
-	if (!pixman_region32_not_empty(&intersection)) {
+	if (pixman_region32_empty(&intersection)) {
 		pixman_region32_fini(&intersection);
 		return false;
 	}
@@ -1914,8 +1914,9 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 }
 
 bool wlr_scene_output_needs_frame(struct wlr_scene_output *scene_output) {
-	return scene_output->output->needs_frame || pixman_region32_not_empty(
-		&scene_output->pending_commit_damage) || scene_output->gamma_lut_changed;
+	return scene_output->output->needs_frame ||
+		!pixman_region32_empty(&scene_output->pending_commit_damage) ||
+		scene_output->gamma_lut_changed;
 }
 
 bool wlr_scene_output_commit(struct wlr_scene_output *scene_output,
@@ -2054,7 +2055,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		clock_gettime(CLOCK_MONOTONIC, &now);
 
 		// add the current frame's damage if there is damage
-		if (pixman_region32_not_empty(&scene_output->damage_ring.current)) {
+		if (!pixman_region32_empty(&scene_output->damage_ring.current)) {
 			struct highlight_region *current_damage = calloc(1, sizeof(*current_damage));
 			if (current_damage) {
 				pixman_region32_init(&current_damage->region);
@@ -2077,7 +2078,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 			struct timespec time_diff;
 			timespec_sub(&time_diff, &now, &damage->when);
 			if (timespec_to_msec(&time_diff) >= HIGHLIGHT_DAMAGE_FADEOUT_TIME ||
-					!pixman_region32_not_empty(&damage->region)) {
+					pixman_region32_empty(&damage->region)) {
 				highlight_region_destroy(damage);
 			}
 		}

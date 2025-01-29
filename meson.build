@@ -116,7 +116,7 @@ xkbcommon = dependency(
 	],
 )
 pixman = dependency('pixman-1',
-	version: '>=0.42.0',
+	version: '>=0.43.0',
 	fallback: 'pixman',
 	default_options: ['werror=false'],
 )

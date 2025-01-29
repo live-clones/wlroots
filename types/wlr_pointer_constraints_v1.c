@@ -107,7 +107,7 @@ static bool update_region(struct wlr_pointer_constraint_v1 *constraint) {
 	pixman_region32_t region;
 	pixman_region32_init(&region);
 
-	if (pixman_region32_not_empty(&constraint->current.region)) {
+	if (!pixman_region32_empty(&constraint->current.region)) {
 		pixman_region32_intersect(&region,
 			&constraint->surface->input_region, &constraint->current.region);
 	} else {
