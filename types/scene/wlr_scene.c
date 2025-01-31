@@ -1097,6 +1097,11 @@ static struct wlr_texture *scene_buffer_get_texture(
 	return texture;
 }
 
+static void scene_buffer_sample(struct wlr_scene_buffer *buffer,
+		struct wlr_scene_output_sample_event *event, struct wl_event_loop* loop) {
+	wl_signal_emit_mutable(&buffer->events.output_sample, &event);
+}
+
 static void scene_node_get_size(struct wlr_scene_node *node,
 		int *width, int *height) {
 	*width = 0;
@@ -1415,8 +1420,10 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 		struct wlr_scene_output_sample_event sample_event = {
 			.output = data->output,
 			.direct_scanout = false,
+			.release_timeline = data->output->in_timeline,
+			.release_point = data->output->in_point,
 		};
-		wl_signal_emit_mutable(&scene_buffer->events.output_sample, &sample_event);
+		scene_buffer_sample(scene_buffer, &sample_event, data->output->output->event_loop);
 
 		if (entry->highlight_transparent_region) {
 			wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
@@ -1628,7 +1635,10 @@ struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 	if (drm_fd >= 0 && output->backend->features.timeline &&
 			output->renderer != NULL && output->renderer->features.timeline) {
 		scene_output->in_timeline = wlr_drm_syncobj_timeline_create(drm_fd);
-		if (scene_output->in_timeline == NULL) {
+		scene_output->out_timeline = wlr_drm_syncobj_timeline_create(drm_fd);
+		if (scene_output->in_timeline == NULL || scene_output->out_timeline == NULL) {
+			wlr_drm_syncobj_timeline_unref(scene_output->in_timeline);
+			wlr_drm_syncobj_timeline_unref(scene_output->out_timeline);
 			return NULL;
 		}
 	}
@@ -1683,7 +1693,10 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
 	wl_list_remove(&scene_output->output_commit.link);
 	wl_list_remove(&scene_output->output_damage.link);
 	wl_list_remove(&scene_output->output_needs_frame.link);
+	wlr_drm_syncobj_timeline_signal(scene_output->in_timeline, UINT64_MAX);
 	wlr_drm_syncobj_timeline_unref(scene_output->in_timeline);
+	wlr_drm_syncobj_timeline_signal(scene_output->out_timeline, UINT64_MAX);
+	wlr_drm_syncobj_timeline_unref(scene_output->out_timeline);
 	wl_array_release(&scene_output->render_list);
 	free(scene_output);
 }
@@ -1896,6 +1909,10 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	if (buffer->wait_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(&pending, buffer->wait_timeline, buffer->wait_point);
 	}
+	if (scene_output->out_timeline) {
+		scene_output->out_point++;
+		wlr_output_state_set_signal_timeline(&pending, scene_output->out_timeline, scene_output->out_point);
+	}
 
 	if (!wlr_output_test_state(scene_output->output, &pending)) {
 		wlr_output_state_finish(&pending);
@@ -1908,8 +1925,10 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	struct wlr_scene_output_sample_event sample_event = {
 		.output = scene_output,
 		.direct_scanout = true,
+		.release_timeline = data->output->out_timeline,
+		.release_point = data->output->out_point,
 	};
-	wl_signal_emit_mutable(&buffer->events.output_sample, &sample_event);
+	scene_buffer_sample(buffer, &sample_event, scene_output->output->event_loop);
 	return true;
 }
 
@@ -2254,6 +2273,9 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	if (scene_output->in_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(state, scene_output->in_timeline,
 			scene_output->in_point);
+		scene_output->out_point++;
+		wlr_output_state_set_signal_timeline(state, scene_output->out_timeline,
+			scene_output->out_point);
 	}
 
 	scene_output_state_attempt_gamma(scene_output, state);
