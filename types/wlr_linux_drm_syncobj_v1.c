@@ -187,9 +187,9 @@ static void surface_synced_commit(struct wlr_surface_synced *synced) {
 		return;
 	}
 
-	// acquire point is known to be waitable at this point -> no loop needed
+	struct wl_display *display = wl_client_get_display(surface->resource->client);
 	wlr_drm_syncobj_merger_add(state->release_merger,
-		state->acquire_timeline, state->acquire_point, NULL);
+		state->acquire_timeline, state->acquire_point, wl_display_get_event_loop(display));
 }
 
 static const struct wlr_surface_synced_impl surface_synced_impl = {
