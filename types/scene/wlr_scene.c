@@ -16,6 +16,7 @@
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
 #include "render/color.h"
+#include "render/drm_syncobj_merger.h"
 #include "types/wlr_output.h"
 #include "types/wlr_scene.h"
 #include "util/array.h"
@@ -128,6 +129,9 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 		scene_buffer_set_texture(scene_buffer, NULL);
 		pixman_region32_fini(&scene_buffer->opaque_region);
 		wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
+		if (scene_buffer->release_merger) {
+			wlr_drm_syncobj_merger_unref(scene_buffer->release_merger);
+		}
 
 		assert(wl_list_empty(&scene_buffer->events.output_leave.listener_list));
 		assert(wl_list_empty(&scene_buffer->events.output_enter.listener_list));
@@ -847,16 +851,23 @@ static void scene_buffer_set_texture(struct wlr_scene_buffer *scene_buffer,
 	}
 }
 
-static void scene_buffer_set_wait_timeline(struct wlr_scene_buffer *scene_buffer,
-		struct wlr_drm_syncobj_timeline *timeline, uint64_t point) {
-	wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
-	if (timeline != NULL) {
-		scene_buffer->wait_timeline = wlr_drm_syncobj_timeline_ref(timeline);
-		scene_buffer->wait_point = point;
-	} else {
-		scene_buffer->wait_timeline = NULL;
-		scene_buffer->wait_point = 0;
+static void scene_buffer_set_timelines(struct wlr_scene_buffer *scene_buffer,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point,
+		struct wlr_drm_syncobj_merger *release_merger) {
+	if (wait_timeline != NULL) {
+		wait_timeline = wlr_drm_syncobj_timeline_ref(wait_timeline);
 	}
+	wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
+	scene_buffer->wait_timeline = wait_timeline;
+	scene_buffer->wait_point = wait_point;
+
+	if (release_merger != NULL) {
+		release_merger = wlr_drm_syncobj_merger_ref(release_merger);
+	}
+	if (scene_buffer->release_merger != NULL) {
+		wlr_drm_syncobj_merger_unref(scene_buffer->release_merger);
+	}
+	scene_buffer->release_merger = release_merger;
 }
 
 struct wlr_scene_buffer *wlr_scene_buffer_create(struct wlr_scene_tree *parent,
@@ -938,8 +949,8 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
 
 	scene_buffer_set_buffer(scene_buffer, buffer);
 	scene_buffer_set_texture(scene_buffer, NULL);
-	scene_buffer_set_wait_timeline(scene_buffer,
-		options->wait_timeline, options->wait_point);
+	scene_buffer_set_timelines(scene_buffer, options->wait_timeline, options->wait_point,
+		options->release_merger);
 
 	if (update) {
 		scene_node_update(&scene_buffer->node, NULL);
@@ -1201,6 +1212,11 @@ static struct wlr_texture *scene_buffer_get_texture(
 
 static void scene_buffer_sample(struct wlr_scene_buffer *buffer,
 		struct wlr_scene_output_sample_event *event, struct wl_event_loop *loop) {
+	if (event->release_timeline && buffer->release_merger) {
+		wlr_drm_syncobj_merger_add(buffer->release_merger,
+			event->release_timeline, event->release_point, loop);
+	}
+
 	wl_signal_emit_mutable(&buffer->events.output_sample, event);
 }
 

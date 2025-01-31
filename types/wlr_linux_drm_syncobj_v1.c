@@ -11,6 +11,7 @@
 #include <xf86drm.h>
 #include "config.h"
 #include "linux-drm-syncobj-v1-protocol.h"
+#include "render/drm_syncobj_merger.h"
 
 #define LINUX_DRM_SYNCOBJ_V1_VERSION 1
 
@@ -158,6 +159,9 @@ static void surface_synced_finish_state(void *_state) {
 	struct wlr_linux_drm_syncobj_surface_v1_state *state = _state;
 	wlr_drm_syncobj_timeline_unref(state->acquire_timeline);
 	wlr_drm_syncobj_timeline_unref(state->release_timeline);
+	if (state->release_merger != NULL) {
+		wlr_drm_syncobj_merger_unref(state->release_merger);
+	}
 }
 
 static void surface_synced_move_state(void *_dst, void *_src) {
@@ -168,10 +172,31 @@ static void surface_synced_move_state(void *_dst, void *_src) {
 	*src = (struct wlr_linux_drm_syncobj_surface_v1_state){0};
 }
 
+static void surface_synced_commit(struct wlr_surface_synced *synced) {
+	struct wlr_linux_drm_syncobj_surface_v1 *surface =
+		wl_container_of(synced, surface, synced);
+	struct wlr_linux_drm_syncobj_surface_v1_state *state = &surface->current;
+
+	if (state->release_merger != NULL || state->release_timeline == NULL) {
+		return;
+	}
+
+	state->release_merger = wlr_drm_syncobj_merger_create(
+		state->release_timeline, state->release_point);
+	if (state->release_merger == NULL) {
+		return;
+	}
+
+	// acquire point is known to be waitable at this point -> no loop needed
+	wlr_drm_syncobj_merger_add(state->release_merger,
+		state->acquire_timeline, state->acquire_point, NULL);
+}
+
 static const struct wlr_surface_synced_impl surface_synced_impl = {
 	.state_size = sizeof(struct wlr_linux_drm_syncobj_surface_v1_state),
 	.finish_state = surface_synced_finish_state,
 	.move_state = surface_synced_move_state,
+	.commit = surface_synced_commit,
 };
 
 static void manager_handle_destroy(struct wl_client *client,
