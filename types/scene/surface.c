@@ -128,8 +128,8 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 			buffer_width, buffer_height);
 		wlr_output_transform_coords(state->transform, &buffer_width, &buffer_height);
 
-		src_box.x += (double)(clip->x * buffer_width) / state->width;
-		src_box.y += (double)(clip->y * buffer_height) / state->height;
+		src_box.x += (double)(clip->x * src_box.width) / state->width;
+		src_box.y += (double)(clip->y * src_box.height) / state->height;
 		src_box.width *= (double)width / state->width;
 		src_box.height *= (double)height / state->height;
 
