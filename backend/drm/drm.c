@@ -262,6 +262,43 @@ static bool init_plane(struct wlr_drm_backend *drm,
 	return true;
 }
 
+static uint32_t add_cursor_plane(struct wlr_drm_backend *drm, drmModePlaneRes *plane_res) {
+	if (drm->iface != &legacy_iface) {
+		return 0;
+	}
+
+	for (uint32_t i = 0; i < drm->num_planes; ++i) {
+		uint32_t id = plane_res->planes[i];
+
+		struct wlr_drm_plane_props props = {0};
+		if (!get_drm_plane_props(drm->fd, id, &props)) {
+			return 0;
+		}
+
+		uint64_t type;
+		if (!get_drm_prop(drm->fd, id, props.type, &type)) {
+			return 0;
+		}
+
+		if (type == DRM_PLANE_TYPE_CURSOR) {
+			// if cursor plane exits, do not add any
+			return 0;
+		}
+	}
+
+	uint32_t crtcs = 0;
+	// check each crtc whether hardware cursor is supported
+	for (size_t i = 0; i < drm->num_crtcs; i++) {
+		if (!drmModeSetCursor(drm->fd, drm->crtcs[i].id, 0, 0, 0)) {
+			++drm->num_planes;
+			crtcs |= 1 << i;
+		}
+	}
+
+	wlr_log(WLR_DEBUG, "Going to add cursor plane for crtcs %#x", crtcs);
+	return crtcs;
+}
+
 static bool init_planes(struct wlr_drm_backend *drm) {
 	drmModePlaneRes *plane_res = drmModeGetPlaneResources(drm->fd);
 	if (!plane_res) {
@@ -272,6 +309,15 @@ static bool init_planes(struct wlr_drm_backend *drm) {
 	wlr_log(WLR_INFO, "Found %"PRIu32" DRM planes", plane_res->count_planes);
 
 	drm->num_planes = plane_res->count_planes;
+	 /**
+	  * when drm works on legacy instead of atomic,
+	  * hardware cursor do not work without cursor plane,
+	  * add cursor plane for crtcs support hardware cursor.
+	  *
+	  * drm->num_planes may increase here.
+	  */
+	uint32_t crtcs_add_cursor_plane = add_cursor_plane(drm, plane_res);
+
 	drm->planes = calloc(drm->num_planes, sizeof(*drm->planes));
 	if (drm->planes == NULL) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
@@ -293,6 +339,19 @@ static bool init_planes(struct wlr_drm_backend *drm) {
 		}
 
 		drmModeFreePlane(drm_plane);
+	}
+
+	for (uint32_t i = 0, j = plane_res->count_planes; i < drm->num_crtcs; ++i) {
+		if (~crtcs_add_cursor_plane & 1 << i) {
+			continue;
+		}
+
+		struct wlr_drm_plane *cursor_plane = &drm->planes[j++];
+		// add format ARGB8888 for cursor plane
+		wlr_drm_format_set_add(&cursor_plane->formats, DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+		cursor_plane->type = DRM_PLANE_TYPE_CURSOR;
+
+		drm->crtcs[i].cursor = cursor_plane;
 	}
 
 	drmModeFreePlaneResources(plane_res);
