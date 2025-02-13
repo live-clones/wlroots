@@ -57,6 +57,19 @@ struct wlr_foreign_toplevel_handle_v1 {
 	struct wl_list outputs; // wlr_foreign_toplevel_v1_output.link
 	uint32_t state; // enum wlr_foreign_toplevel_v1_state
 
+	// version 4 additions
+	// data corresponding gtk_shell1.set_dbus_properties
+	char *gtk_shell1_application_id;
+	char *gtk_shell1_app_menu_path;
+	char *gtk_shell1_menubar_path;
+	char *gtk_shell1_window_object_path;
+	char *gtk_shell1_application_object_path;
+	char *gtk_shell1_unique_bus_name;
+
+	// data corresponding to kde-appmenu
+	char *kde_appmenu_service_name;
+	char *kde_appmenu_object_path;
+
 	struct {
 		// struct wlr_foreign_toplevel_handle_v1_maximized_event
 		struct wl_signal request_maximize;
@@ -149,5 +162,26 @@ void wlr_foreign_toplevel_handle_v1_set_parent(
 	struct wlr_foreign_toplevel_handle_v1 *toplevel,
 	struct wlr_foreign_toplevel_handle_v1 *parent);
 
+/**
+ * Set gtk-shell DBus properties -- use this to relay the information set
+ * in the gtk_shell1.set_dbus_properties request to clients using this protocol.
+ */
+void wlr_foreign_toplevel_handle_v1_set_gtk_shell1_dbus_properties(
+	struct wlr_foreign_toplevel_handle_v1 *toplevel,
+	const char *application_id,
+	const char *app_menu_path,
+	const char *menubar_path,
+	const char *window_object_path,
+	const char *application_object_path,
+	const char *unique_bus_name);
+
+/**
+ * Set KDE appmenu -- use this to relay the information set in the
+ * org_kde_kwin_appmenu.set_address request to clients using this protocol.
+ */
+void wlr_foreign_toplevel_handle_v1_set_kde_appmenu_path(
+	struct wlr_foreign_toplevel_handle_v1 *toplevel,
+	const char *service_name,
+	const char *object_path);
 
 #endif

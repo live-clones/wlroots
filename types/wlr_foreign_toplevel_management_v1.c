@@ -8,7 +8,7 @@
 #include <wlr/util/log.h>
 #include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
-#define FOREIGN_TOPLEVEL_MANAGEMENT_V1_VERSION 3
+#define FOREIGN_TOPLEVEL_MANAGEMENT_V1_VERSION 4
 
 static const struct zwlr_foreign_toplevel_handle_v1_interface toplevel_handle_impl;
 
@@ -222,6 +222,159 @@ void wlr_foreign_toplevel_handle_v1_set_app_id(
 	struct wl_resource *resource;
 	wl_resource_for_each(resource, &toplevel->resources) {
 		zwlr_foreign_toplevel_handle_v1_send_app_id(resource, app_id);
+	}
+
+	toplevel_update_idle_source(toplevel);
+}
+
+static bool toplevel_has_gtk_shell1_dbus_properties(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel) {
+	return (toplevel->gtk_shell1_application_id != NULL ||
+		toplevel->gtk_shell1_app_menu_path != NULL ||
+		toplevel->gtk_shell1_application_object_path != NULL ||
+		toplevel->gtk_shell1_menubar_path != NULL ||
+		toplevel->gtk_shell1_unique_bus_name != NULL ||
+		toplevel->gtk_shell1_window_object_path != NULL);
+}
+
+void wlr_foreign_toplevel_handle_v1_set_gtk_shell1_dbus_properties(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel,
+		const char *application_id,
+		const char *app_menu_path,
+		const char *menubar_path,
+		const char *window_object_path,
+		const char *application_object_path,
+		const char *unique_bus_name) {
+
+	bool have_previous_props = toplevel_has_gtk_shell1_dbus_properties(toplevel);
+	bool have_new_props = (application_id != NULL ||
+		app_menu_path != NULL || menubar_path != NULL || window_object_path != NULL ||
+		application_object_path != NULL || unique_bus_name != NULL);
+
+	if (! (have_previous_props || have_new_props) ) return;
+
+	if (have_previous_props) {
+		free(toplevel->gtk_shell1_application_id);
+		free(toplevel->gtk_shell1_app_menu_path);
+		free(toplevel->gtk_shell1_menubar_path);
+		free(toplevel->gtk_shell1_window_object_path);
+		free(toplevel->gtk_shell1_application_object_path);
+		free(toplevel->gtk_shell1_unique_bus_name);
+	}
+
+	if (application_id != NULL) {
+		toplevel->gtk_shell1_application_id = strdup(application_id);
+		if (toplevel->gtk_shell1_application_id == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel gtk_shell1_application_id");
+			return;
+		}
+	}
+	else toplevel->gtk_shell1_application_id = NULL;
+
+	if (app_menu_path != NULL) {
+		toplevel->gtk_shell1_app_menu_path = strdup(app_menu_path);
+		if (toplevel->gtk_shell1_app_menu_path == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel gtk_shell1_app_menu_path");
+			return;
+		}
+	}
+	else toplevel->gtk_shell1_app_menu_path = NULL;
+
+	if (menubar_path != NULL) {
+		toplevel->gtk_shell1_menubar_path = strdup(menubar_path);
+		if (toplevel->gtk_shell1_menubar_path == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel gtk_shell1_menubar_path");
+			return;
+		}
+	}
+	else toplevel->gtk_shell1_menubar_path = NULL;
+
+	if (window_object_path != NULL) {
+		toplevel->gtk_shell1_window_object_path = strdup(window_object_path);
+		if (toplevel->gtk_shell1_window_object_path == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel gtk_shell1_window_object_path");
+			return;
+		}
+	}
+	else toplevel->gtk_shell1_window_object_path = NULL;
+
+	if (application_object_path != NULL) {
+		toplevel->gtk_shell1_application_object_path = strdup(application_object_path);
+		if (toplevel->gtk_shell1_application_object_path == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel gtk_shell1_application_object_path");
+			return;
+		}
+	}
+	else toplevel->gtk_shell1_application_object_path = NULL;
+
+	if (unique_bus_name != NULL) {
+		toplevel->gtk_shell1_unique_bus_name = strdup(unique_bus_name);
+		if (toplevel->gtk_shell1_unique_bus_name == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel gtk_shell1_unique_bus_name");
+			return;
+		}
+	}
+	else toplevel->gtk_shell1_unique_bus_name = NULL;
+
+	struct wl_resource *resource;
+	wl_resource_for_each(resource, &toplevel->resources) {
+		if (wl_resource_get_version(resource) >=
+				ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_GTK_SHELL1_SURFACE_DBUS_PROPERTIES_SINCE_VERSION)
+			zwlr_foreign_toplevel_handle_v1_send_gtk_shell1_surface_dbus_properties(
+				resource,
+				toplevel->gtk_shell1_application_id,
+				toplevel->gtk_shell1_app_menu_path,
+				toplevel->gtk_shell1_menubar_path,
+				toplevel->gtk_shell1_window_object_path,
+				toplevel->gtk_shell1_application_object_path,
+				toplevel->gtk_shell1_unique_bus_name);
+	}
+
+	toplevel_update_idle_source(toplevel);
+}
+
+void wlr_foreign_toplevel_handle_v1_set_kde_appmenu_path(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel,
+		const char *service_name,
+		const char *object_path) {
+	bool have_previous_path = (
+		toplevel->kde_appmenu_service_name != NULL ||
+		toplevel->kde_appmenu_object_path != NULL);
+	bool have_new_path = (service_name != NULL ||
+		object_path != NULL);
+	if (! (have_previous_path || have_new_path) ) return;
+
+	if (have_previous_path) {
+		free(toplevel->kde_appmenu_service_name);
+		free(toplevel->kde_appmenu_object_path);
+	}
+
+	if (service_name != NULL) {
+		toplevel->kde_appmenu_service_name = strdup(service_name);
+		if (toplevel->kde_appmenu_service_name == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel kde_appmenu_service_name");
+			return;
+		}
+	}
+	else toplevel->kde_appmenu_service_name = NULL;
+
+	if (object_path != NULL) {
+		toplevel->kde_appmenu_object_path = strdup(object_path);
+		if (toplevel->kde_appmenu_object_path == NULL) {
+			wlr_log(WLR_ERROR, "failed to allocate memory for toplevel kde_appmenu_object_path");
+			return;
+		}
+	}
+	else toplevel->kde_appmenu_object_path = NULL;
+
+	struct wl_resource *resource;
+	wl_resource_for_each(resource, &toplevel->resources) {
+		if (wl_resource_get_version(resource) >=
+				ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_KDE_APPLICATION_MENU_SINCE_VERSION)
+			zwlr_foreign_toplevel_handle_v1_send_kde_application_menu(
+				resource,
+				toplevel->kde_appmenu_service_name,
+				toplevel->kde_appmenu_object_path);
 	}
 
 	toplevel_update_idle_source(toplevel);
@@ -526,6 +679,14 @@ void wlr_foreign_toplevel_handle_v1_destroy(
 		}
 	}
 
+	free(toplevel->gtk_shell1_application_id);
+	free(toplevel->gtk_shell1_app_menu_path);
+	free(toplevel->gtk_shell1_menubar_path);
+	free(toplevel->gtk_shell1_window_object_path);
+	free(toplevel->gtk_shell1_application_object_path);
+	free(toplevel->gtk_shell1_unique_bus_name);
+	free(toplevel->kde_appmenu_service_name);
+	free(toplevel->kde_appmenu_object_path);
 	free(toplevel->title);
 	free(toplevel->app_id);
 	free(toplevel);
@@ -616,6 +777,26 @@ static void toplevel_send_details_to_toplevel_resource(
 	}
 	if (toplevel->app_id) {
 		zwlr_foreign_toplevel_handle_v1_send_app_id(resource, toplevel->app_id);
+	}
+	if (toplevel_has_gtk_shell1_dbus_properties(toplevel) &&
+			wl_resource_get_version(resource) >=
+			ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_GTK_SHELL1_SURFACE_DBUS_PROPERTIES_SINCE_VERSION) {
+		zwlr_foreign_toplevel_handle_v1_send_gtk_shell1_surface_dbus_properties(
+			resource,
+			toplevel->gtk_shell1_application_id,
+			toplevel->gtk_shell1_app_menu_path,
+			toplevel->gtk_shell1_menubar_path,
+			toplevel->gtk_shell1_window_object_path,
+			toplevel->gtk_shell1_application_object_path,
+			toplevel->gtk_shell1_unique_bus_name);
+	}
+	if ( (toplevel->kde_appmenu_service_name != NULL || toplevel->kde_appmenu_object_path != NULL) &&
+			wl_resource_get_version(resource) >=
+			ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_KDE_APPLICATION_MENU_SINCE_VERSION) {
+		zwlr_foreign_toplevel_handle_v1_send_kde_application_menu(
+			resource,
+			toplevel->kde_appmenu_service_name,
+			toplevel->kde_appmenu_object_path);
 	}
 
 	struct wlr_foreign_toplevel_handle_v1_output *output;
