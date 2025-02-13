@@ -157,6 +157,8 @@ struct wlr_drm_connector_state {
 	uint32_t gamma_lut;
 	uint32_t fb_damage_clips;
 	int primary_in_fence_fd, out_fence_fd;
+	uint32_t hdr_output_metadata;
+	uint32_t colorspace;
 	bool vrr_enabled;
 };
 
@@ -211,6 +213,10 @@ struct wlr_drm_connector {
 
 	// Last committed page-flip
 	struct wlr_drm_page_flip *pending_page_flip;
+
+	// Atomic modesetting only
+	uint32_t hdr_output_metadata;
+	uint32_t colorspace;
 
 	int32_t refresh;
 };

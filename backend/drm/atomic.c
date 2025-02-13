@@ -1,4 +1,5 @@
 #include <drm_fourcc.h>
+#include <drm_mode.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -179,6 +180,74 @@ bool create_fb_damage_clips_blob(struct wlr_drm_backend *drm,
 	return true;
 }
 
+static uint8_t convert_cta861_eotf(enum wlr_output_transfer_function tf) {
+	switch (tf) {
+	case WLR_OUTPUT_TRANSFER_FUNCTION_BT1886:
+		return 0;
+	case WLR_OUTPUT_TRANSFER_FUNCTION_ST2084_PQ:
+		return 2;
+	}
+	abort(); // unreachable
+}
+
+static uint16_t convert_cta861_color_coord(double v) {
+	if (v < 0) {
+		v = 0;
+	}
+	if (v > 1) {
+		v = 1;
+	}
+	return (uint16_t)round(v * 50000);
+}
+
+static bool create_hdr_output_metadata_blob(struct wlr_drm_backend *drm,
+		const struct wlr_output_image_description *img_desc, uint32_t *blob_id) {
+	struct hdr_output_metadata metadata = {
+		.metadata_type = 0,
+		.hdmi_metadata_type1 = {
+			.eotf = convert_cta861_eotf(img_desc->transfer_function),
+			.metadata_type = 0,
+			.display_primaries = {
+				{
+					.x = convert_cta861_color_coord(img_desc->mastering_display_primaries.red.x),
+					.y = convert_cta861_color_coord(img_desc->mastering_display_primaries.red.y),
+				},
+				{
+					.x = convert_cta861_color_coord(img_desc->mastering_display_primaries.green.x),
+					.y = convert_cta861_color_coord(img_desc->mastering_display_primaries.green.y),
+				},
+				{
+					.x = convert_cta861_color_coord(img_desc->mastering_display_primaries.blue.x),
+					.y = convert_cta861_color_coord(img_desc->mastering_display_primaries.blue.y),
+				},
+			},
+			.white_point = {
+				.x = convert_cta861_color_coord(img_desc->mastering_display_primaries.white.x),
+				.y = convert_cta861_color_coord(img_desc->mastering_display_primaries.white.y),
+			},
+			.max_display_mastering_luminance = img_desc->mastering_luminance.max,
+			.min_display_mastering_luminance = img_desc->mastering_luminance.min * 0.0001,
+			.max_cll = img_desc->max_cll,
+			.max_fall = img_desc->max_fall,
+		},
+	};
+	if (drmModeCreatePropertyBlob(drm->fd, &metadata, sizeof(metadata), blob_id) != 0) {
+		wlr_log_errno(WLR_ERROR, "Failed to create HDR_OUTPUT_METADATA property");
+		return false;
+	}
+	return true;
+}
+
+static uint64_t convert_primaries_to_colorspace(enum wlr_output_primaries primaries) {
+	switch (primaries) {
+	case WLR_OUTPUT_PRIMARIES_SRGB:
+		return 0; // Default
+	case WLR_OUTPUT_PRIMARIES_BT2020:
+		return 9; // BT2020_RGB
+	}
+	abort(); // unreachable
+}
+
 static uint64_t max_bpc_for_format(uint32_t format) {
 	switch (format) {
 	case DRM_FORMAT_XRGB2101010:
@@ -287,6 +356,17 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 		}
 	}
 
+	uint32_t hdr_output_metadata = conn->hdr_output_metadata;
+	if ((state->base->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) &&
+			!create_hdr_output_metadata_blob(drm, &state->base->image_description, &hdr_output_metadata)) {
+		return false;
+	}
+
+	uint32_t colorspace = conn->colorspace;
+	if (state->base->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
+		colorspace = convert_primaries_to_colorspace(state->base->image_description.primaries);
+	}
+
 	bool prev_vrr_enabled =
 		output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
 	bool vrr_enabled = prev_vrr_enabled;
@@ -301,6 +381,8 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	state->gamma_lut = gamma_lut;
 	state->fb_damage_clips = fb_damage_clips;
 	state->primary_in_fence_fd = in_fence_fd;
+	state->hdr_output_metadata = hdr_output_metadata;
+	state->colorspace = colorspace;
 	state->vrr_enabled = vrr_enabled;
 	return true;
 }
@@ -316,6 +398,8 @@ void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state) {
 	crtc->own_mode_id = true;
 	commit_blob(drm, &crtc->mode_id, state->mode_id);
 	commit_blob(drm, &crtc->gamma_lut, state->gamma_lut);
+	commit_blob(drm, &conn->hdr_output_metadata, state->hdr_output_metadata);
+	conn->colorspace = state->colorspace;
 
 	conn->output.adaptive_sync_status = state->vrr_enabled ?
 		WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED : WLR_OUTPUT_ADAPTIVE_SYNC_DISABLED;
@@ -339,6 +423,7 @@ void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state)
 
 	rollback_blob(drm, &crtc->mode_id, state->mode_id);
 	rollback_blob(drm, &crtc->gamma_lut, state->gamma_lut);
+	rollback_blob(drm, &conn->hdr_output_metadata, state->hdr_output_metadata);
 
 	destroy_blob(drm, state->fb_damage_clips);
 	if (state->primary_in_fence_fd >= 0) {
@@ -429,6 +514,12 @@ static void atomic_connector_add(struct atomic *atom,
 	}
 	if (modeset && active && conn->props.max_bpc != 0 && conn->max_bpc_bounds[1] != 0) {
 		atomic_add(atom, conn->id, conn->props.max_bpc, pick_max_bpc(conn, state->primary_fb));
+	}
+	if (conn->props.colorspace != 0) {
+		atomic_add(atom, conn->id, conn->props.colorspace, state->colorspace);
+	}
+	if (conn->props.hdr_output_metadata != 0) {
+		atomic_add(atom, conn->id, conn->props.hdr_output_metadata, state->hdr_output_metadata);
 	}
 	atomic_add(atom, crtc->id, crtc->props.mode_id, state->mode_id);
 	atomic_add(atom, crtc->id, crtc->props.active, active);
