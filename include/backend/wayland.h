@@ -22,6 +22,7 @@ struct wlr_wl_backend {
 	/* local state */
 	bool started;
 	struct wl_event_loop *event_loop;
+	struct wl_event_queue *busy_loop_queue;
 	struct wl_list outputs;
 	int drm_fd;
 	struct wl_list buffers; // wlr_wl_buffer.link
