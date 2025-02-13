@@ -296,8 +296,6 @@ struct wlr_output_event_request_state {
 	const struct wlr_output_state *state;
 };
 
-struct wlr_surface;
-
 void wlr_output_create_global(struct wlr_output *output, struct wl_display *display);
 void wlr_output_destroy_global(struct wlr_output *output);
 /**

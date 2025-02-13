@@ -14,6 +14,7 @@
 #include <wlr/types/wlr_output.h>
 
 struct wlr_input_device;
+struct wlr_surface;
 struct wlr_xcursor_manager;
 
 /**

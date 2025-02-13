@@ -18,6 +18,8 @@
 #include <wlr/util/addon.h>
 #include <wlr/util/box.h>
 
+struct wlr_surface;
+
 enum wlr_surface_state_field {
 	WLR_SURFACE_STATE_BUFFER = 1 << 0,
 	WLR_SURFACE_STATE_SURFACE_DAMAGE = 1 << 1,
