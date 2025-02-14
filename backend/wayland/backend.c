@@ -555,6 +555,7 @@ static void backend_destroy(struct wlr_backend *backend) {
 	wl_compositor_destroy(wl->compositor);
 	wl_registry_destroy(wl->registry);
 	wl_display_flush(wl->remote_display);
+	wl_event_queue_destroy(wl->busy_loop_queue);
 	if (wl->own_remote_display) {
 		wl_display_disconnect(wl->remote_display);
 	}
@@ -610,10 +611,16 @@ struct wlr_backend *wlr_wl_backend_create(struct wl_event_loop *loop,
 		wl->own_remote_display = true;
 	}
 
+	wl->busy_loop_queue = wl_display_create_queue(wl->remote_display);
+	if (wl->busy_loop_queue == NULL) {
+		wlr_log_errno(WLR_ERROR, "Could not create a Wayland event queue");
+		goto error_display;
+	}
+
 	wl->registry = wl_display_get_registry(wl->remote_display);
 	if (!wl->registry) {
 		wlr_log_errno(WLR_ERROR, "Could not obtain reference to remote registry");
-		goto error_display;
+		goto error_queue;
 	}
 	wl_registry_add_listener(wl->registry, &registry_listener, wl);
 
@@ -715,6 +722,8 @@ error_registry:
 		xdg_wm_base_destroy(wl->xdg_wm_base);
 	}
 	wl_registry_destroy(wl->registry);
+error_queue:
+	wl_event_queue_destroy(wl->busy_loop_queue);
 error_display:
 	if (wl->own_remote_display) {
 		wl_display_disconnect(wl->remote_display);
