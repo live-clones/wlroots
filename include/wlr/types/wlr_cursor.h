@@ -11,9 +11,9 @@
 
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_output_layout.h>
-#include <wlr/types/wlr_output.h>
 
 struct wlr_input_device;
+struct wlr_surface;
 struct wlr_xcursor_manager;
 
 /**
