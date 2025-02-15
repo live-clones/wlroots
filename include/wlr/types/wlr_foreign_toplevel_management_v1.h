@@ -45,6 +45,13 @@ struct wlr_foreign_toplevel_handle_v1_output {
 	struct wl_listener output_destroy;
 };
 
+struct wlr_foreign_toplevel_handle_v1_dbus_annotation {
+	struct wl_list link;
+	char *interface;
+	char *bus_name;
+	char *object_path;
+};
+
 struct wlr_foreign_toplevel_handle_v1 {
 	struct wlr_foreign_toplevel_manager_v1 *manager;
 	struct wl_list resources;
@@ -56,6 +63,9 @@ struct wlr_foreign_toplevel_handle_v1 {
 	struct wlr_foreign_toplevel_handle_v1 *parent;
 	struct wl_list outputs; // wlr_foreign_toplevel_v1_output.link
 	uint32_t state; // enum wlr_foreign_toplevel_v1_state
+
+	struct wl_list client_dbus_annotations; // wlr_foreign_toplevel_handle_v1_dbus_annotation.link
+	struct wl_list surface_dbus_annotations; // wlr_foreign_toplevel_handle_v1_dbus_annotation.link
 
 	struct {
 		// struct wlr_foreign_toplevel_handle_v1_maximized_event
@@ -148,6 +158,35 @@ void wlr_foreign_toplevel_handle_v1_set_fullscreen(
 void wlr_foreign_toplevel_handle_v1_set_parent(
 	struct wlr_foreign_toplevel_handle_v1 *toplevel,
 	struct wlr_foreign_toplevel_handle_v1 *parent);
+
+/**
+ * Add or update a DBus annotation for the client associated with this
+ * toplevel. Arguements should not be NULL.
+ */
+void wlr_foreign_toplevel_handle_v1_add_client_dbus_annotation(
+	struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface,
+	const char *bus_name, const char *object_path);
+
+/**
+ * Remove an existing DBus annotation for the client associated with
+ * this toplevel.
+ */
+void wlr_foreign_toplevel_handle_v1_remove_client_dbus_annotation(
+	struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface);
+
+/**
+ * Add or update a DBus annotation for this toplevel. Arguements should not be NULL.
+ */
+void wlr_foreign_toplevel_handle_v1_add_surface_dbus_annotation(
+	struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface,
+	const char *bus_name, const char *object_path);
+
+/**
+ * Remove an existing DBus annotation for this toplevel.
+ */
+void wlr_foreign_toplevel_handle_v1_remove_surface_dbus_annotation(
+	struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface);
+
 
 
 #endif

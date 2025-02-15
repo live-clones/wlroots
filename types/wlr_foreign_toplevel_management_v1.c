@@ -8,7 +8,7 @@
 #include <wlr/util/log.h>
 #include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
-#define FOREIGN_TOPLEVEL_MANAGEMENT_V1_VERSION 3
+#define FOREIGN_TOPLEVEL_MANAGEMENT_V1_VERSION 4
 
 static const struct zwlr_foreign_toplevel_handle_v1_interface toplevel_handle_impl;
 
@@ -486,6 +486,130 @@ void wlr_foreign_toplevel_handle_v1_set_parent(
 	toplevel_update_idle_source(toplevel);
 }
 
+static void toplevel_add_annotation(struct wl_list *list, const char *interface,
+		const char *bus_name, const char *object_path) {
+	assert ( (interface != NULL) && (bus_name != NULL) && (object_path != NULL) );
+
+	bool found = false;
+	struct wlr_foreign_toplevel_handle_v1_dbus_annotation *toplevel_annot = NULL;
+	wl_list_for_each(toplevel_annot, list, link) {
+		if (!strcmp(toplevel_annot->interface, interface)) {
+			found = true;
+			free(toplevel_annot->bus_name);
+			free(toplevel_annot->object_path);
+			toplevel_annot->bus_name = strdup(bus_name);
+			toplevel_annot->object_path = strdup(object_path);
+			break;
+		}
+	}
+
+	if (!found) {
+		// this interface did not exist before
+		toplevel_annot = calloc(1, sizeof(struct wlr_foreign_toplevel_handle_v1_dbus_annotation));
+		toplevel_annot->interface = strdup(interface);
+		toplevel_annot->bus_name = strdup(bus_name);
+		toplevel_annot->object_path = strdup(object_path);
+		wl_list_insert(list, &toplevel_annot->link);
+	}
+}
+
+void wlr_foreign_toplevel_handle_v1_add_client_dbus_annotation(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface,
+		const char *bus_name, const char *object_path) {
+	toplevel_add_annotation(&toplevel->client_dbus_annotations,
+		interface, bus_name, object_path);
+
+	struct wl_resource *resource;
+	wl_resource_for_each(resource, &toplevel->resources) {
+		if (wl_resource_get_version(resource) >=
+				ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_CLIENT_DBUS_ANNOTATION_SINCE_VERSION) {
+			zwlr_foreign_toplevel_handle_v1_send_client_dbus_annotation(
+				resource, interface, bus_name, object_path);
+		}
+	}
+
+	toplevel_update_idle_source(toplevel);
+}
+
+void wlr_foreign_toplevel_handle_v1_add_surface_dbus_annotation(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface,
+		const char *bus_name, const char *object_path) {
+	toplevel_add_annotation(&toplevel->surface_dbus_annotations,
+		interface, bus_name, object_path);
+
+	struct wl_resource *resource;
+	wl_resource_for_each(resource, &toplevel->resources) {
+		if (wl_resource_get_version(resource) >=
+				ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_SURFACE_DBUS_ANNOTATION_SINCE_VERSION) {
+			zwlr_foreign_toplevel_handle_v1_send_surface_dbus_annotation(
+				resource, interface, bus_name, object_path);
+		}
+	}
+
+	toplevel_update_idle_source(toplevel);
+}
+
+static void toplevel_dbus_annotation_destroy(
+		struct wlr_foreign_toplevel_handle_v1_dbus_annotation *annot) {
+	wl_list_remove(&annot->link);
+	free(annot->interface);
+	free(annot->bus_name);
+	free(annot->object_path);
+	free(annot);
+}
+
+void wlr_foreign_toplevel_handle_v1_remove_client_dbus_annotation(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface) {
+	assert (interface != NULL);
+
+	bool found = false;
+	struct wlr_foreign_toplevel_handle_v1_dbus_annotation *toplevel_annot, *tmp;
+	wl_list_for_each_safe(toplevel_annot, tmp, &toplevel->client_dbus_annotations, link) {
+		if (!strcmp(toplevel_annot->interface, interface)) {
+			toplevel_dbus_annotation_destroy(toplevel_annot);
+			found = true;
+			break;
+		}
+	}
+
+	if (found) {
+		struct wl_resource *resource;
+		wl_resource_for_each(resource, &toplevel->resources) {
+			if (wl_resource_get_version(resource) >=
+					ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_CLIENT_DBUS_ANNOTATION_SINCE_VERSION) {
+				zwlr_foreign_toplevel_handle_v1_send_client_dbus_annotation(
+					resource, interface, NULL, NULL);
+			}
+		}
+	}
+}
+
+void wlr_foreign_toplevel_handle_v1_remove_surface_dbus_annotation(
+		struct wlr_foreign_toplevel_handle_v1 *toplevel, const char *interface) {
+	assert (interface != NULL);
+
+	bool found = false;
+	struct wlr_foreign_toplevel_handle_v1_dbus_annotation *toplevel_annot, *tmp;
+	wl_list_for_each_safe(toplevel_annot, tmp, &toplevel->surface_dbus_annotations, link) {
+		if (!strcmp(toplevel_annot->interface, interface)) {
+			toplevel_dbus_annotation_destroy(toplevel_annot);
+			found = true;
+			break;
+		}
+	}
+
+	if (found) {
+		struct wl_resource *resource;
+		wl_resource_for_each(resource, &toplevel->resources) {
+			if (wl_resource_get_version(resource) >=
+					ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_SURFACE_DBUS_ANNOTATION_SINCE_VERSION) {
+				zwlr_foreign_toplevel_handle_v1_send_surface_dbus_annotation(
+					resource, interface, NULL, NULL);
+			}
+		}
+	}
+}
+
 void wlr_foreign_toplevel_handle_v1_destroy(
 		struct wlr_foreign_toplevel_handle_v1 *toplevel) {
 	if (!toplevel) {
@@ -524,6 +648,14 @@ void wlr_foreign_toplevel_handle_v1_destroy(
 			 * wishes to avoid this behavior. */
 			wlr_foreign_toplevel_handle_v1_set_parent(tl, NULL);
 		}
+	}
+	
+	struct wlr_foreign_toplevel_handle_v1_dbus_annotation *toplevel_annot, *tmp4;
+	wl_list_for_each_safe(toplevel_annot, tmp4, &toplevel->client_dbus_annotations, link) {
+		toplevel_dbus_annotation_destroy(toplevel_annot);
+	}
+	wl_list_for_each_safe(toplevel_annot, tmp4, &toplevel->surface_dbus_annotations, link) {
+		toplevel_dbus_annotation_destroy(toplevel_annot);
 	}
 
 	free(toplevel->title);
@@ -568,6 +700,8 @@ wlr_foreign_toplevel_handle_v1_create(
 
 	wl_list_init(&toplevel->resources);
 	wl_list_init(&toplevel->outputs);
+	wl_list_init(&toplevel->client_dbus_annotations);
+	wl_list_init(&toplevel->surface_dbus_annotations);
 
 	wl_signal_init(&toplevel->events.request_maximize);
 	wl_signal_init(&toplevel->events.request_minimize);
@@ -636,6 +770,20 @@ static void toplevel_send_details_to_toplevel_resource(
 	wl_array_release(&states);
 
 	toplevel_resource_send_parent(resource, toplevel->parent);
+
+	if (wl_resource_get_version(resource) >=
+			ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_CLIENT_DBUS_ANNOTATION_SINCE_VERSION) {
+		struct wlr_foreign_toplevel_handle_v1_dbus_annotation *annot;
+		wl_list_for_each(annot, &toplevel->client_dbus_annotations, link) {
+			zwlr_foreign_toplevel_handle_v1_send_surface_dbus_annotation(
+				resource, annot->interface, annot->bus_name, annot->object_path);
+		}
+
+		wl_list_for_each(annot, &toplevel->surface_dbus_annotations, link) {
+			zwlr_foreign_toplevel_handle_v1_send_surface_dbus_annotation(
+				resource, annot->interface, annot->bus_name, annot->object_path);
+		}
+	}
 
 	zwlr_foreign_toplevel_handle_v1_send_done(resource);
 }
