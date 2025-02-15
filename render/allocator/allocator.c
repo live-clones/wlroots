@@ -100,13 +100,16 @@ struct wlr_allocator *wlr_allocator_autocreate(struct wlr_backend *backend,
 	uint32_t backend_caps = backend->buffer_caps;
 	uint32_t renderer_caps = renderer->render_buffer_caps;
 
+	struct wlr_allocator *alloc = wlr_renderer_get_allocator(renderer);
+	if (alloc) {
+		return alloc;
+	}
+
 	// Note, drm_fd may be negative if unavailable
 	int drm_fd = wlr_backend_get_drm_fd(backend);
 	if (drm_fd < 0) {
 		drm_fd = wlr_renderer_get_drm_fd(renderer);
 	}
-
-	struct wlr_allocator *alloc = NULL;
 
 	uint32_t gbm_caps = WLR_BUFFER_CAP_DMABUF;
 	if ((backend_caps & gbm_caps) && (renderer_caps & gbm_caps)
