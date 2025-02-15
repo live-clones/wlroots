@@ -25,7 +25,7 @@
     THIS SOFTWARE.
   </copyright>
 
-  <interface name="zwlr_foreign_toplevel_manager_v1" version="3">
+  <interface name="zwlr_foreign_toplevel_manager_v1" version="4">
     <description summary="list and control opened apps">
       The purpose of this protocol is to enable the creation of taskbars
       and docks by providing them with a list of opened applications and
@@ -58,7 +58,7 @@
       </description>
     </request>
 
-    <event name="finished">
+    <event name="finished" type="destructor">
       <description summary="the compositor has finished with the toplevel manager">
         This event indicates that the compositor is done sending events to the
         zwlr_foreign_toplevel_manager_v1. The server will destroy the object
@@ -68,7 +68,7 @@
     </event>
   </interface>
 
-  <interface name="zwlr_foreign_toplevel_handle_v1" version="3">
+  <interface name="zwlr_foreign_toplevel_handle_v1" version="4">
     <description summary="an opened toplevel">
       A zwlr_foreign_toplevel_handle_v1 object represents an opened toplevel
       window. Each app may have multiple opened toplevels.
@@ -265,6 +265,44 @@
         No event is emitted when the parent handle is destroyed by the client.
       </description>
       <arg name="parent" type="object" interface="zwlr_foreign_toplevel_handle_v1" allow-null="true"/>
+    </event>
+
+    <!-- Version 4 additions -->
+
+    <event name="client_dbus_annotation" since="4">
+      <description summary="DBus interface available for the client">
+        This event is emitted when the client associated with this surface
+        announces that it implements a specific DBus interface, available
+        at the given DBus name and object path. The DBus interface announced
+        by this event is not tied to any specific surface, but to a client app.
+        
+        If an interface is available, both bus_name and object_path will be 
+        non-null. bus_name will typically refer to an unique name, but can
+        potentially be a well-known name as well. If a previously announced
+        interface is no longer available, the event will be emitted for it
+        with bus_name and object_path set to null.
+      </description>
+      <arg name="interface" type="string" allow-null="false" summary="The name of the supported DBus interface" />
+      <arg name="bus_name" type="string" allow-null="true" summary="The bus name where the interface is available" />
+      <arg name="object_path" type="string" allow-null="true" summary="The DBus object path that implements the interface" />
+    </event>
+
+    <event name="surface_dbus_annotation" since="4">
+      <description summary="DBus interface available for the client">
+        This event is emitted when the client associated with this surface
+        announces that it implements a specific DBus interface, available
+        at the given DBus name and object path. The DBus interface announced
+        by this event is specific to this toplevel.
+        
+        If an interface is available, both bus_name and object_path will be 
+        non-null. bus_name will typically refer to an unique name, but can
+        potentially be a well-known name as well. If a previously announced
+        interface is no longer available, the event will be emitted for it
+        with bus_name and object_path set to null.
+      </description>
+      <arg name="interface" type="string" allow-null="false" summary="The name of the supported DBus interface" />
+      <arg name="bus_name" type="string" allow-null="true" summary="The bus name where the interface is available" />
+      <arg name="object_path" type="string" allow-null="true" summary="The DBus object path that implements the interface" />
     </event>
   </interface>
 </protocol>
