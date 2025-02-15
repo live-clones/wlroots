@@ -307,10 +307,19 @@ void wlr_keyboard_group_remove_keyboard(struct wlr_keyboard_group *group,
 }
 
 void wlr_keyboard_group_destroy(struct wlr_keyboard_group *group) {
-	struct keyboard_group_device *device, *tmp;
-	wl_list_for_each_safe(device, tmp, &group->devices, link) {
+	struct keyboard_group_device *device, *tmp_device;
+	wl_list_for_each_safe(device, tmp_device, &group->devices, link) {
 		wlr_keyboard_group_remove_keyboard(group, device->keyboard);
 	}
+
+	// Now group->keys might not be empty if a wlr_keyboard has emitted
+	// duplicated key presses
+	struct keyboard_group_key *key, *tmp_key;
+	wl_list_for_each_safe(key, tmp_key, &group->keys, link) {
+		wl_list_remove(&key->link);
+		free(key);
+	}
+
 	wlr_keyboard_finish(&group->keyboard);
 	wl_list_remove(&group->events.enter.listener_list);
 	wl_list_remove(&group->events.leave.listener_list);
