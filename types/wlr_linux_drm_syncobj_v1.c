@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <wlr/render/drm_syncobj.h>
+#include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/util/log.h>

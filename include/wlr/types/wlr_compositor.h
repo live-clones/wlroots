@@ -14,9 +14,10 @@
 #include <stdint.h>
 #include <time.h>
 #include <wayland-server-core.h>
-#include <wlr/types/wlr_output.h>
 #include <wlr/util/addon.h>
 #include <wlr/util/box.h>
+
+struct wlr_surface;
 
 enum wlr_surface_state_field {
 	WLR_SURFACE_STATE_BUFFER = 1 << 0,
