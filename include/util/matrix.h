@@ -24,11 +24,11 @@ void wlr_matrix_transform(float mat[static 9],
 	enum wl_output_transform transform);
 
 /** Shortcut for the various matrix operations involved in projecting the
- *  specified wlr_box onto a given orthographic projection with a given
- *  rotation. The result is written to mat, which can be applied to each
- *  coordinate of the box to get a new coordinate from [-1,1]. */
-void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
-	enum wl_output_transform transform, const float projection[static 9]);
+ *  specified wlr_box onto a given orthographic projection. The result is
+ *  written to mat, which can be applied to each coordinate of the box to get a
+ *  new coordinate from [-1,1].
+ */
+void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box);
 
 /**
  * Writes a 2D orthographic projection matrix to mat of (width, height) with a

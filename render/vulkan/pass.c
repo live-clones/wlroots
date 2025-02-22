@@ -618,9 +618,8 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 	switch (options->blend_mode) {
 	case WLR_RENDER_BLEND_MODE_PREMULTIPLIED:;
-		float proj[9], matrix[9];
-		wlr_matrix_identity(proj);
-		wlr_matrix_project_box(matrix, &box, WL_OUTPUT_TRANSFORM_NORMAL, proj);
+		float matrix[9];
+		wlr_matrix_project_box(matrix, &box);
 		wlr_matrix_multiply(matrix, pass->projection, matrix);
 
 		struct wlr_vk_render_format_setup *setup = pass->srgb_pathway ?
@@ -709,9 +708,9 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	wlr_render_texture_options_get_dst_box(options, &dst_box);
 	float alpha = wlr_render_texture_options_get_alpha(options);
 
-	float proj[9], matrix[9];
-	wlr_matrix_identity(proj);
-	wlr_matrix_project_box(matrix, &dst_box, options->transform, proj);
+	float matrix[9];
+	wlr_matrix_project_box(matrix, &dst_box);
+	wlr_matrix_transform(matrix, options->transform);
 	wlr_matrix_multiply(matrix, pass->projection, matrix);
 
 	struct wlr_vk_vert_pcr_data vert_pcr_data = {
