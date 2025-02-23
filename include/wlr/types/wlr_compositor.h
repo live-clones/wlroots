@@ -250,8 +250,6 @@ struct wlr_surface {
 			int buffer_width, buffer_height;
 		} previous;
 
-		bool unmap_commit;
-
 		bool opaque;
 
 		bool handling_commit;
