@@ -353,6 +353,7 @@ struct wlr_vk_texture_view *vulkan_texture_get_or_create_view(struct wlr_vk_text
 
 static void texture_set_format(struct wlr_vk_texture *texture,
 		const struct wlr_vk_format *format, bool has_mutable_srgb) {
+	has_mutable_srgb = false; // TODO: add support for this case
 	texture->format = format;
 	texture->using_mutable_srgb = has_mutable_srgb;
 	texture->transform = !format->is_ycbcr && has_mutable_srgb ?
