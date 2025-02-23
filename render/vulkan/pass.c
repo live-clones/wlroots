@@ -775,6 +775,14 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	};
 	mat3_to_mat4(matrix, vert_pcr_data.mat4);
 
+	bool srgb = options->transfer_function == 0 ||
+		options->transfer_function == WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+	bool srgb_image_view = srgb && texture->using_mutable_srgb;
+	enum wlr_vk_texture_transform tex_transform =
+		srgb_image_view || options->transfer_function == WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR ?
+		WLR_VK_TEXTURE_TRANSFORM_IDENTITY :
+		WLR_VK_TEXTURE_TRANSFORM_SRGB;
+
 	struct wlr_vk_render_format_setup *setup = pass->srgb_pathway ?
 		pass->render_buffer->srgb.render_setup :
 		pass->render_buffer->plain.render_setup;
@@ -786,7 +794,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 				.ycbcr_format = texture->format->is_ycbcr ? texture->format : NULL,
 				.filter_mode = options->filter_mode,
 			},
-			.texture_transform = texture->transform,
+			.texture_transform = tex_transform,
 			.blend_mode = !texture->has_alpha && alpha == 1.0 ?
 				WLR_RENDER_BLEND_MODE_NONE : options->blend_mode,
 		});
@@ -796,7 +804,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	}
 
 	struct wlr_vk_texture_view *view =
-		vulkan_texture_get_or_create_view(texture, pipe->layout);
+		vulkan_texture_get_or_create_view(texture, pipe->layout, srgb_image_view);
 	if (!view) {
 		pass->failed = true;
 		return;
