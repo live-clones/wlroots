@@ -13,6 +13,14 @@
 #include <sys/types.h>
 
 /**
+ * Well-known color transfer functions.
+ */
+enum wlr_color_transfer_function {
+	WLR_COLOR_TRANSFER_FUNCTION_SRGB = 1 << 0,
+	WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR = 1 << 1,
+};
+
+/**
  * A color transformation formula, which maps a linear color space with
  * sRGB primaries to an output color space.
  *
