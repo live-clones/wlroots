@@ -3,6 +3,7 @@
 #include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -23,6 +24,12 @@ static void handle_scene_buffer_outputs_update(
 	wlr_surface_set_preferred_buffer_scale(surface->surface, ceil(scale));
 	wlr_surface_set_preferred_buffer_transform(surface->surface,
 		surface->buffer->primary_output->output->transform);
+
+	if (surface->fifo_v1 &&
+			surface->fifo_v1->output != surface->buffer->primary_output->output) {
+		wlr_fifo_v1_set_output(surface->fifo_v1,
+			surface->buffer->primary_output->output);
+	}
 }
 
 static void handle_scene_buffer_output_enter(
@@ -243,6 +250,8 @@ static void surface_addon_destroy(struct wlr_addon *addon) {
 	wl_list_remove(&surface->frame_done.link);
 	wl_list_remove(&surface->surface_destroy.link);
 	wl_list_remove(&surface->surface_commit.link);
+	if (surface->fifo_destroy.notify)
+		wl_list_remove(&surface->fifo_destroy.link);
 
 	free(surface);
 }
