@@ -60,6 +60,31 @@ enum wlr_output_adaptive_sync_status {
 	WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED,
 };
 
+enum wlr_output_transfer_function {
+	WLR_OUTPUT_TRANSFER_FUNCTION_BT1886 = 1 << 0, // equivalent to BT.709
+	WLR_OUTPUT_TRANSFER_FUNCTION_ST2084_PQ = 1 << 1,
+};
+
+enum wlr_output_primaries {
+	WLR_OUTPUT_PRIMARIES_SRGB = 1 << 0,
+	WLR_OUTPUT_PRIMARIES_BT2020 = 1 << 1,
+};
+
+struct wlr_output_image_description {
+	enum wlr_output_transfer_function transfer_function;
+	enum wlr_output_primaries primaries;
+	struct {
+		struct {
+			double x, y;
+		} red, green, blue, white;
+	} mastering_display_primaries;
+	struct {
+		double min, max;
+	} mastering_luminance;
+	double max_cll;
+	double max_fall;
+};
+
 enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_BUFFER = 1 << 0,
 	WLR_OUTPUT_STATE_DAMAGE = 1 << 1,
@@ -74,6 +99,7 @@ enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_LAYERS = 1 << 10,
 	WLR_OUTPUT_STATE_WAIT_TIMELINE = 1 << 11,
 	WLR_OUTPUT_STATE_SIGNAL_TIMELINE = 1 << 12,
+	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION = 1 << 13,
 };
 
 enum wlr_output_state_mode_type {
@@ -132,6 +158,8 @@ struct wlr_output_state {
 	uint64_t wait_point;
 	struct wlr_drm_syncobj_timeline *signal_timeline;
 	uint64_t signal_point;
+
+	struct wlr_output_image_description image_description;
 };
 
 struct wlr_output_impl;
@@ -166,6 +194,9 @@ struct wlr_output {
 	struct wlr_output_mode *current_mode;
 	int32_t width, height;
 	int32_t refresh; // mHz, may be zero
+
+	uint32_t supported_transfer_functions; // bitfield of enum wlr_output_transfer_function
+	uint32_t supported_primaries; // bitfield of enum wlr_output_primaries
 
 	bool enabled;
 	float scale;
