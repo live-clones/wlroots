@@ -398,7 +398,13 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 	cursor->hotspot_x = (int)roundf(hotspot_x * output->scale);
 	cursor->hotspot_y = (int)roundf(hotspot_y * output->scale);
 
+	bool was_visible = cursor->visible;
 	output_cursor_update_visible(cursor);
+
+	if (!was_visible && !cursor->visible) {
+		// Cursor is still hidden, do nothing
+		return true;
+	}
 
 	if (cursor->own_texture) {
 		wlr_texture_destroy(cursor->texture);
