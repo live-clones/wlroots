@@ -783,6 +783,9 @@ static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 	scene_buffer->buffer_height = buffer->height;
 	scene_buffer->buffer_is_opaque = wlr_buffer_is_opaque(buffer);
 
+	scene_buffer->is_spb = wlr_single_pixel_buffer_color_from_buffer(
+		scene_buffer->buffer, scene_buffer->spb_color);
+
 	scene_buffer->buffer_release.notify = scene_buffer_handle_buffer_release;
 	wl_signal_add(&buffer->events.release, &scene_buffer->buffer_release);
 }
@@ -1386,12 +1389,30 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	case WLR_SCENE_NODE_BUFFER:;
 		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
+		// For Single Pixel Buffers, skip texture upload and don't destroy the
+		// original buffer until we are done with it.
+		if (scene_buffer->is_spb) {
+			// Render the SPB as a rect, this is likely to be more efficient
+			wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
+				.box = dst_box,
+				.color = {
+					.r = (float)scene_buffer->spb_color[0] / (float)UINT32_MAX,
+					.g = (float)scene_buffer->spb_color[1] / (float)UINT32_MAX,
+					.b = (float)scene_buffer->spb_color[2] / (float)UINT32_MAX,
+					.a = (float)scene_buffer->spb_color[3] / (float)UINT32_MAX * scene_buffer->opacity,
+				},
+				.clip = &render_region,
+			});
+			break;
+		}
+
 		struct wlr_texture *texture = scene_buffer_get_texture(scene_buffer,
 			data->output->output->renderer);
 		if (texture == NULL) {
 			scene_output_damage(data->output, &render_region);
 			break;
 		}
+
 
 		enum wl_output_transform transform =
 			wlr_output_transform_invert(scene_buffer->transform);
@@ -1755,6 +1776,23 @@ static bool construct_render_list_iterator(struct wlr_scene_node *node,
 
 		if (memcmp(rect->color, black, sizeof(float) * 4) == 0) {
 			return false;
+		}
+	}
+
+	// If the buffer is a black opaque single pixel buffer then do the same special case
+	if (node->type == WLR_SCENE_NODE_BUFFER && data->calculate_visibility &&
+			(!data->fractional_scale || data->render_list->size == 0)) {
+		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+
+		if (scene_buffer->is_spb && scene_buffer->opacity == 1.0) {
+			bool is_black_opaque =
+				scene_buffer->spb_color[0] == 0 &&
+				scene_buffer->spb_color[1] == 0 &&
+				scene_buffer->spb_color[2] == 0 &&
+				scene_buffer->spb_color[3] == UINT32_MAX;
+			if (is_black_opaque) {
+				return false;
+			}
 		}
 	}
 
