@@ -185,6 +185,12 @@ struct wlr_scene_buffer {
 	enum wl_output_transform transform;
 	pixman_region32_t opaque_region;
 
+	// True if the buffer is a single-pixel-buffer
+	bool is_spb;
+	// If is_spb is set, contains the color of the SPB as {R, G, B, A}
+	// where the max value of each component is UINT32_MAX
+	uint32_t spb_color[4];
+
 	struct {
 		uint64_t active_outputs;
 		struct wlr_texture *texture;
