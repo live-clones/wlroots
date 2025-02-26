@@ -56,4 +56,10 @@ void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
  */
 void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, float matrix[static 9]);
 
+/**
+ * Get default luminances for a transfer function.
+ */
+void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_function tf,
+	struct wlr_color_luminances *lum);
+
 #endif
