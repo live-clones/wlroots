@@ -43,6 +43,13 @@ struct wlr_color_primaries {
 };
 
 /**
+ * Luminance range and reference white luminance level, in cd/m².
+ */
+struct wlr_color_luminances {
+	float min, max, reference;
+};
+
+/**
  * A color transformation formula, which maps a linear color space with
  * sRGB primaries to an output color space.
  *
