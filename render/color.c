@@ -147,3 +147,22 @@ void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, flo
 	};
 	memcpy(matrix, result, sizeof(result));
 }
+
+void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_function tf,
+		struct wlr_color_luminances *lum) {
+	switch (tf) {
+	case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
+		*lum = (struct wlr_color_luminances){
+			.min = 0.005,
+			.max = 10000,
+			.reference = 203,
+		};
+		break;
+	default:
+		*lum = (struct wlr_color_luminances){
+			.min = 0.2,
+			.max = 80,
+			.reference = 80,
+		};
+	}
+}
