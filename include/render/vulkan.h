@@ -334,6 +334,10 @@ struct wlr_vk_vert_pcr_data {
 	float uv_size[2];
 };
 
+struct wlr_vk_frag_texture_pcr_data {
+	float alpha;
+};
+
 struct wlr_vk_frag_output_pcr_data {
 	float lut_3d_offset;
 	float lut_3d_scale;
