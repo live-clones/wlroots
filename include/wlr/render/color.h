@@ -13,6 +13,14 @@
 #include <sys/types.h>
 
 /**
+ * Well-known color primaries.
+ */
+enum wlr_color_named_primaries {
+	WLR_COLOR_NAMED_PRIMARIES_SRGB = 1 << 0,
+	WLR_COLOR_NAMED_PRIMARIES_BT2020 = 1 << 1,
+};
+
+/**
  * CIE 1931 xy chromaticity coordinates.
  */
 struct wlr_color_cie1931_xy {
