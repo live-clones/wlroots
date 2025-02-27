@@ -5,6 +5,22 @@
 #include "render/color.h"
 #include "util/matrix.h"
 
+// See H.273 ColourPrimaries
+
+static const struct wlr_color_primaries COLOR_PRIMARIES_SRGB = { // code point 1
+	.red = { 0.640, 0.330 },
+	.green = { 0.300, 0.600 },
+	.blue = { 0.150, 0.060 },
+	.white = { 0.3127, 0.3290 },
+};
+
+static const struct wlr_color_primaries COLOR_PRIMARIES_BT2020 = { // code point 9
+	.red = { 0.708, 0.292 },
+	.green = { 0.170, 0.797 },
+	.blue = { 0.131, 0.046 },
+	.white = { 0.3127, 0.3290 },
+};
+
 struct wlr_color_transform *wlr_color_transform_init_srgb(void) {
 	struct wlr_color_transform *tx = calloc(1, sizeof(struct wlr_color_transform));
 	if (!tx) {
@@ -51,6 +67,19 @@ struct wlr_color_transform_lut3d *wlr_color_transform_lut3d_from_base(
 	assert(tr->type == COLOR_TRANSFORM_LUT_3D);
 	struct wlr_color_transform_lut3d *lut3d = wl_container_of(tr, lut3d, base);
 	return lut3d;
+}
+
+void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
+		enum wlr_color_named_primaries named) {
+	switch (named) {
+	case WLR_COLOR_NAMED_PRIMARIES_SRGB:
+		*out = COLOR_PRIMARIES_SRGB;
+		return;
+	case WLR_COLOR_NAMED_PRIMARIES_BT2020:
+		*out = COLOR_PRIMARIES_BT2020;
+		return;
+	}
+	abort();
 }
 
 static void multiply_matrix_vector(float out[static 3], float m[static 9], float v[static 3]) {
