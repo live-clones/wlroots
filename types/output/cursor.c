@@ -384,7 +384,14 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 
 	output_cursor_reset(cursor);
 
+	bool was_enabled = cursor->enabled;
 	cursor->enabled = texture != NULL;
+
+	if (!was_enabled && !cursor->enabled) {
+		// Cursor is still hidden, do nothing
+		return true;
+	}
+
 	if (texture != NULL) {
 		cursor->width = (int)roundf(dst_width * output->scale);
 		cursor->height = (int)roundf(dst_height * output->scale);
