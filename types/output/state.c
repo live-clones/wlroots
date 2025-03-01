@@ -19,6 +19,7 @@ void wlr_output_state_finish(struct wlr_output_state *state) {
 	free(state->gamma_lut);
 	wlr_drm_syncobj_timeline_unref(state->wait_timeline);
 	wlr_drm_syncobj_timeline_unref(state->signal_timeline);
+	free(state->image_description);
 }
 
 void wlr_output_state_set_enabled(struct wlr_output_state *state,
@@ -133,6 +134,23 @@ void wlr_output_state_set_signal_timeline(struct wlr_output_state *state,
 	state->signal_point = dst_point;
 }
 
+bool wlr_output_state_set_image_description(struct wlr_output_state *state,
+		const struct wlr_output_image_description *image_desc) {
+	struct wlr_output_image_description *copy = NULL;
+	if (image_desc != NULL) {
+		copy = malloc(sizeof(*copy));
+		if (copy == NULL) {
+			return false;
+		}
+		*copy = *image_desc;
+	}
+
+	state->committed |= WLR_OUTPUT_STATE_IMAGE_DESCRIPTION;
+	free(state->image_description);
+	state->image_description = copy;
+	return true;
+}
+
 bool wlr_output_state_copy(struct wlr_output_state *dst,
 		const struct wlr_output_state *src) {
 	struct wlr_output_state copy = *src;
@@ -149,6 +167,7 @@ bool wlr_output_state_copy(struct wlr_output_state *dst,
 	copy.gamma_lut_size = 0;
 	copy.wait_timeline = NULL;
 	copy.signal_timeline = NULL;
+	copy.image_description = NULL;
 
 	if (src->committed & WLR_OUTPUT_STATE_BUFFER) {
 		wlr_output_state_set_buffer(&copy, src->buffer);
@@ -176,6 +195,14 @@ bool wlr_output_state_copy(struct wlr_output_state *dst,
 	if (src->committed & WLR_OUTPUT_STATE_SIGNAL_TIMELINE) {
 		wlr_output_state_set_signal_timeline(&copy, src->signal_timeline,
 			src->signal_point);
+	}
+
+	if (src->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
+		copy.image_description = malloc(sizeof(*copy.image_description));
+		if (copy.image_description == NULL) {
+			goto err;
+		}
+		*copy.image_description = *src->image_description;
 	}
 
 	wlr_output_state_finish(dst);

@@ -2,10 +2,11 @@
 #define RENDER_COLOR_H
 
 #include <stdint.h>
+#include <wlr/render/color.h>
 #include <wlr/util/addon.h>
 
 enum wlr_color_transform_type {
-	COLOR_TRANSFORM_SRGB,
+	COLOR_TRANSFORM_INVERSE_EOTF,
 	COLOR_TRANSFORM_LUT_3D,
 };
 
@@ -14,6 +15,13 @@ struct wlr_color_transform {
 	struct wlr_addon_set addons; // per-renderer helper state
 
 	enum wlr_color_transform_type type;
+	enum wlr_color_named_primaries primaries;
+};
+
+struct wlr_color_transform_inverse_eotf {
+	struct wlr_color_transform base;
+
+	enum wlr_color_transfer_function tf;
 };
 
 /**
@@ -37,11 +45,39 @@ struct wlr_color_transform_lut3d {
 	size_t dim_len;
 };
 
+void wlr_color_transform_init(struct wlr_color_transform *tr,
+	enum wlr_color_transform_type type,
+	enum wlr_color_named_primaries primaries);
+
+/**
+ * Gets a wlr_color_transform_inverse_eotf from a generic wlr_color_transform.
+ * Asserts that the base type is COLOR_TRANSFORM_INVERSE_EOTF
+ */
+struct wlr_color_transform_inverse_eotf *wlr_color_transform_inverse_eotf_from_base(
+	struct wlr_color_transform *tr);
+
 /**
  * Gets a wlr_color_transform_lut3d from a generic wlr_color_transform.
  * Asserts that the base type is COLOR_TRANSFORM_LUT_3D
  */
 struct wlr_color_transform_lut3d *wlr_color_transform_lut3d_from_base(
 	struct wlr_color_transform *tr);
+
+/**
+ * Obtain primaries values from a well-known primaries name.
+ */
+void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
+	enum wlr_color_named_primaries named);
+
+/**
+ * Compute the matrix to convert RGB color values to CIE 1931 XYZ.
+ */
+void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, float matrix[static 9]);
+
+/**
+ * Get default luminances for a transfer function.
+ */
+void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_function tf,
+	struct wlr_color_luminances *lum);
 
 #endif
