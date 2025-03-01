@@ -730,6 +730,11 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	pixman_region32_fini(&clip);
 }
 
+static float get_luminance_multiplier(const struct wlr_color_luminances *src_lum,
+		const struct wlr_color_luminances *dst_lum) {
+	return (dst_lum->reference / src_lum->reference) * (src_lum->max / dst_lum->max);
+}
+
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
@@ -843,8 +848,18 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		wlr_matrix_identity(color_matrix);
 	}
 
+	float luminance_multiplier = 1;
+	if (tf != WLR_COLOR_TRANSFER_FUNCTION_SRGB) {
+		struct wlr_color_luminances src_lum, srgb_lum;
+		wlr_color_transfer_function_get_default_luminance(tf, &src_lum);
+		wlr_color_transfer_function_get_default_luminance(
+			WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
+		luminance_multiplier = get_luminance_multiplier(&src_lum, &srgb_lum);
+	}
+
 	struct wlr_vk_frag_texture_pcr_data frag_pcr_data = {
 		.alpha = alpha,
+		.luminance_multiplier = luminance_multiplier,
 	};
 	mat3_to_mat4(color_matrix, frag_pcr_data.matrix);
 
