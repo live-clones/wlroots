@@ -1075,6 +1075,42 @@ void wlr_scene_buffer_set_filter_mode(struct wlr_scene_buffer *scene_buffer,
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
+void wlr_scene_buffer_set_transfer_function(struct wlr_scene_buffer *scene_buffer,
+		enum wlr_color_transfer_function transfer_function) {
+	if (scene_buffer->transfer_function == transfer_function) {
+		return;
+	}
+
+	scene_buffer->transfer_function = transfer_function;
+	scene_node_update(&scene_buffer->node, NULL);
+}
+
+static bool cie1931_xy_equal(struct wlr_color_cie1931_xy a, struct wlr_color_cie1931_xy b) {
+	return a.x == b.x && a.y == b.y;
+}
+
+static bool primaries_equal(const struct wlr_color_primaries *a, const struct wlr_color_primaries *b) {
+	return cie1931_xy_equal(a->red, b->red) &&
+		cie1931_xy_equal(a->green, b->green) &&
+		cie1931_xy_equal(a->blue, b->blue) &&
+		cie1931_xy_equal(a->white, b->white);
+}
+
+void wlr_scene_buffer_set_primaries(struct wlr_scene_buffer *scene_buffer,
+		const struct wlr_color_primaries *primaries) {
+	const struct wlr_color_primaries zero = {0};
+	if (primaries == NULL) {
+		primaries = &zero;
+	}
+
+	if (primaries_equal(&scene_buffer->primaries, primaries)) {
+		return;
+	}
+
+	scene_buffer->primaries = *primaries;
+	scene_node_update(&scene_buffer->node, NULL);
+}
+
 static struct wlr_texture *scene_buffer_get_texture(
 		struct wlr_scene_buffer *scene_buffer, struct wlr_renderer *renderer) {
 	if (scene_buffer->buffer == NULL || scene_buffer->texture != NULL) {
@@ -1397,6 +1433,12 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			wlr_output_transform_invert(scene_buffer->transform);
 		transform = wlr_output_transform_compose(transform, data->transform);
 
+		const struct wlr_color_primaries *primaries = NULL;
+		const struct wlr_color_primaries zero_primaries = {0};
+		if (!primaries_equal(&scene_buffer->primaries, &zero_primaries)) {
+			primaries = &scene_buffer->primaries;
+		}
+
 		wlr_render_pass_add_texture(data->render_pass, &(struct wlr_render_texture_options) {
 			.texture = texture,
 			.src_box = scene_buffer->src_box,
@@ -1408,6 +1450,8 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			.blend_mode = !data->output->scene->calculate_visibility ||
 					!pixman_region32_empty(&opaque) ?
 				WLR_RENDER_BLEND_MODE_PREMULTIPLIED : WLR_RENDER_BLEND_MODE_NONE,
+			.transfer_function = scene_buffer->transfer_function,
+			.primaries = primaries,
 			.wait_timeline = scene_buffer->wait_timeline,
 			.wait_point = scene_buffer->wait_point,
 		});
@@ -1855,6 +1899,12 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	};
 
 	if (buffer->transform != data->transform) {
+		return false;
+	}
+	if (buffer->transfer_function != 0 && buffer->transfer_function != WLR_COLOR_TRANSFER_FUNCTION_SRGB) {
+		return false;
+	}
+	if (!primaries_equal(&buffer->primaries, &(struct wlr_color_primaries){0})) {
 		return false;
 	}
 
