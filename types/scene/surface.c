@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_alpha_modifier_v1.h>
+#include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
@@ -8,6 +9,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/util/transform.h>
+#include "render/color.h"
 #include "types/wlr_scene.h"
 
 static void handle_scene_buffer_outputs_update(
@@ -155,11 +157,46 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		opacity = (float)alpha_modifier_state->multiplier;
 	}
 
+	enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+	const struct wlr_color_primaries *primaries = NULL;
+	struct wlr_color_primaries img_desc_primaries;
+	const struct wlr_image_description_v1_data *img_desc =
+		wlr_surface_get_image_description_v1_data(surface);
+	if (img_desc != NULL) {
+		switch (img_desc->tf_named) {
+		case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB:
+			tf = WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+			break;
+		case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ:
+			tf = WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+			break;
+		case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR:
+			tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+			break;
+		default:
+			abort();
+		}
+
+		enum wlr_color_named_primaries named_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
+		switch (img_desc->primaries_named) {
+		case WP_COLOR_MANAGER_V1_PRIMARIES_SRGB:
+			named_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
+			break;
+		case WP_COLOR_MANAGER_V1_PRIMARIES_BT2020:
+			named_primaries = WLR_COLOR_NAMED_PRIMARIES_BT2020;
+			break;
+		}
+		wlr_color_primaries_from_named(&img_desc_primaries, named_primaries);
+		primaries = &img_desc_primaries;
+	}
+
 	wlr_scene_buffer_set_opaque_region(scene_buffer, &opaque);
 	wlr_scene_buffer_set_source_box(scene_buffer, &src_box);
 	wlr_scene_buffer_set_dest_size(scene_buffer, width, height);
 	wlr_scene_buffer_set_transform(scene_buffer, state->transform);
 	wlr_scene_buffer_set_opacity(scene_buffer, opacity);
+	wlr_scene_buffer_set_transfer_function(scene_buffer, tf);
+	wlr_scene_buffer_set_primaries(scene_buffer, primaries);
 
 	scene_buffer_unmark_client_buffer(scene_buffer);
 
