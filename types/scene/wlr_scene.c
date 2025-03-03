@@ -14,7 +14,6 @@
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
-#include "types/wlr_buffer.h"
 #include "types/wlr_output.h"
 #include "types/wlr_scene.h"
 #include "util/array.h"
@@ -311,11 +310,11 @@ static uint32_t region_area(pixman_region32_t *region) {
 	return area;
 }
 
-static void scale_output_damage(pixman_region32_t *damage, float scale) {
-	wlr_region_scale(damage, damage, scale);
+static void scale_region(pixman_region32_t *region, float scale, bool round_up) {
+	wlr_region_scale(region, region, scale);
 
-	if (floor(scale) != scale) {
-		wlr_region_expand(damage, damage, 1);
+	if (round_up && floor(scale) != scale) {
+		wlr_region_expand(region, region, 1);
 	}
 }
 
@@ -331,10 +330,11 @@ struct render_data {
 	pixman_region32_t damage;
 };
 
-static void logical_to_buffer_coords(pixman_region32_t *damage, const struct render_data *data) {
+static void logical_to_buffer_coords(pixman_region32_t *region, const struct render_data *data,
+		bool round_up) {
 	enum wl_output_transform transform = wlr_output_transform_invert(data->transform);
-	scale_output_damage(damage, data->scale);
-	wlr_region_transform(damage, damage, transform, data->trans_width, data->trans_height);
+	scale_region(region, data->scale, round_up);
+	wlr_region_transform(region, region, transform, data->trans_width, data->trans_height);
 }
 
 static void output_to_buffer_coords(pixman_region32_t *damage, struct wlr_output *output) {
@@ -402,7 +402,7 @@ static void scene_damage_outputs(struct wlr_scene *scene, pixman_region32_t *dam
 		pixman_region32_copy(&output_damage, damage);
 		pixman_region32_translate(&output_damage,
 			-scene_output->x, -scene_output->y);
-		scale_output_damage(&output_damage, scene_output->output->scale);
+		scale_region(&output_damage, scene_output->output->scale, true);
 		output_to_buffer_coords(&output_damage, scene_output->output);
 		scene_output_damage(scene_output, &output_damage);
 		pixman_region32_fini(&output_damage);
@@ -959,7 +959,7 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
 		pixman_region32_t cull_region;
 		pixman_region32_init(&cull_region);
 		pixman_region32_copy(&cull_region, &scene_buffer->node.visible);
-		scale_output_damage(&cull_region, output_scale);
+		scale_region(&cull_region, output_scale, true);
 		pixman_region32_translate(&cull_region, -lx * output_scale, -ly * output_scale);
 		pixman_region32_intersect(&output_damage, &output_damage, &cull_region);
 		pixman_region32_fini(&cull_region);
@@ -1342,7 +1342,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	pixman_region32_init(&render_region);
 	pixman_region32_copy(&render_region, &node->visible);
 	pixman_region32_translate(&render_region, -data->logical.x, -data->logical.y);
-	logical_to_buffer_coords(&render_region, data);
+	logical_to_buffer_coords(&render_region, data, true);
 	pixman_region32_intersect(&render_region, &render_region, &data->damage);
 	if (pixman_region32_empty(&render_region)) {
 		pixman_region32_fini(&render_region);
@@ -1362,7 +1362,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	pixman_region32_t opaque;
 	pixman_region32_init(&opaque);
 	scene_node_opaque_region(node, x, y, &opaque);
-	logical_to_buffer_coords(&opaque, data);
+	logical_to_buffer_coords(&opaque, data, false);
 	pixman_region32_subtract(&opaque, &render_region, &opaque);
 
 	switch (node->type) {
@@ -2181,7 +2181,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 			pixman_region32_intersect(&opaque, &opaque, &entry->node->visible);
 
 			pixman_region32_translate(&opaque, -scene_output->x, -scene_output->y);
-			logical_to_buffer_coords(&opaque, &render_data);
+			logical_to_buffer_coords(&opaque, &render_data, false);
 			pixman_region32_subtract(&background, &background, &opaque);
 			pixman_region32_fini(&opaque);
 		}
