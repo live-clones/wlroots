@@ -642,6 +642,7 @@ static void read_surface_class(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *surface, xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
 			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_CLASS property type");
 		return;
 	}
 
@@ -672,6 +673,7 @@ static void read_surface_startup_id(struct wlr_xwm *xwm,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
 			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid NET_STARTUP_ID property type");
 		return;
 	}
 
@@ -695,6 +697,7 @@ static void read_surface_role(struct wlr_xwm *xwm,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
 			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_WINDOW_ROLE property type");
 		return;
 	}
 
@@ -716,6 +719,7 @@ static void read_surface_title(struct wlr_xwm *xwm,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
 			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_NAME/NET_WM_NAME property type");
 		return;
 	}
 
@@ -755,6 +759,7 @@ static void read_surface_parent(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_WINDOW && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_TRANSIENT_FOR property type");
 		return;
 	}
 
@@ -786,6 +791,7 @@ static void read_surface_window_type(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_ATOM && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid NET_WM_WINDOW_TYPE property type");
 		return;
 	}
 
@@ -812,6 +818,7 @@ static void read_surface_protocols(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_ATOM && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_PROTOCOLS property type");
 		return;
 	}
 
@@ -839,6 +846,7 @@ static void read_surface_hints(struct wlr_xwm *xwm,
 	// In practice, reply->type == XCB_ATOM_ATOM
 	if (reply->type != xwm->atoms[WM_HINTS] && reply->type != XCB_ATOM_ATOM &&
 			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_HINTS property type");
 		return;
 	}
 
@@ -866,6 +874,7 @@ static void read_surface_normal_hints(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != xwm->atoms[WM_SIZE_HINTS] && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_NORMAL_HINTS property type");
 		return;
 	}
 
@@ -924,6 +933,7 @@ static void read_surface_motif_hints(struct wlr_xwm *xwm,
 	}
 
 	if (reply->value_len < 5) {
+		wlr_log(WLR_DEBUG, "Invalid MOTIF_WM_HINTS property type");
 		return;
 	}
 
@@ -959,6 +969,7 @@ static void read_surface_strut_partial(struct wlr_xwm *xwm,
 	if (reply->type != XCB_ATOM_CARDINAL || reply->format != 32 ||
 			xcb_get_property_value_length(reply) !=
 			sizeof(xcb_ewmh_wm_strut_partial_t)) {
+		wlr_log(WLR_DEBUG, "Invalid NET_WM_STRUT_PARTIAL property type");
 		return;
 	}
 
