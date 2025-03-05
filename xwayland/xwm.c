@@ -640,8 +640,9 @@ static void xwayland_surface_destroy(struct wlr_xwayland_surface *xsurface) {
 
 static void read_surface_class(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *surface, xcb_get_property_reply_t *reply) {
-	if (reply->type != XCB_ATOM_STRING &&
-			reply->type != xwm->atoms[UTF8_STRING]) {
+	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
+			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_CLASS property type");
 		return;
 	}
 
@@ -670,8 +671,9 @@ static void read_surface_class(struct wlr_xwm *xwm,
 static void read_surface_startup_id(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->type != XCB_ATOM_STRING &&
-			reply->type != xwm->atoms[UTF8_STRING]) {
+	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
+			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid NET_STARTUP_ID property type");
 		return;
 	}
 
@@ -693,8 +695,9 @@ static void read_surface_startup_id(struct wlr_xwm *xwm,
 static void read_surface_role(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->type != XCB_ATOM_STRING &&
-			reply->type != xwm->atoms[UTF8_STRING]) {
+	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
+			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_WINDOW_ROLE property type");
 		return;
 	}
 
@@ -714,13 +717,14 @@ static void read_surface_role(struct wlr_xwm *xwm,
 static void read_surface_title(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->type != XCB_ATOM_STRING &&
-			reply->type != xwm->atoms[UTF8_STRING]) {
+	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
+			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_NAME/NET_WM_NAME property type");
 		return;
 	}
 
 	bool is_utf8 = reply->type == xwm->atoms[UTF8_STRING];
-	if (!is_utf8 && xsurface->has_utf8_title) {
+	if (!is_utf8 && xsurface->has_utf8_title && reply->type != XCB_NONE) {
 		return;
 	}
 
@@ -754,13 +758,14 @@ static bool has_parent(struct wlr_xwayland_surface *parent,
 static void read_surface_parent(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	struct wlr_xwayland_surface *found_parent = NULL;
-	if (reply->type != XCB_ATOM_WINDOW) {
+	if (reply->type != XCB_ATOM_WINDOW && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_TRANSIENT_FOR property type");
 		return;
 	}
 
+	struct wlr_xwayland_surface *found_parent = NULL;
 	xcb_window_t *xid = xcb_get_property_value(reply);
-	if (xid != NULL) {
+	if (reply->type != XCB_NONE && xid != NULL) {
 		found_parent = lookup_surface(xwm, *xid);
 		if (!has_parent(found_parent, xsurface)) {
 			xsurface->parent = found_parent;
@@ -771,7 +776,6 @@ static void read_surface_parent(struct wlr_xwm *xwm,
 	} else {
 		xsurface->parent = NULL;
 	}
-
 
 	wl_list_remove(&xsurface->parent_link);
 	if (xsurface->parent != NULL) {
@@ -786,7 +790,8 @@ static void read_surface_parent(struct wlr_xwm *xwm,
 static void read_surface_window_type(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->type != XCB_ATOM_ATOM) {
+	if (reply->type != XCB_ATOM_ATOM && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid NET_WM_WINDOW_TYPE property type");
 		return;
 	}
 
@@ -795,11 +800,15 @@ static void read_surface_window_type(struct wlr_xwm *xwm,
 	size_t atoms_size = sizeof(xcb_atom_t) * atoms_len;
 
 	free(xsurface->window_type);
-	xsurface->window_type = malloc(atoms_size);
-	if (xsurface->window_type == NULL) {
-		return;
+	if (atoms_len > 0) {
+		xsurface->window_type = malloc(atoms_size);
+		if (xsurface->window_type == NULL) {
+			return;
+		}
+		memcpy(xsurface->window_type, atoms, atoms_size);
+	} else {
+		xsurface->window_type = NULL;
 	}
-	memcpy(xsurface->window_type, atoms, atoms_size);
 	xsurface->window_type_len = atoms_len;
 
 	wl_signal_emit_mutable(&xsurface->events.set_window_type, NULL);
@@ -808,7 +817,8 @@ static void read_surface_window_type(struct wlr_xwm *xwm,
 static void read_surface_protocols(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->type != XCB_ATOM_ATOM) {
+	if (reply->type != XCB_ATOM_ATOM && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_PROTOCOLS property type");
 		return;
 	}
 
@@ -817,11 +827,15 @@ static void read_surface_protocols(struct wlr_xwm *xwm,
 	size_t atoms_size = sizeof(xcb_atom_t) * atoms_len;
 
 	free(xsurface->protocols);
-	xsurface->protocols = malloc(atoms_size);
-	if (xsurface->protocols == NULL) {
-		return;
+	if (atoms_len > 0) {
+		xsurface->protocols = malloc(atoms_size);
+		if (xsurface->protocols == NULL) {
+			return;
+		}
+		memcpy(xsurface->protocols, atoms, atoms_size);
+	} else {
+		xsurface->protocols = NULL;
 	}
-	memcpy(xsurface->protocols, atoms, atoms_size);
 	xsurface->protocols_len = atoms_len;
 }
 
@@ -830,21 +844,27 @@ static void read_surface_hints(struct wlr_xwm *xwm,
 		xcb_get_property_reply_t *reply) {
 	// According to the docs, reply->type == xwm->atoms[WM_HINTS]
 	// In practice, reply->type == XCB_ATOM_ATOM
-	if (reply->value_len == 0) {
+	if (reply->type != xwm->atoms[WM_HINTS] && reply->type != XCB_ATOM_ATOM &&
+			reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_HINTS property type");
 		return;
 	}
 
 	free(xsurface->hints);
-	xsurface->hints = calloc(1, sizeof(*xsurface->hints));
-	if (xsurface->hints == NULL) {
-		return;
-	}
-	xcb_icccm_get_wm_hints_from_reply(xsurface->hints, reply);
+	if (reply->value_len > 0) {
+		xsurface->hints = calloc(1, sizeof(*xsurface->hints));
+		if (xsurface->hints == NULL) {
+			return;
+		}
+		xcb_icccm_get_wm_hints_from_reply(xsurface->hints, reply);
 
-	if (!(xsurface->hints->flags & XCB_ICCCM_WM_HINT_INPUT)) {
-		// The client didn't specify whether it wants input.
-		// Assume it does.
-		xsurface->hints->input = true;
+		if (!(xsurface->hints->flags & XCB_ICCCM_WM_HINT_INPUT)) {
+			// The client didn't specify whether it wants input.
+			// Assume it does.
+			xsurface->hints->input = true;
+		}
+	} else {
+		xsurface->hints = NULL;
 	}
 
 	wl_signal_emit_mutable(&xsurface->events.set_hints, NULL);
@@ -853,11 +873,18 @@ static void read_surface_hints(struct wlr_xwm *xwm,
 static void read_surface_normal_hints(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->type != xwm->atoms[WM_SIZE_HINTS] || reply->value_len == 0) {
+	if (reply->type != xwm->atoms[WM_SIZE_HINTS] && reply->type != XCB_NONE) {
+		wlr_log(WLR_DEBUG, "Invalid WM_NORMAL_HINTS property type");
 		return;
 	}
 
 	free(xsurface->size_hints);
+	xsurface->size_hints = NULL;
+
+	if (reply->value_len == 0) {
+		return;
+	}
+
 	xsurface->size_hints = calloc(1, sizeof(*xsurface->size_hints));
 	if (xsurface->size_hints == NULL) {
 		return;
@@ -899,7 +926,14 @@ static void read_surface_normal_hints(struct wlr_xwm *xwm,
 static void read_surface_motif_hints(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
+	if (reply->value_len == 0) {
+		xsurface->decorations = 0;
+		wl_signal_emit_mutable(&xsurface->events.set_decorations, NULL);
+		return;
+	}
+
 	if (reply->value_len < 5) {
+		wlr_log(WLR_DEBUG, "Invalid MOTIF_WM_HINTS property type");
 		return;
 	}
 
@@ -924,13 +958,21 @@ static void read_surface_motif_hints(struct wlr_xwm *xwm,
 static void read_surface_strut_partial(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->type != XCB_ATOM_CARDINAL || reply->format != 32 ||
-			xcb_get_property_value_length(reply) !=
-			sizeof(xcb_ewmh_wm_strut_partial_t)) {
+	free(xsurface->strut_partial);
+	xsurface->strut_partial = NULL;
+
+	if (reply->type == XCB_NONE) {
+		wl_signal_emit_mutable(&xsurface->events.set_strut_partial, NULL);
 		return;
 	}
 
-	free(xsurface->strut_partial);
+	if (reply->type != XCB_ATOM_CARDINAL || reply->format != 32 ||
+			xcb_get_property_value_length(reply) !=
+			sizeof(xcb_ewmh_wm_strut_partial_t)) {
+		wlr_log(WLR_DEBUG, "Invalid NET_WM_STRUT_PARTIAL property type");
+		return;
+	}
+
 	xsurface->strut_partial = calloc(1, sizeof(*xsurface->strut_partial));
 	if (xsurface->strut_partial == NULL) {
 		return;
