@@ -69,6 +69,7 @@ static const char *const atom_map[ATOM_LAST] = {
 	[NET_STARTUP_ID] = "_NET_STARTUP_ID",
 	[NET_STARTUP_INFO] = "_NET_STARTUP_INFO",
 	[NET_STARTUP_INFO_BEGIN] = "_NET_STARTUP_INFO_BEGIN",
+	[NET_WM_WINDOW_OPACITY] = "_NET_WM_WINDOW_OPACITY",
 	[NET_WM_WINDOW_TYPE_NORMAL] = "_NET_WM_WINDOW_TYPE_NORMAL",
 	[NET_WM_WINDOW_TYPE_UTILITY] = "_NET_WM_WINDOW_TYPE_UTILITY",
 	[NET_WM_WINDOW_TYPE_TOOLTIP] = "_NET_WM_WINDOW_TYPE_TOOLTIP",
@@ -205,6 +206,7 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 	surface->width = width;
 	surface->height = height;
 	surface->override_redirect = override_redirect;
+	surface->opacity = 1.0;
 	wl_list_init(&surface->children);
 	wl_list_init(&surface->stack_link);
 	wl_list_init(&surface->parent_link);
@@ -239,6 +241,7 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 	wl_signal_init(&surface->events.set_strut_partial);
 	wl_signal_init(&surface->events.set_override_redirect);
 	wl_signal_init(&surface->events.set_geometry);
+	wl_signal_init(&surface->events.set_opacity);
 	wl_signal_init(&surface->events.focus_in);
 	wl_signal_init(&surface->events.grab_focus);
 	wl_signal_init(&surface->events.map_request);
@@ -599,6 +602,7 @@ static void xwayland_surface_destroy(struct wlr_xwayland_surface *xsurface) {
 	assert(wl_list_empty(&xsurface->events.set_strut_partial.listener_list));
 	assert(wl_list_empty(&xsurface->events.set_override_redirect.listener_list));
 	assert(wl_list_empty(&xsurface->events.set_geometry.listener_list));
+	assert(wl_list_empty(&xsurface->events.set_opacity.listener_list));
 	assert(wl_list_empty(&xsurface->events.focus_in.listener_list));
 	assert(wl_list_empty(&xsurface->events.grab_focus.listener_list));
 	assert(wl_list_empty(&xsurface->events.map_request.listener_list));
@@ -688,6 +692,22 @@ static void read_surface_startup_id(struct wlr_xwm *xwm,
 	wlr_log(WLR_DEBUG, "XCB_ATOM_NET_STARTUP_ID: %s",
 		xsurface->startup_id ? xsurface->startup_id: "(null)");
 	wl_signal_emit_mutable(&xsurface->events.set_startup_id, NULL);
+}
+
+static void read_surface_opacity(struct wlr_xwm *xwm,
+		struct wlr_xwayland_surface *xsurface,
+		xcb_get_property_reply_t *reply) {
+	if (reply->type == XCB_ATOM_CARDINAL && reply->format == 32 &&
+			xcb_get_property_value_length(reply) ==
+			sizeof(uint32_t)) {
+		uint32_t *val = xcb_get_property_value(reply);
+
+		xsurface->opacity = (double)*val / UINT32_MAX;
+		wl_signal_emit_mutable(&xsurface->events.set_opacity, NULL);
+	} else if (reply->type == XCB_ATOM_NONE) {
+		xsurface->opacity = 1.0;
+		wl_signal_emit_mutable(&xsurface->events.set_opacity, NULL);
+	}
 }
 
 static void read_surface_role(struct wlr_xwm *xwm,
@@ -1018,6 +1038,8 @@ static void read_surface_property(struct wlr_xwm *xwm,
 		read_surface_role(xwm, xsurface, reply);
 	} else if (property == xwm->atoms[NET_STARTUP_ID]) {
 		read_surface_startup_id(xwm, xsurface, reply);
+	} else if (property == xwm->atoms[NET_WM_WINDOW_OPACITY]) {
+		read_surface_opacity(xwm, xsurface, reply);
 	} else if (wlr_log_get_verbosity() >= WLR_DEBUG) {
 		char *prop_name = xwm_get_atom_name(xwm, property);
 		wlr_log(WLR_DEBUG, "unhandled X11 property %" PRIu32 " (%s) for window %" PRIu32,

@@ -138,6 +138,7 @@ struct wlr_xwayland_surface {
 	int16_t x, y;
 	uint16_t width, height;
 	bool override_redirect;
+	float opacity;
 
 	char *title;
 	char *class;
@@ -220,6 +221,7 @@ struct wlr_xwayland_surface {
 		struct wl_signal set_strut_partial;
 		struct wl_signal set_override_redirect;
 		struct wl_signal set_geometry;
+		struct wl_signal set_opacity;
 		struct wl_signal focus_in;
 		struct wl_signal grab_focus;
 		/* can be used to set initial maximized/fullscreen geometry */
