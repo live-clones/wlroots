@@ -796,13 +796,12 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 		return false;
 	}
 
-	if ((state->committed & WLR_OUTPUT_STATE_ENABLED) && state->enabled) {
-		if (output->current_mode == NULL &&
-				!(state->committed & WLR_OUTPUT_STATE_MODE)) {
-			wlr_drm_conn_log(conn, WLR_DEBUG,
-				"Can't enable an output without a mode");
-			return false;
-		}
+	if ((state->committed & WLR_OUTPUT_STATE_ENABLED) && state->enabled &&
+			output->width == 0 && output->height == 0 &&
+			!(state->committed & WLR_OUTPUT_STATE_MODE)) {
+		wlr_drm_conn_log(conn, WLR_DEBUG,
+			"Can't enable an output without a mode");
+		return false;
 	}
 
 	if ((state->committed & WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED) &&
