@@ -43,7 +43,7 @@ tasks:
       cd wlroots/tinywl
       make
   - docs: |
-      go install 'git.sr.ht/~emersion/gyosu@latest'
+      go install 'codeberg.org/emersion/gyosu@latest'
       include_dir="$(echo /usr/local/include/wlroots-*)"
       ~/go/bin/gyosu \
         -DWLR_USE_UNSTABLE \
