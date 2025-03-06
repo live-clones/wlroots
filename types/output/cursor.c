@@ -374,6 +374,11 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 		int dst_width, int dst_height, enum wl_output_transform transform,
 		int32_t hotspot_x, int32_t hotspot_y,
 		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
+	if (texture == NULL && !cursor->enabled) {
+		// Cursor is still disabled, do nothing
+		return true;
+	}
+
 	struct wlr_output *output = cursor->output;
 
 	if (cursor->output->hardware_cursor != cursor) {
