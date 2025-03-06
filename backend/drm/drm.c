@@ -1582,6 +1582,7 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 
 	wlr_log(WLR_INFO, "Detected modes:");
 
+	bool found_current_mode = false;
 	for (int i = 0; i < drm_conn->count_modes; ++i) {
 		if (drm_conn->modes[i].flags & DRM_MODE_FLAG_INTERLACE) {
 			continue;
@@ -1600,14 +1601,7 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 		if (current_modeinfo != NULL && memcmp(&mode->drm_mode,
 				current_modeinfo, sizeof(*current_modeinfo)) == 0) {
 			wlr_output_state_set_mode(&state, &mode->wlr_mode);
-
-			uint64_t mode_id = 0;
-			get_drm_prop(drm->fd, wlr_conn->crtc->id,
-				wlr_conn->crtc->props.mode_id, &mode_id);
-
-			wlr_conn->crtc->own_mode_id = false;
-			wlr_conn->crtc->mode_id = mode_id;
-			wlr_conn->refresh = calculate_refresh_rate(current_modeinfo);
+			found_current_mode = true;
 		}
 
 		wlr_log(WLR_INFO, "  %"PRId32"x%"PRId32" @ %.3f Hz %s",
@@ -1616,6 +1610,23 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 			mode->wlr_mode.preferred ? "(preferred)" : "");
 
 		wl_list_insert(modes.prev, &mode->wlr_mode.link);
+	}
+
+	if (current_modeinfo != NULL) {
+		int32_t refresh = calculate_refresh_rate(current_modeinfo);
+
+		if (!found_current_mode) {
+			wlr_output_state_set_custom_mode(&state,
+				current_modeinfo->hdisplay, current_modeinfo->vdisplay, refresh);
+		}
+
+		uint64_t mode_id = 0;
+		get_drm_prop(drm->fd, wlr_conn->crtc->id,
+			wlr_conn->crtc->props.mode_id, &mode_id);
+
+		wlr_conn->crtc->own_mode_id = false;
+		wlr_conn->crtc->mode_id = mode_id;
+		wlr_conn->refresh = refresh;
 	}
 
 	free(current_modeinfo);
