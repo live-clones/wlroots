@@ -149,12 +149,6 @@ static void output_cursor_damage_whole(struct wlr_output_cursor *cursor) {
 	pixman_region32_fini(&damage);
 }
 
-static void output_cursor_reset(struct wlr_output_cursor *cursor) {
-	if (cursor->output->hardware_cursor != cursor) {
-		output_cursor_damage_whole(cursor);
-	}
-}
-
 static void output_cursor_update_visible(struct wlr_output_cursor *cursor) {
 	struct wlr_box output_box;
 	output_box.x = output_box.y = 0;
@@ -382,7 +376,9 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
 	struct wlr_output *output = cursor->output;
 
-	output_cursor_reset(cursor);
+	if (cursor->output->hardware_cursor != cursor) {
+		output_cursor_damage_whole(cursor);
+	}
 
 	cursor->enabled = texture != NULL;
 	if (texture != NULL) {
@@ -481,10 +477,11 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	if (cursor == NULL) {
 		return;
 	}
-	output_cursor_reset(cursor);
 	if (cursor->output->hardware_cursor == cursor) {
 		// If this cursor was the hardware cursor, disable it
 		output_disable_hardware_cursor(cursor->output);
+	} else {
+		output_cursor_damage_whole(cursor);
 	}
 	wl_list_remove(&cursor->renderer_destroy.link);
 	if (cursor->own_texture) {
