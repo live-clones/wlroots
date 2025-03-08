@@ -1882,13 +1882,25 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 		.height = default_height,
 	};
 
+	enum wlr_color_named_primaries primaries = 0;
+	if (buffer->primaries != WLR_COLOR_NAMED_PRIMARIES_SRGB) {
+		primaries = buffer->primaries;
+	}
+	enum wlr_color_transfer_function tf = 0;
+	if (buffer->transfer_function != WLR_COLOR_TRANSFER_FUNCTION_SRGB) {
+		tf = buffer->transfer_function;
+	}
+
 	if (buffer->transform != data->transform) {
 		return false;
 	}
-	if (buffer->transfer_function != 0 && buffer->transfer_function != WLR_COLOR_TRANSFER_FUNCTION_SRGB) {
+	if ((tf == 0) != (primaries == 0)) {
 		return false;
 	}
-	if (buffer->primaries != 0 && buffer->primaries != WLR_COLOR_NAMED_PRIMARIES_SRGB) {
+	if (primaries != 0 && (primaries & scene_output->output->supported_primaries) == 0) {
+		return false;
+	}
+	if (tf != 0 && (tf & scene_output->output->supported_transfer_functions) == 0) {
 		return false;
 	}
 
@@ -1929,6 +1941,12 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	wlr_output_state_set_buffer(&pending, wlr_buffer);
 	if (buffer->wait_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(&pending, buffer->wait_timeline, buffer->wait_point);
+	}
+	if (primaries != 0 && tf != 0) {
+		wlr_output_state_set_image_description(&pending, &(struct wlr_output_image_description){
+			.primaries = primaries,
+			.transfer_function = tf,
+		});
 	}
 
 	if (!wlr_output_test_state(scene_output->output, &pending)) {
