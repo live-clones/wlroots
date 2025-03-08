@@ -730,11 +730,6 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	pixman_region32_fini(&clip);
 }
 
-static float get_luminance_multiplier(const struct wlr_color_luminances *src_lum,
-		const struct wlr_color_luminances *dst_lum) {
-	return (dst_lum->reference / src_lum->reference) * (src_lum->max / dst_lum->max);
-}
-
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
