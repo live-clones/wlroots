@@ -235,6 +235,8 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
 				pipeline = render_buffer->plain.render_setup->output_pipe_pq;
 				break;
+			case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
+				abort(); // TODO
 			}
 
 			struct wlr_color_luminances srgb_lum, dst_lum;
