@@ -159,6 +159,7 @@ static void destroy_render_format_setup(struct wlr_vk_renderer *renderer,
 	VkDevice dev = renderer->dev->dev;
 	vkDestroyRenderPass(dev, setup->render_pass, NULL);
 	vkDestroyPipeline(dev, setup->output_pipe_srgb, NULL);
+	vkDestroyPipeline(dev, setup->output_pipe_pq, NULL);
 	vkDestroyPipeline(dev, setup->output_pipe_lut3d, NULL);
 
 	struct wlr_vk_pipeline *pipeline, *tmp_pipeline;
@@ -2297,8 +2298,13 @@ static struct wlr_vk_render_format_setup *find_or_create_render_setup(
 			goto error;
 		}
 		if (!init_blend_to_output_pipeline(
-			renderer, setup->render_pass, renderer->output_pipe_layout,
-			&setup->output_pipe_srgb, WLR_VK_OUTPUT_TRANSFORM_INVERSE_SRGB)) {
+				renderer, setup->render_pass, renderer->output_pipe_layout,
+				&setup->output_pipe_srgb, WLR_VK_OUTPUT_TRANSFORM_INVERSE_SRGB)) {
+			goto error;
+		}
+		if (!init_blend_to_output_pipeline(
+				renderer, setup->render_pass, renderer->output_pipe_layout,
+				&setup->output_pipe_pq, WLR_VK_OUTPUT_TRANSFORM_INVERSE_ST2084_PQ)) {
 			goto error;
 		}
 	} else {
@@ -2428,6 +2434,7 @@ struct wlr_renderer *vulkan_renderer_create_for_device(struct wlr_vk_device *dev
 
 	renderer->dev = dev;
 	wlr_renderer_init(&renderer->wlr_renderer, &renderer_impl, WLR_BUFFER_CAP_DMABUF);
+	renderer->wlr_renderer.features.input_color_transform = true;
 	renderer->wlr_renderer.features.output_color_transform = true;
 	wl_list_init(&renderer->stage.buffers);
 	wl_list_init(&renderer->foreign_textures);
