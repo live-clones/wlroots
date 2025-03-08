@@ -182,6 +182,7 @@ bool create_fb_damage_clips_blob(struct wlr_drm_backend *drm,
 static uint8_t convert_cta861_eotf(enum wlr_color_transfer_function tf) {
 	switch (tf) {
 	case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
+	case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
 		abort(); // unsupported
 	case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
 		return 2;
