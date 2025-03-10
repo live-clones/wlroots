@@ -39,4 +39,11 @@ void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
 void matrix_projection(float mat[static 9], int width, int height,
 	enum wl_output_transform transform);
 
+/**
+ * Compute the inverse of a matrix.
+ *
+ * The matrix needs to be inversible.
+ */
+void matrix_invert(float out[static 9], float m[static 9]);
+
 #endif
