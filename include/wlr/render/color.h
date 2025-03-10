@@ -13,6 +13,28 @@
 #include <sys/types.h>
 
 /**
+ * Well-known color primaries.
+ */
+enum wlr_color_named_primaries {
+	WLR_COLOR_NAMED_PRIMARIES_SRGB = 1 << 0,
+	WLR_COLOR_NAMED_PRIMARIES_BT2020 = 1 << 1,
+};
+
+/**
+ * CIE 1931 xy chromaticity coordinates.
+ */
+struct wlr_color_cie1931_xy {
+	float x, y;
+};
+
+/**
+ * Color primaries and white point describing a color volume.
+ */
+struct wlr_color_primaries {
+	struct wlr_color_cie1931_xy red, green, blue, white;
+};
+
+/**
  * A color transformation formula, which maps a linear color space with
  * sRGB primaries to an output color space.
  *
@@ -29,17 +51,21 @@
 struct wlr_color_transform;
 
 /**
- * Initialize a color transformation to convert linear
- * (with sRGB(?) primaries) to an ICC profile. Returns NULL on failure.
+ * Initialize a color transformation to convert linear (with sRGB primaries) to
+ * a color volume (via provided primaries) and an ICC profile. Returns NULL on
+ * failure.
  */
 struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
+	enum wlr_color_named_primaries primaries,
 	const void *data, size_t size);
 
 /**
- * Initialize a color transformation to apply sRGB encoding.
- * Returns NULL on failure.
+ * Initialize a color transformation to convert linear (with sRGB primaries) to
+ * a color volume (via provided primaries) and apply sRGB encoding. Returns
+ * NULL on failure.
  */
-struct wlr_color_transform *wlr_color_transform_init_srgb(void);
+struct wlr_color_transform *wlr_color_transform_init_srgb(
+	enum wlr_color_named_primaries primaries);
 
 /**
  * Increase the reference count of the color transform by 1.
