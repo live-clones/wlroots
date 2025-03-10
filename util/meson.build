@@ -7,6 +7,7 @@ wlr_files += files(
 	'log.c',
 	'matrix.c',
 	'rect_union.c',
+	'rectpack.c',
 	'region.c',
 	'set.c',
 	'shm.c',
