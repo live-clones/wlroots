@@ -151,6 +151,7 @@ struct wlr_vk_pipeline_layout {
 enum wlr_vk_texture_transform {
 	WLR_VK_TEXTURE_TRANSFORM_IDENTITY = 0,
 	WLR_VK_TEXTURE_TRANSFORM_SRGB = 1,
+	WLR_VK_TEXTURE_TRANSFORM_ST2084_PQ = 2,
 };
 
 enum wlr_vk_shader_source {
@@ -162,7 +163,8 @@ enum wlr_vk_shader_source {
 // fragment shader. Must match those in shaders/output.frag
 enum wlr_vk_output_transform {
 	WLR_VK_OUTPUT_TRANSFORM_INVERSE_SRGB = 0,
-	WLR_VK_OUTPUT_TRANSFORM_LUT3D = 1,
+	WLR_VK_OUTPUT_TRANSFORM_INVERSE_ST2084_PQ = 1,
+	WLR_VK_OUTPUT_TRANSFORM_LUT3D = 2,
 };
 
 struct wlr_vk_pipeline_key {
@@ -192,6 +194,7 @@ struct wlr_vk_render_format_setup {
 	VkRenderPass render_pass;
 
 	VkPipeline output_pipe_srgb;
+	VkPipeline output_pipe_pq;
 	VkPipeline output_pipe_lut3d;
 
 	struct wlr_vk_renderer *renderer;
@@ -334,7 +337,15 @@ struct wlr_vk_vert_pcr_data {
 	float uv_size[2];
 };
 
+struct wlr_vk_frag_texture_pcr_data {
+	float matrix[4][4]; // only a 3x3 subset is used
+	float alpha;
+	float luminance_multiplier;
+};
+
 struct wlr_vk_frag_output_pcr_data {
+	float matrix[4][4]; // only a 3x3 subset is used
+	float luminance_multiplier;
 	float lut_3d_offset;
 	float lut_3d_scale;
 };
@@ -342,6 +353,7 @@ struct wlr_vk_frag_output_pcr_data {
 struct wlr_vk_texture_view {
 	struct wl_list link; // struct wlr_vk_texture.views
 	const struct wlr_vk_pipeline_layout *layout;
+	bool srgb;
 
 	VkDescriptorSet ds;
 	VkImageView image_view;
@@ -356,7 +368,7 @@ struct wlr_vk_pipeline_layout *get_or_create_pipeline_layout(
 	const struct wlr_vk_pipeline_layout_key *key);
 struct wlr_vk_texture_view *vulkan_texture_get_or_create_view(
 	struct wlr_vk_texture *texture,
-	const struct wlr_vk_pipeline_layout *layout);
+	const struct wlr_vk_pipeline_layout *layout, bool srgb);
 
 // Creates a vulkan renderer for the given device.
 struct wlr_renderer *vulkan_renderer_create_for_device(struct wlr_vk_device *dev);
@@ -453,13 +465,12 @@ struct wlr_vk_texture {
 	VkDeviceMemory memories[WLR_DMABUF_MAX_PLANES];
 	VkImage image;
 	const struct wlr_vk_format *format;
-	enum wlr_vk_texture_transform transform;
 	struct wlr_vk_command_buffer *last_used_cb; // to track when it can be destroyed
 	bool dmabuf_imported;
 	bool owned; // if dmabuf_imported: whether we have ownership of the image
 	bool transitioned; // if dma_imported: whether we transitioned it away from preinit
 	bool has_alpha; // whether the image is has alpha channel
-	bool using_mutable_srgb; // is this accessed through _SRGB format view
+	bool using_mutable_srgb; // can be accessed through _SRGB format view
 	struct wl_list foreign_link; // wlr_vk_renderer.foreign_textures
 	struct wl_list destroy_link; // wlr_vk_command_buffer.destroy_textures
 	struct wl_list link; // wlr_vk_renderer.textures
@@ -468,7 +479,7 @@ struct wlr_vk_texture {
 	struct wlr_buffer *buffer;
 	struct wlr_addon buffer_addon;
 
-	struct wl_list views; // struct wlr_vk_texture_ds.link
+	struct wl_list views; // struct wlr_vk_texture_view.link
 };
 
 struct wlr_vk_texture *vulkan_get_texture(struct wlr_texture *wlr_texture);
