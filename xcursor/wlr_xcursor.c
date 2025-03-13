@@ -287,6 +287,10 @@ struct wlr_xcursor *wlr_xcursor_theme_get_cursor(struct wlr_xcursor_theme *theme
 		fallback = "top_right_corner";
 	} else if (strcmp(name, "n-resize") == 0) {
 		fallback = "top_side";
+	} else if (strcmp(name, "ew-resize") == 0 || strcmp(name, "col-resize") == 0) {
+		fallback = "sb_h_double_arrow";
+	} else if (strcmp(name, "ns-resize") == 0 || strcmp(name, "row-resize") == 0) {
+		fallback = "sb_v_double_arrow";
 	} else {
 		return NULL;
 	}
