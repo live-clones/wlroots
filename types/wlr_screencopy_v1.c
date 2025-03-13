@@ -139,7 +139,7 @@ static void frame_destroy(struct wlr_screencopy_frame_v1 *frame) {
 	}
 	if (frame->output != NULL && frame->buffer != NULL) {
 		wlr_output_lock_attach_render(frame->output, false);
-		if (frame->cursor_locked) {
+		if (frame->overlay_cursor) {
 			wlr_output_lock_software_cursors(frame->output, false);
 		}
 	}
@@ -442,7 +442,6 @@ static void frame_handle_copy(struct wl_client *wl_client,
 	wlr_output_lock_attach_render(output, true);
 	if (frame->overlay_cursor) {
 		wlr_output_lock_software_cursors(output, true);
-		frame->cursor_locked = true;
 	}
 }
 
