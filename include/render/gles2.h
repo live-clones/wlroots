@@ -135,7 +135,6 @@ struct wlr_gles2_texture {
 struct wlr_gles2_render_pass {
 	struct wlr_render_pass base;
 	struct wlr_gles2_buffer *buffer;
-	float projection_matrix[9];
 	struct wlr_egl_context prev_ctx;
 	struct wlr_gles2_render_timer *timer;
 	struct wlr_drm_syncobj_timeline *signal_timeline;
