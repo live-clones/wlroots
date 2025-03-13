@@ -508,7 +508,7 @@ static bool atomic_device_commit(struct wlr_drm_backend *drm,
 	if (state->modeset) {
 		flags |= DRM_MODE_ATOMIC_ALLOW_MODESET;
 	}
-	if (!test_only && state->nonblock) {
+	if (state->nonblock) {
 		flags |= DRM_MODE_ATOMIC_NONBLOCK;
 	}
 
