@@ -36,6 +36,13 @@ noreturn static void exec_xwayland(struct wlr_xwayland_server *server,
 		_exit(EXIT_FAILURE);
 	}
 
+	// The compositor may have messed with signal handling, try to clean it up
+	sigset_t set;
+	sigemptyset(&set);
+	sigprocmask(SIG_SETMASK, &set, NULL);
+	signal(SIGPIPE, SIG_DFL);
+	signal(SIGCHLD, SIG_DFL);
+
 	char *argv[64] = {0};
 	size_t i = 0;
 
