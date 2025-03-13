@@ -187,7 +187,7 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		if (syncobj_surface_state != NULL &&
 				(surface->current.committed & WLR_SURFACE_STATE_BUFFER)) {
 			wlr_linux_drm_syncobj_v1_state_signal_release_with_buffer(syncobj_surface_state,
-				&surface->buffer->base);
+				surface->buffer->source);
 		}
 	} else {
 		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
