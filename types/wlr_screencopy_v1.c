@@ -25,6 +25,12 @@ struct screencopy_damage {
 };
 
 static const struct zwlr_screencopy_frame_v1_interface frame_impl;
+static struct wl_event_source *unlock_timer = NULL;
+static bool locks_held = false;
+struct unlock_data {
+	struct wlr_output *output;
+	bool cursor_locked;
+};
 
 static struct screencopy_damage *screencopy_damage_find(
 		struct wlr_screencopy_v1_client *client,
@@ -133,14 +139,39 @@ static struct wlr_screencopy_frame_v1 *frame_from_resource(
 	return wl_resource_get_user_data(resource);
 }
 
+static int release_locks(void *data) {
+	struct unlock_data *unlock = data;
+
+	if (locks_held && unlock->output != NULL) {
+		wlr_output_lock_attach_render(unlock->output, false);
+		if (unlock->cursor_locked) {
+			wlr_output_lock_software_cursors(unlock->output, false);
+		}
+		locks_held = false;
+	}
+
+	free(unlock);
+	unlock_timer = NULL;
+	return 0;
+}
+
 static void frame_destroy(struct wlr_screencopy_frame_v1 *frame) {
 	if (frame == NULL) {
 		return;
 	}
-	if (frame->output != NULL && frame->buffer != NULL) {
-		wlr_output_lock_attach_render(frame->output, false);
-		if (frame->overlay_cursor) {
-			wlr_output_lock_software_cursors(frame->output, false);
+
+	// Schedule the unlock if no frame is copied within 100ms
+	if (locks_held && unlock_timer == NULL && frame->output != NULL && frame->buffer != NULL) {
+		struct unlock_data *unlock = calloc(1, sizeof(*unlock));
+		if (unlock) {
+			unlock->output = frame->output;
+			unlock->cursor_locked = frame->overlay_cursor;
+			unlock_timer = wl_event_loop_add_timer(frame->output->event_loop, release_locks, unlock);
+			if (unlock_timer) {
+				wl_event_source_timer_update(unlock_timer, 100);
+			} else {
+				free(unlock);
+			}
 		}
 	}
 	wl_list_remove(&frame->link);
@@ -359,6 +390,11 @@ static void frame_handle_copy(struct wl_client *wl_client,
 		return;
 	}
 
+	if (unlock_timer) {
+		wl_event_source_remove(unlock_timer);
+		unlock_timer = NULL;  // Cancel pending unlock
+	}
+
 	struct wlr_output *output = frame->output;
 
 	if (!output->enabled) {
@@ -439,9 +475,12 @@ static void frame_handle_copy(struct wl_client *wl_client,
 	// into the least damaged buffer.
 	wlr_output_update_needs_frame(output);
 
-	wlr_output_lock_attach_render(output, true);
-	if (frame->overlay_cursor) {
-		wlr_output_lock_software_cursors(output, true);
+	if (!locks_held) {
+		wlr_output_lock_attach_render(output, true);
+		if (frame->overlay_cursor) {
+			wlr_output_lock_software_cursors(output, true);
+		}
+		locks_held = true;
 	}
 }
 
