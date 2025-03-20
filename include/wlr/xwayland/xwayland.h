@@ -15,6 +15,7 @@
 #include <xcb/xcb_ewmh.h>
 #include <xcb/xcb_icccm.h>
 #include <wlr/util/addon.h>
+#include <wlr/xwayland/server.h>
 
 struct wlr_box;
 struct wlr_xwm;
@@ -266,7 +267,7 @@ struct wlr_xwayland_minimize_event {
  * client tries to connect.
  */
 struct wlr_xwayland *wlr_xwayland_create(struct wl_display *wl_display,
-	struct wlr_compositor *compositor, bool lazy);
+	struct wlr_compositor *compositor, bool lazy, xwayland_spawn_func_t spawn_func);
 
 /**
  * Create an XWM from an existing Xwayland server.
