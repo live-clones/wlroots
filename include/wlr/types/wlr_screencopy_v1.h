@@ -44,7 +44,7 @@ struct wlr_screencopy_frame_v1 {
 	struct wlr_box box;
 	int shm_stride;
 
-	bool overlay_cursor, cursor_locked;
+	bool overlay_cursor;
 
 	bool with_damage;
 
