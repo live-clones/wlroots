@@ -180,3 +180,31 @@ struct wlr_single_pixel_buffer_manager_v1 *wlr_single_pixel_buffer_manager_v1_cr
 
 	return manager;
 }
+
+bool wlr_single_pixel_buffer_color_from_buffer(
+		struct wlr_buffer *wlr_buffer, uint32_t color[]) {
+	if (!wlr_buffer) {
+		return false;
+	}
+
+	// If it's a client_buffer, unwrap it
+	struct wlr_client_buffer *client_buf = wlr_client_buffer_get(wlr_buffer);
+	if (client_buf) {
+		wlr_buffer = client_buf->source;
+	}
+
+	// Check we have a buffer and it's an SPB
+	if (!wlr_buffer || wlr_buffer->impl != &buffer_impl) {
+		return false;
+	}
+
+	if (color) {
+		struct wlr_single_pixel_buffer_v1 *spb = wl_container_of(wlr_buffer, spb, base);
+		color[0] = spb->r;
+		color[1] = spb->g;
+		color[2] = spb->b;
+		color[3] = spb->a;
+	}
+
+	return true;
+}
