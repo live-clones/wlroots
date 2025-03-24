@@ -13,6 +13,44 @@
 #include <sys/types.h>
 
 /**
+ * Well-known color primaries.
+ */
+enum wlr_color_named_primaries {
+	WLR_COLOR_NAMED_PRIMARIES_SRGB = 1 << 0,
+	WLR_COLOR_NAMED_PRIMARIES_BT2020 = 1 << 1,
+};
+
+/**
+ * Well-known color transfer functions.
+ */
+enum wlr_color_transfer_function {
+	WLR_COLOR_TRANSFER_FUNCTION_SRGB = 1 << 0,
+	WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ = 1 << 1,
+	WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR = 1 << 2,
+};
+
+/**
+ * CIE 1931 xy chromaticity coordinates.
+ */
+struct wlr_color_cie1931_xy {
+	float x, y;
+};
+
+/**
+ * Color primaries and white point describing a color volume.
+ */
+struct wlr_color_primaries {
+	struct wlr_color_cie1931_xy red, green, blue, white;
+};
+
+/**
+ * Luminance range and reference white luminance level, in cd/m².
+ */
+struct wlr_color_luminances {
+	float min, max, reference;
+};
+
+/**
  * A color transformation formula, which maps a linear color space with
  * sRGB primaries to an output color space.
  *
@@ -29,17 +67,22 @@
 struct wlr_color_transform;
 
 /**
- * Initialize a color transformation to convert linear
- * (with sRGB(?) primaries) to an ICC profile. Returns NULL on failure.
+ * Initialize a color transformation to convert linear (with sRGB primaries) to
+ * a color volume (via provided primaries) and an ICC profile. Returns NULL on
+ * failure.
  */
 struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
+	enum wlr_color_named_primaries primaries,
 	const void *data, size_t size);
 
 /**
- * Initialize a color transformation to apply sRGB encoding.
- * Returns NULL on failure.
+ * Initialize a color transformation to convert linear (with sRGB primaries) to
+ * a color volume (via provided primaries) and apply EOTF⁻¹ encoding. Returns
+ * NULL on failure.
  */
-struct wlr_color_transform *wlr_color_transform_init_srgb(void);
+struct wlr_color_transform *wlr_color_transform_init_linear_to_inverse_eotf(
+	enum wlr_color_named_primaries primaries,
+	enum wlr_color_transfer_function tf);
 
 /**
  * Increase the reference count of the color transform by 1.
