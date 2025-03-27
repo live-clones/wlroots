@@ -45,7 +45,8 @@ static const uint32_t COMMIT_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED |
 	WLR_OUTPUT_STATE_LAYERS |
 	WLR_OUTPUT_STATE_WAIT_TIMELINE |
-	WLR_OUTPUT_STATE_SIGNAL_TIMELINE;
+	WLR_OUTPUT_STATE_SIGNAL_TIMELINE |
+	WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
 
 static const uint32_t SUPPORTED_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_BACKEND_OPTIONAL | COMMIT_OUTPUT_STATE;
@@ -864,6 +865,12 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 		// If we're running as a secondary GPU, we can't perform an atomic
 		// commit without blitting a buffer.
 		return true;
+	}
+
+	if (state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) {
+		// Can only change colour representation at the same time as presenting
+		// a buffer.
+		assert(state->committed & WLR_OUTPUT_STATE_BUFFER);
 	}
 
 	if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
