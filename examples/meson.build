@@ -25,10 +25,6 @@ compositors = {
 	'output-layout': {
 		'src': ['output-layout.c', 'cat.c'],
 	},
-	'fullscreen-shell': {
-		'src': 'fullscreen-shell.c',
-		'proto': ['fullscreen-shell-unstable-v1'],
-	},
 	'scene-graph': {
 		'src': 'scene-graph.c',
 		'proto': ['xdg-shell'],

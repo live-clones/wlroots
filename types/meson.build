@@ -49,7 +49,6 @@ wlr_files += files(
 	'wlr_ext_foreign_toplevel_list_v1.c',
 	'wlr_ext_data_control_v1.c',
 	'wlr_fractional_scale_v1.c',
-	'wlr_fullscreen_shell_v1.c',
 	'wlr_gamma_control_v1.c',
 	'wlr_idle_inhibit_v1.c',
 	'wlr_idle_notify_v1.c',
