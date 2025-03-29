@@ -1,8 +1,10 @@
+#include <assert.h>
 #include <drm_fourcc.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <wlr/render/drm_syncobj.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
 #include <xf86drm.h>
@@ -382,6 +384,87 @@ static void set_plane_props(struct atomic *atom, struct wlr_drm_backend *drm,
 	atomic_add(atom, id, props->crtc_h, dst_box->height);
 }
 
+static void set_color_props(struct atomic *atom, struct wlr_drm_backend *drm,
+		struct wlr_drm_plane *plane,
+		const struct wlr_color_representation_v1_state *color_representation) {
+	uint32_t id = plane->id;
+	const struct wlr_drm_plane_props *props = &plane->props;
+
+	if (color_representation->coefficients != WLR_COLOR_REPR_ENCODING_UNSET) {
+		uint32_t color_encoding;
+		switch(color_representation->coefficients) {
+			case WLR_COLOR_REPR_ENCODING_BT601:
+				color_encoding = DRM_COLOR_YCBCR_BT601;
+				break;
+			case WLR_COLOR_REPR_ENCODING_BT709:
+				color_encoding = DRM_COLOR_YCBCR_BT709;
+				break;
+			case WLR_COLOR_REPR_ENCODING_BT2020:
+				color_encoding = DRM_COLOR_YCBCR_BT2020;
+				break;
+			default:
+				assert(0); // Unreachable
+		}
+
+		if (props->color_encoding) {
+			atomic_add(atom, id, props->color_encoding, color_encoding);
+		} else {
+			wlr_log(WLR_DEBUG, "color_encoding set but DRM property missing");
+		}
+	}
+
+	if (color_representation->range != WLR_COLOR_REPR_RANGE_UNSET) {
+		uint32_t color_range;
+		switch(color_representation->range) {
+			case WLR_COLOR_REPR_RANGE_FULL:
+				color_range = DRM_COLOR_YCBCR_FULL_RANGE;
+				break;
+			case WLR_COLOR_REPR_RANGE_LIMITED:
+				color_range = DRM_COLOR_YCBCR_LIMITED_RANGE;
+				break;
+			default:
+				assert(0); // Unreachable
+		}
+
+		if (props->color_range) {
+			atomic_add(atom, id, props->color_range, color_range);
+		} else {
+			wlr_log(WLR_DEBUG, "color_range set but DRM property missing");
+		}
+	}
+
+	if (color_representation->chroma_location != WLR_COLOR_REPR_CHROMA_LOC_UNSET) {
+		uint32_t siting_h, siting_v;
+		switch(color_representation->chroma_location) {
+			case WLR_COLOR_REPR_CHROMA_LOC_TYPE0:
+				siting_h = 0;
+				siting_v = 65536 / 2;
+				break;
+			case WLR_COLOR_REPR_CHROMA_LOC_TYPE1:
+				siting_h = 65535 / 2;
+				siting_v = 65536 / 2;
+				break;
+			case WLR_COLOR_REPR_CHROMA_LOC_TYPE2:
+				siting_h = 0;
+				siting_v = 0;
+				break;
+			case WLR_COLOR_REPR_CHROMA_LOC_TYPE3:
+				siting_h = 65536 / 2;
+				siting_v = 0;
+				break;
+			default:
+				assert(0); // Unreachable
+		}
+
+		if (props->chroma_siting_h && props->chroma_siting_v) {
+			atomic_add(atom, id, props->chroma_siting_h, siting_h);
+			atomic_add(atom, id, props->chroma_siting_v, siting_v);
+		} else {
+			wlr_log(WLR_DEBUG, "chroma_location set but DRM property missing");
+		}
+	}
+}
+
 static bool supports_cursor_hotspots(const struct wlr_drm_plane *plane) {
 	return plane->props.hotspot_x && plane->props.hotspot_y;
 }
@@ -442,6 +525,10 @@ static void atomic_connector_add(struct atomic *atom,
 
 		set_plane_props(atom, drm, crtc->primary, state->primary_fb, crtc->id,
 			&state->primary_viewport.dst_box, &state->primary_viewport.src_box);
+		if (state->base->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) {
+			set_color_props(atom, drm, crtc->primary,
+				&state->base->color_representation);
+		}
 		if (crtc->primary->props.fb_damage_clips != 0) {
 			atomic_add(atom, crtc->primary->id,
 				crtc->primary->props.fb_damage_clips, state->fb_damage_clips);
