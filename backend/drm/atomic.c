@@ -179,6 +179,48 @@ bool create_fb_damage_clips_blob(struct wlr_drm_backend *drm,
 	return true;
 }
 
+static uint8_t convert_cta861_eotf(enum wlr_color_transfer_function tf) {
+	switch (tf) {
+	case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
+	case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
+		abort(); // unsupported
+	case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
+		return 2;
+	}
+	abort(); // unreachable
+}
+
+static bool create_hdr_output_metadata_blob(struct wlr_drm_backend *drm,
+		const struct wlr_output_image_description *img_desc, uint32_t *blob_id) {
+	if (img_desc == NULL) {
+		*blob_id = 0;
+		return true;
+	}
+
+	struct hdr_output_metadata metadata = {
+		.metadata_type = 0,
+		.hdmi_metadata_type1 = {
+			.eotf = convert_cta861_eotf(img_desc->transfer_function),
+			.metadata_type = 0,
+		},
+	};
+	if (drmModeCreatePropertyBlob(drm->fd, &metadata, sizeof(metadata), blob_id) != 0) {
+		wlr_log_errno(WLR_ERROR, "Failed to create HDR_OUTPUT_METADATA property");
+		return false;
+	}
+	return true;
+}
+
+static uint64_t convert_primaries_to_colorspace(uint32_t primaries) {
+	switch (primaries) {
+	case 0:
+		return 0; // Default
+	case WLR_COLOR_NAMED_PRIMARIES_BT2020:
+		return 9; // BT2020_RGB
+	}
+	abort(); // unreachable
+}
+
 static uint64_t max_bpc_for_format(uint32_t format) {
 	switch (format) {
 	case DRM_FORMAT_XRGB2101010:
@@ -297,11 +339,25 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 		vrr_enabled = state->base->adaptive_sync_enabled;
 	}
 
+	uint32_t colorspace = conn->colorspace;
+	if (state->base->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
+		colorspace = convert_primaries_to_colorspace(
+			state->base->image_description ? state->base->image_description->primaries : 0);
+	}
+
+	uint32_t hdr_output_metadata = conn->hdr_output_metadata;
+	if ((state->base->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) &&
+			!create_hdr_output_metadata_blob(drm, state->base->image_description, &hdr_output_metadata)) {
+		return false;
+	}
+
 	state->mode_id = mode_id;
 	state->gamma_lut = gamma_lut;
 	state->fb_damage_clips = fb_damage_clips;
 	state->primary_in_fence_fd = in_fence_fd;
 	state->vrr_enabled = vrr_enabled;
+	state->colorspace = colorspace;
+	state->hdr_output_metadata = hdr_output_metadata;
 	return true;
 }
 
@@ -316,6 +372,7 @@ void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state) {
 	crtc->own_mode_id = true;
 	commit_blob(drm, &crtc->mode_id, state->mode_id);
 	commit_blob(drm, &crtc->gamma_lut, state->gamma_lut);
+	commit_blob(drm, &conn->hdr_output_metadata, state->hdr_output_metadata);
 
 	conn->output.adaptive_sync_status = state->vrr_enabled ?
 		WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED : WLR_OUTPUT_ADAPTIVE_SYNC_DISABLED;
@@ -330,6 +387,8 @@ void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state) {
 			state->base->signal_point, state->out_fence_fd);
 		close(state->out_fence_fd);
 	}
+
+	conn->colorspace = state->colorspace;
 }
 
 void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state) {
@@ -339,6 +398,7 @@ void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state)
 
 	rollback_blob(drm, &crtc->mode_id, state->mode_id);
 	rollback_blob(drm, &crtc->gamma_lut, state->gamma_lut);
+	rollback_blob(drm, &conn->hdr_output_metadata, state->hdr_output_metadata);
 
 	destroy_blob(drm, state->fb_damage_clips);
 	if (state->primary_in_fence_fd >= 0) {
@@ -429,6 +489,12 @@ static void atomic_connector_add(struct atomic *atom,
 	}
 	if (modeset && active && conn->props.max_bpc != 0 && conn->max_bpc_bounds[1] != 0) {
 		atomic_add(atom, conn->id, conn->props.max_bpc, pick_max_bpc(conn, state->primary_fb));
+	}
+	if (conn->props.colorspace != 0) {
+		atomic_add(atom, conn->id, conn->props.colorspace, state->colorspace);
+	}
+	if (conn->props.hdr_output_metadata != 0) {
+		atomic_add(atom, conn->id, conn->props.hdr_output_metadata, state->hdr_output_metadata);
 	}
 	atomic_add(atom, crtc->id, crtc->props.mode_id, state->mode_id);
 	atomic_add(atom, crtc->id, crtc->props.active, active);
