@@ -11,6 +11,7 @@
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
@@ -783,8 +784,15 @@ static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 	scene_buffer->buffer_height = buffer->height;
 	scene_buffer->buffer_is_opaque = wlr_buffer_is_opaque(buffer);
 
-	scene_buffer->is_spb = wlr_single_pixel_buffer_color_from_buffer(
-		scene_buffer->buffer, scene_buffer->spb_color);
+	struct wlr_single_pixel_buffer_v1 *spb =
+		wlr_single_pixel_buffer_v1_try_from_buffer(scene_buffer->buffer);
+	scene_buffer->is_spb = spb != NULL;
+	if (scene_buffer->is_spb) {
+		scene_buffer->spb_color[0] = spb->r;
+		scene_buffer->spb_color[1] = spb->g;
+		scene_buffer->spb_color[2] = spb->b;
+		scene_buffer->spb_color[3] = spb->a;
+	}
 
 	scene_buffer->buffer_release.notify = scene_buffer_handle_buffer_release;
 	wl_signal_add(&buffer->events.release, &scene_buffer->buffer_release);

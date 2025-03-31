@@ -182,14 +182,28 @@ struct wlr_client_buffer {
 struct wlr_client_buffer *wlr_client_buffer_get(struct wlr_buffer *buffer);
 
 /**
- * If `buffer` is a wlr_single_pixel_buffer_v1 (or one wrapped in a
- * wlr_client_buffer) then retrieve the SPB's color and return true.
- * Otherwise, returns false.  The color is formatted as {R, G, B, A}
- * where the maximum value of each component is UINT32_MAX.  color can be
- * NULL if you just want to know whether or not the buffer is an SPB.
+ * A single-pixel buffer.  Used by clients to draw solid-color rectangles.
  */
-bool wlr_single_pixel_buffer_color_from_buffer(
-	struct wlr_buffer *wlr_buffer, uint32_t color[]);
+struct wlr_single_pixel_buffer_v1 {
+	struct wlr_buffer base;
 
+	// Full-scale for each component is UINT32_MAX
+	uint32_t r, g, b, a;
+
+	struct {
+		struct wl_resource *resource;
+		struct wl_listener release;
+
+		// Packed little-endian DRM_FORMAT_ARGB8888. Used for data_ptr_access
+		uint8_t argb8888[4];
+	} WLR_PRIVATE;
+};
+
+/**
+ * If the wlr_buffer is a wlr_single_pixel_buffer_v1 then unwrap it.
+ * Otherwise, returns NULL.
+ */
+struct wlr_single_pixel_buffer_v1 *wlr_single_pixel_buffer_v1_try_from_buffer(
+	struct wlr_buffer *buffer);
 
 #endif

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/util/log.h>
 #include "types/wlr_buffer.h"
 
@@ -27,7 +28,7 @@ static void client_buffer_destroy(struct wlr_buffer *buffer) {
 
 	// We placed an extra lock on SPBs in client_buffer_create()
 	if (client_buffer->source &&
-			wlr_single_pixel_buffer_color_from_buffer(client_buffer->source, NULL)) {
+			wlr_single_pixel_buffer_v1_try_from_buffer(client_buffer->source)) {
 		wlr_buffer_unlock(client_buffer->source);
 	}
 
@@ -103,7 +104,7 @@ struct wlr_client_buffer *wlr_client_buffer_create(struct wlr_buffer *buffer,
 
 	// SPBs need to be held while attached to a surface so we can
 	// work out that they actually are SPBs (for render optimisations)
-	if (wlr_single_pixel_buffer_color_from_buffer(buffer, NULL)) {
+	if (wlr_single_pixel_buffer_v1_try_from_buffer(buffer)) {
 		wlr_buffer_lock(buffer);
 	}
 
