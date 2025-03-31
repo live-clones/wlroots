@@ -7,7 +7,6 @@
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/addon.h>
-#include "render/wlr_renderer.h"
 #include "ext-image-capture-source-v1-protocol.h"
 
 #define OUTPUT_IMAGE_SOURCE_MANAGER_V1_VERSION 1
