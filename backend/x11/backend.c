@@ -473,7 +473,8 @@ struct wlr_backend *wlr_x11_backend_create(struct wl_event_loop *loop,
 		xcb_shm_query_version_reply_t *shm_reply =
 			xcb_shm_query_version_reply(x11->xcb, shm_cookie, NULL);
 		if (shm_reply) {
-			if (shm_reply->major_version >= 1 || shm_reply->minor_version >= 2) {
+			if (shm_reply->major_version > 1 ||
+					(shm_reply->major_version == 1 && shm_reply->minor_version >= 2)) {
 				if (shm_reply->shared_pixmaps) {
 					x11->have_shm = true;
 				} else {
