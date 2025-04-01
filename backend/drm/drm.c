@@ -45,7 +45,8 @@ static const uint32_t COMMIT_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED |
 	WLR_OUTPUT_STATE_LAYERS |
 	WLR_OUTPUT_STATE_WAIT_TIMELINE |
-	WLR_OUTPUT_STATE_SIGNAL_TIMELINE;
+	WLR_OUTPUT_STATE_SIGNAL_TIMELINE |
+	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION;
 
 static const uint32_t SUPPORTED_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_BACKEND_OPTIONAL | COMMIT_OUTPUT_STATE;
@@ -858,6 +859,12 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 				dmabuf.format, dmabuf.modifier);
 			return false;
 		}
+	}
+
+	if ((state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) &&
+			conn->backend->iface != &atomic_iface) {
+		wlr_log(WLR_DEBUG, "Image descriptions are only supported by the atomic interface");
+		return false;
 	}
 
 	if (test_only && conn->backend->mgpu_renderer.wlr_rend) {
