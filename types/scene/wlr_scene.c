@@ -1421,7 +1421,6 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			break;
 		}
 
-
 		enum wl_output_transform transform =
 			wlr_output_transform_invert(scene_buffer->transform);
 		transform = wlr_output_transform_compose(transform, data->transform);
