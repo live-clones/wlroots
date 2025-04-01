@@ -550,11 +550,6 @@ void *wlr_surface_synced_get_state(struct wlr_surface_synced *synced,
 	const struct wlr_surface_state *state);
 
 /**
- * Get a Pixman region from a wl_region resource.
- */
-const pixman_region32_t *wlr_region_from_resource(struct wl_resource *resource);
-
-/**
  * Create the wl_compositor global, which can be used by clients to create
  * surfaces and regions.
  *
