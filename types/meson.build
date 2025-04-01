@@ -99,6 +99,7 @@ wlr_files += files(
 	'wlr_xdg_foreign_v2.c',
 	'wlr_xdg_foreign_registry.c',
 	'wlr_xdg_output_v1.c',
+	'wlr_xdg_system_bell_v1.c',
 	'wlr_xdg_toplevel_icon_v1.c',
 )
 
