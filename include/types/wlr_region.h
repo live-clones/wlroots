@@ -1,8 +1,6 @@
 #ifndef TYPES_WLR_REGION_H
 #define TYPES_WLR_REGION_H
 
-#include <wlr/types/wlr_region.h>
-
 struct wl_client;
 
 /*
