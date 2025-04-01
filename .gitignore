@@ -1,2 +1,9 @@
 /subprojects/*
 !/subprojects/*.wrap
+.vscode
+*.diff
+.*.swp
+.swp.*
+*.user
+/build*/
+.cache
