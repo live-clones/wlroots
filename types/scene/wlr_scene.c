@@ -1765,6 +1765,14 @@ struct render_list_constructor_data {
 	bool fractional_scale;
 };
 
+static bool scene_buffer_is_black_opaque(struct wlr_scene_buffer *scene_buffer) {
+	return scene_buffer->is_spb && scene_buffer->opacity == 1.0 &&
+		scene_buffer->spb_color[0] == 0 &&
+		scene_buffer->spb_color[1] == 0 &&
+		scene_buffer->spb_color[2] == 0 &&
+		scene_buffer->spb_color[3] == UINT32_MAX;
+}
+
 static bool construct_render_list_iterator(struct wlr_scene_node *node,
 		int lx, int ly, void *_data) {
 	struct render_list_constructor_data *data = _data;
@@ -1787,20 +1795,13 @@ static bool construct_render_list_iterator(struct wlr_scene_node *node,
 		}
 	}
 
-	// If the buffer is a black opaque single pixel buffer then do the same special case
+	// Apply the same special-case to black opaque single-pixel buffers
 	if (node->type == WLR_SCENE_NODE_BUFFER && data->calculate_visibility &&
 			(!data->fractional_scale || data->render_list->size == 0)) {
 		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
-		if (scene_buffer->is_spb && scene_buffer->opacity == 1.0) {
-			bool is_black_opaque =
-				scene_buffer->spb_color[0] == 0 &&
-				scene_buffer->spb_color[1] == 0 &&
-				scene_buffer->spb_color[2] == 0 &&
-				scene_buffer->spb_color[3] == UINT32_MAX;
-			if (is_black_opaque) {
-				return false;
-			}
+		if (scene_buffer_is_black_opaque(scene_buffer)) {
+			return false;
 		}
 	}
 
