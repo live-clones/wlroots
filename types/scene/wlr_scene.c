@@ -1386,6 +1386,24 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	case WLR_SCENE_NODE_BUFFER:;
 		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
+		struct wlr_scene_surface *scene_surface =
+			wlr_scene_surface_try_from_buffer(scene_buffer);
+		if (scene_surface != NULL && scene_surface->is_single_pixel_buffer) {
+			// Render the buffer as a rect, this is likely to be more efficient
+			wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
+				.box = dst_box,
+				.color = {
+					.r = (float)scene_surface->single_pixel_buffer_color[0] / (float)UINT32_MAX,
+					.g = (float)scene_surface->single_pixel_buffer_color[1] / (float)UINT32_MAX,
+					.b = (float)scene_surface->single_pixel_buffer_color[2] / (float)UINT32_MAX,
+					.a = (float)scene_surface->single_pixel_buffer_color[3] /
+						(float)UINT32_MAX * scene_buffer->opacity,
+				},
+				.clip = &render_region,
+			});
+			break;
+		}
+
 		struct wlr_texture *texture = scene_buffer_get_texture(scene_buffer,
 			data->output->output->renderer);
 		if (texture == NULL) {
@@ -1736,6 +1754,18 @@ struct render_list_constructor_data {
 	bool fractional_scale;
 };
 
+static bool scene_buffer_is_black_opaque(struct wlr_scene_buffer *scene_buffer) {
+	struct wlr_scene_surface *scene_surface =
+		wlr_scene_surface_try_from_buffer(scene_buffer);
+	return scene_surface != NULL &&
+		scene_surface->is_single_pixel_buffer &&
+		scene_surface->single_pixel_buffer_color[0] == 0 &&
+		scene_surface->single_pixel_buffer_color[1] == 0 &&
+		scene_surface->single_pixel_buffer_color[2] == 0 &&
+		scene_surface->single_pixel_buffer_color[3] == UINT32_MAX &&
+		scene_buffer->opacity == 1.0;
+}
+
 static bool construct_render_list_iterator(struct wlr_scene_node *node,
 		int lx, int ly, void *_data) {
 	struct render_list_constructor_data *data = _data;
@@ -1754,6 +1784,16 @@ static bool construct_render_list_iterator(struct wlr_scene_node *node,
 		float *black = (float[4]){ 0.f, 0.f, 0.f, 1.f };
 
 		if (memcmp(rect->color, black, sizeof(float) * 4) == 0) {
+			return false;
+		}
+	}
+
+	// Apply the same special-case to black opaque single-pixel buffers
+	if (node->type == WLR_SCENE_NODE_BUFFER && data->calculate_visibility &&
+			(!data->fractional_scale || data->render_list->size == 0)) {
+		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+
+		if (scene_buffer_is_black_opaque(scene_buffer)) {
 			return false;
 		}
 	}

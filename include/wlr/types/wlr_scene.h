@@ -132,6 +132,12 @@ struct wlr_scene_surface {
 		struct wl_listener frame_done;
 		struct wl_listener surface_destroy;
 		struct wl_listener surface_commit;
+
+		// True if the underlying buffer is a wlr_single_pixel_buffer_v1
+		bool is_single_pixel_buffer;
+		// If is_single_pixel_buffer is set, contains the color of the buffer
+		// as {R, G, B, A} where the max value of each component is UINT32_MAX
+		uint32_t single_pixel_buffer_color[4];
 	} WLR_PRIVATE;
 };
 
