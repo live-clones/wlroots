@@ -370,7 +370,7 @@ static void handle_scene_surface_surface_commit(
 	// schedule the frame however if the node is enabled and there is an
 	// output intersecting, otherwise the frame done events would never reach
 	// the surface anyway.
-	int lx, ly;
+	double lx, ly;
 	bool enabled = wlr_scene_node_coords(&scene_buffer->node, &lx, &ly);
 	struct wlr_output *output = get_surface_frame_pacing_output(surface->surface);
 	if (!wl_list_empty(&surface->surface->current.frame_callback_list) && output && enabled) {
