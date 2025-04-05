@@ -104,7 +104,7 @@ static void bench_scene_node_at(struct wlr_scene *scene, struct tree_spec *spec)
 }
 
 static void noop_iterator(struct wlr_scene_buffer *buffer,
-		int sx, int sy, void *user_data) {
+		double sx, double sy, void *user_data) {
 	(void)buffer;
 	(void)sx;
 	(void)sy;
