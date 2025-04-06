@@ -669,6 +669,7 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	wl_signal_emit_mutable(&manager->events.destroy, manager);
 
 	assert(wl_list_empty(&manager->events.destroy.listener_list));
+	assert(wl_list_empty(&manager->events.new_device.listener_list));
 
 	wl_list_remove(&manager->display_destroy.link);
 	wl_global_destroy(manager->global);
