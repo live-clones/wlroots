@@ -8,15 +8,6 @@
 
 #define SINGLE_PIXEL_MANAGER_VERSION 1
 
-struct wlr_single_pixel_buffer_v1 {
-	struct wlr_buffer base;
-	struct wl_resource *resource;
-	uint32_t r, g, b, a;
-	uint8_t argb8888[4]; // packed little-endian DRM_FORMAT_ARGB8888
-
-	struct wl_listener release;
-};
-
 static void destroy_resource(struct wl_client *client,
 		struct wl_resource *resource) {
 	wl_resource_destroy(resource);
@@ -179,4 +170,15 @@ struct wlr_single_pixel_buffer_manager_v1 *wlr_single_pixel_buffer_manager_v1_cr
 	wlr_buffer_register_resource_interface(&buffer_resource_interface);
 
 	return manager;
+}
+
+struct wlr_single_pixel_buffer_v1 *wlr_single_pixel_buffer_v1_try_from_buffer(
+		struct wlr_buffer *buffer) {
+
+	if (buffer->impl != &buffer_impl) {
+		return NULL;
+	}
+
+	return wl_container_of(buffer,
+		(struct wlr_single_pixel_buffer_v1 *)NULL, base);
 }

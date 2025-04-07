@@ -7,6 +7,7 @@
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_presentation_time.h>
+#include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/util/transform.h>
 #include "types/wlr_scene.h"
 
@@ -164,6 +165,24 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 	scene_buffer_unmark_client_buffer(scene_buffer);
 
 	if (surface->buffer) {
+		// If this is a buffer change, check if it's a single pixel buffer.
+		// Cache that so we can still apply rendering optimisations even when
+		// the original buffer has been freed after texture upload.
+		if (&surface->buffer->base != scene_buffer->buffer) {
+			scene_surface->is_single_pixel_buffer = false;
+			if (surface->buffer->source != NULL) {
+				struct wlr_single_pixel_buffer_v1 *single_pixel_buffer =
+					wlr_single_pixel_buffer_v1_try_from_buffer(surface->buffer->source);
+				if (single_pixel_buffer != NULL) {
+					scene_surface->is_single_pixel_buffer = true;
+					scene_surface->single_pixel_buffer_color[0] = single_pixel_buffer->r;
+					scene_surface->single_pixel_buffer_color[1] = single_pixel_buffer->g;
+					scene_surface->single_pixel_buffer_color[2] = single_pixel_buffer->b;
+					scene_surface->single_pixel_buffer_color[3] = single_pixel_buffer->a;
+				}
+			}
+		}
+
 		client_buffer_mark_next_can_damage(surface->buffer);
 
 		struct wlr_linux_drm_syncobj_surface_v1_state *syncobj_surface_state =
