@@ -7,7 +7,7 @@
 #include <wlr/util/log.h>
 #include "wlr-export-dmabuf-unstable-v1-protocol.h"
 
-#define EXPORT_DMABUF_MANAGER_VERSION 1
+#define EXPORT_DMABUF_MANAGER_VERSION 2
 
 
 static const struct zwlr_export_dmabuf_frame_v1_interface frame_impl;
@@ -32,6 +32,7 @@ static void frame_destroy(struct wlr_export_dmabuf_frame_v1 *frame) {
 	if (frame == NULL) {
 		return;
 	}
+	wlr_buffer_unlock(frame->buffer);
 	if (frame->output != NULL) {
 		wlr_output_lock_attach_render(frame->output, false);
 		if (frame->cursor_locked) {
@@ -90,7 +91,13 @@ static void frame_output_handle_commit(struct wl_listener *listener,
 	uint32_t tv_sec_lo = tv_sec & 0xFFFFFFFF;
 	zwlr_export_dmabuf_frame_v1_send_ready(frame->resource,
 		tv_sec_hi, tv_sec_lo, event->when.tv_nsec);
-	frame_destroy(frame);
+
+	uint32_t version = wl_resource_get_version(frame->resource);
+	if (version < 2) {
+		frame_destroy(frame);
+	} else {
+		frame->buffer = wlr_buffer_lock(event->state->buffer);
+	}
 }
 
 static void frame_output_handle_destroy(struct wl_listener *listener, void *data) {
