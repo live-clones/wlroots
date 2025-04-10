@@ -227,6 +227,14 @@ struct wlr_scene_output {
 		pixman_region32_t pending_commit_damage;
 
 		uint8_t index;
+
+		/**
+		 * When scanout is applicable, we increment this every time a frame is rendered until
+		 * DMABUF_FEEDBACK_DEBOUNCE_FRAMES is hit to debounce the scanout dmabuf feedback. Likewise,
+		 * when scanout is no longer applicable, we decrement this until zero is hit to debounce
+		 * composition dmabuf feedback.
+		 */
+		uint8_t dmabuf_feedback_debounce;
 		bool prev_scanout;
 
 		bool gamma_lut_changed;

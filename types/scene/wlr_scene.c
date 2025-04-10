@@ -26,7 +26,8 @@
 #include <wlr/xwayland/xwayland.h>
 #endif
 
-#define HIGHLIGHT_DAMAGE_FADEOUT_TIME 250
+#define DMABUF_FEEDBACK_DEBOUNCE_FRAMES  30
+#define HIGHLIGHT_DAMAGE_FADEOUT_TIME   250
 
 struct wlr_scene_tree *wlr_scene_tree_from_node(struct wlr_scene_node *node) {
 	assert(node->type == WLR_SCENE_NODE_TREE);
@@ -1330,7 +1331,6 @@ struct wlr_scene_node *wlr_scene_node_at(struct wlr_scene_node *node,
 
 struct render_list_entry {
 	struct wlr_scene_node *node;
-	bool sent_dmabuf_feedback;
 	bool highlight_transparent_region;
 	int x, y;
 };
@@ -1856,33 +1856,47 @@ static void scene_buffer_send_dmabuf_feedback(const struct wlr_scene *scene,
 	wlr_linux_dmabuf_feedback_v1_finish(&feedback);
 }
 
-static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
-		struct wlr_output_state *state, const struct render_data *data) {
+enum scene_direct_scanout_result {
+	// This scene node is not a candidate for scanout
+	SCANOUT_INELIGIBLE,
+
+	// This scene node is a candidate for scanout, but is currently
+	// incompatible due to e.g. buffer mismatch, and if possible we'd like to
+	// resolve this incompatibility.
+	SCANOUT_CANDIDATE,
+
+	// Scanout is successful.
+	SCANOUT_SUCCESS,
+};
+
+static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
+		struct render_list_entry *entry, struct wlr_output_state *state,
+		const struct render_data *data) {
 	struct wlr_scene_output *scene_output = data->output;
 	struct wlr_scene_node *node = entry->node;
 
 	if (!scene_output->scene->direct_scanout) {
-		return false;
+		return SCANOUT_INELIGIBLE;
 	}
 
 	if (node->type != WLR_SCENE_NODE_BUFFER) {
-		return false;
+		return SCANOUT_INELIGIBLE;
 	}
 
 	if (state->committed & (WLR_OUTPUT_STATE_MODE |
 			WLR_OUTPUT_STATE_ENABLED |
 			WLR_OUTPUT_STATE_RENDER_FORMAT)) {
 		// Legacy DRM will explode if we try to modeset with a direct scanout buffer
-		return false;
+		return SCANOUT_INELIGIBLE;
 	}
 
 	if (!wlr_output_is_direct_scanout_allowed(scene_output->output)) {
-		return false;
+		return SCANOUT_INELIGIBLE;
 	}
 
 	struct wlr_scene_buffer *buffer = wlr_scene_buffer_from_node(node);
 	if (buffer->buffer == NULL) {
-		return false;
+		return SCANOUT_INELIGIBLE;
 	}
 
 	// The native size of the buffer after any transform is applied
@@ -1895,23 +1909,26 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	};
 
 	if (buffer->transform != data->transform) {
-		return false;
+		return SCANOUT_INELIGIBLE;
 	}
 
-	if (buffer->primary_output == scene_output) {
+	// We want to ensure optimal buffer selection, but as direct-scanout can be enabled and disabled
+	// on a frame-by-frame basis, we wait for a few frames to send the new format recommendations.
+	// Maybe we should only send feedback in this case if tests fail.
+	if (scene_output->dmabuf_feedback_debounce >= DMABUF_FEEDBACK_DEBOUNCE_FRAMES
+			&& buffer->primary_output == scene_output) {
 		struct wlr_linux_dmabuf_feedback_v1_init_options options = {
 			.main_renderer = scene_output->output->renderer,
 			.scanout_primary_output = scene_output->output,
 		};
 
 		scene_buffer_send_dmabuf_feedback(scene_output->scene, buffer, &options);
-		entry->sent_dmabuf_feedback = true;
 	}
 
 	struct wlr_output_state pending;
 	wlr_output_state_init(&pending);
 	if (!wlr_output_state_copy(&pending, state)) {
-		return false;
+		return SCANOUT_CANDIDATE;
 	}
 
 	if (!wlr_fbox_empty(&buffer->src_box) &&
@@ -1936,10 +1953,9 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 	if (buffer->wait_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(&pending, buffer->wait_timeline, buffer->wait_point);
 	}
-
 	if (!wlr_output_test_state(scene_output->output, &pending)) {
 		wlr_output_state_finish(&pending);
-		return false;
+		return SCANOUT_CANDIDATE;
 	}
 
 	wlr_output_state_copy(state, &pending);
@@ -1950,7 +1966,7 @@ static bool scene_entry_try_direct_scanout(struct render_list_entry *entry,
 		.direct_scanout = true,
 	};
 	wl_signal_emit_mutable(&buffer->events.output_sample, &sample_event);
-	return true;
+	return SCANOUT_SUCCESS;
 }
 
 bool wlr_scene_output_needs_frame(struct wlr_scene_output *scene_output) {
@@ -2133,17 +2149,31 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	// - There is only one entry in the render list
 	// - There are no color transforms that need to be applied
 	// - Damage highlight debugging is not enabled
-	bool scanout = options->color_transform == NULL &&
-		list_len == 1 && debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT &&
-		scene_entry_try_direct_scanout(&list_data[0], state, &render_data);
+	enum scene_direct_scanout_result scanout = SCANOUT_INELIGIBLE;
+	if (options->color_transform == NULL && list_len == 1
+			&& debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
+		scanout = scene_entry_try_direct_scanout(&list_data[0], state, &render_data);
+	}
 
+	if (scanout == SCANOUT_INELIGIBLE) {
+		if (scene_output->dmabuf_feedback_debounce > 0) {
+			// We cannot scan out, so count down towards sending composition dmabuf feedback
+			scene_output->dmabuf_feedback_debounce--;
+		}
+	} else if (scene_output->dmabuf_feedback_debounce < DMABUF_FEEDBACK_DEBOUNCE_FRAMES) {
+		// We either want to scan out or successfully scanned out, so count up towards sending
+		// scanout dmabuf feedback
+		scene_output->dmabuf_feedback_debounce++;
+	}
+
+	bool scanout_success = scanout == SCANOUT_SUCCESS;
 	if (scene_output->prev_scanout != scanout) {
 		scene_output->prev_scanout = scanout;
 		wlr_log(WLR_DEBUG, "Direct scan-out %s",
 			scanout ? "enabled" : "disabled");
 	}
 
-	if (scanout) {
+	if (scanout_success) {
 		scene_output_state_attempt_gamma(scene_output, state);
 
 		if (timer) {
@@ -2249,7 +2279,11 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		if (entry->node->type == WLR_SCENE_NODE_BUFFER) {
 			struct wlr_scene_buffer *buffer = wlr_scene_buffer_from_node(entry->node);
 
-			if (buffer->primary_output == scene_output && !entry->sent_dmabuf_feedback) {
+			// Direct scanout counts up to DMABUF_FEEDBACK_DEBOUNCE_FRAMES before sending new dmabuf
+			// feedback, and on composition we wait until it hits zero again. If we knew that an
+			// entry could never be a scanout candidate, we could send feedback to it
+			// unconditionally without debounce, but for now it is all or nothing
+			if (scene_output->dmabuf_feedback_debounce == 0 && buffer->primary_output == scene_output) {
 				struct wlr_linux_dmabuf_feedback_v1_init_options options = {
 					.main_renderer = output->renderer,
 					.scanout_primary_output = NULL,
