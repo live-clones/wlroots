@@ -228,6 +228,7 @@ struct wlr_scene_output {
 
 		uint8_t index;
 		bool prev_scanout;
+		int scanout_debounce;
 
 		bool gamma_lut_changed;
 		struct wlr_gamma_control_v1 *gamma_lut;

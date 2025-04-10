@@ -27,6 +27,7 @@
 #endif
 
 #define HIGHLIGHT_DAMAGE_FADEOUT_TIME 250
+#define SCANOUT_DEBOUNCE_FRAMES       20
 
 struct wlr_scene_tree *wlr_scene_tree_from_node(struct wlr_scene_node *node) {
 	assert(node->type == WLR_SCENE_NODE_TREE);
@@ -2133,6 +2134,17 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	// - There is only one entry in the render list
 	// - There are no color transforms that need to be applied
 	// - Damage highlight debugging is not enabled
+	// - We have not failed scanout recently
+	if (scene_output->scanout_debounce > 0) {
+		if (!wlr_output_is_direct_scanout_allowed(scene_output->output)) {
+			// Locks are held, reset the debounce
+			scene_output->scanout_debounce = SCANOUT_DEBOUNCE_FRAMES;
+		} else {
+			scene_output->scanout_debounce--;
+		}
+		goto skip_scanout;
+	}
+
 	bool scanout = options->color_transform == NULL &&
 		list_len == 1 && debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT &&
 		scene_entry_try_direct_scanout(&list_data[0], state, &render_data);
@@ -2141,6 +2153,10 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		scene_output->prev_scanout = scanout;
 		wlr_log(WLR_DEBUG, "Direct scan-out %s",
 			scanout ? "enabled" : "disabled");
+		if (!scanout) {
+			// Lock out scanout for a bit
+			scene_output->scanout_debounce = SCANOUT_DEBOUNCE_FRAMES;
+		}
 	}
 
 	if (scanout) {
@@ -2154,6 +2170,8 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		}
 		return true;
 	}
+
+skip_scanout:;
 
 	struct wlr_swapchain *swapchain = options->swapchain;
 	if (!swapchain) {
