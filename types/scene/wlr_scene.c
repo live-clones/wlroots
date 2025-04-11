@@ -875,6 +875,28 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
 			scene_buffer->buffer_height != buffer->height;
 	}
 
+	// If this is a buffer change, check if it's a single pixel buffer.
+	// Cache that so we can still apply rendering optimisations even when
+	// the original buffer has been freed after texture upload.
+	if (buffer != scene_buffer->buffer) {
+		scene_buffer->is_single_pixel_buffer = false;
+		struct wlr_client_buffer *client_buffer = NULL;
+		if (buffer != NULL) {
+			client_buffer = wlr_client_buffer_get(buffer);
+		}
+		if (client_buffer != NULL && client_buffer->source != NULL) {
+			struct wlr_single_pixel_buffer_v1 *single_pixel_buffer =
+				wlr_single_pixel_buffer_v1_try_from_buffer(client_buffer->source);
+			if (single_pixel_buffer != NULL) {
+				scene_buffer->is_single_pixel_buffer = true;
+				scene_buffer->single_pixel_buffer_color[0] = single_pixel_buffer->r;
+				scene_buffer->single_pixel_buffer_color[1] = single_pixel_buffer->g;
+				scene_buffer->single_pixel_buffer_color[2] = single_pixel_buffer->b;
+				scene_buffer->single_pixel_buffer_color[3] = single_pixel_buffer->a;
+			}
+		}
+	}
+
 	scene_buffer_set_buffer(scene_buffer, buffer);
 	scene_buffer_set_texture(scene_buffer, NULL);
 	scene_buffer_set_wait_timeline(scene_buffer,
@@ -1386,17 +1408,15 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	case WLR_SCENE_NODE_BUFFER:;
 		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
 
-		struct wlr_scene_surface *scene_surface =
-			wlr_scene_surface_try_from_buffer(scene_buffer);
-		if (scene_surface != NULL && scene_surface->is_single_pixel_buffer) {
+		if (scene_buffer->is_single_pixel_buffer) {
 			// Render the buffer as a rect, this is likely to be more efficient
 			wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
 				.box = dst_box,
 				.color = {
-					.r = (float)scene_surface->single_pixel_buffer_color[0] / (float)UINT32_MAX,
-					.g = (float)scene_surface->single_pixel_buffer_color[1] / (float)UINT32_MAX,
-					.b = (float)scene_surface->single_pixel_buffer_color[2] / (float)UINT32_MAX,
-					.a = (float)scene_surface->single_pixel_buffer_color[3] /
+					.r = (float)scene_buffer->single_pixel_buffer_color[0] / (float)UINT32_MAX,
+					.g = (float)scene_buffer->single_pixel_buffer_color[1] / (float)UINT32_MAX,
+					.b = (float)scene_buffer->single_pixel_buffer_color[2] / (float)UINT32_MAX,
+					.a = (float)scene_buffer->single_pixel_buffer_color[3] /
 						(float)UINT32_MAX * scene_buffer->opacity,
 				},
 				.clip = &render_region,
@@ -1755,14 +1775,11 @@ struct render_list_constructor_data {
 };
 
 static bool scene_buffer_is_black_opaque(struct wlr_scene_buffer *scene_buffer) {
-	struct wlr_scene_surface *scene_surface =
-		wlr_scene_surface_try_from_buffer(scene_buffer);
-	return scene_surface != NULL &&
-		scene_surface->is_single_pixel_buffer &&
-		scene_surface->single_pixel_buffer_color[0] == 0 &&
-		scene_surface->single_pixel_buffer_color[1] == 0 &&
-		scene_surface->single_pixel_buffer_color[2] == 0 &&
-		scene_surface->single_pixel_buffer_color[3] == UINT32_MAX &&
+	return scene_buffer->is_single_pixel_buffer &&
+		scene_buffer->single_pixel_buffer_color[0] == 0 &&
+		scene_buffer->single_pixel_buffer_color[1] == 0 &&
+		scene_buffer->single_pixel_buffer_color[2] == 0 &&
+		scene_buffer->single_pixel_buffer_color[3] == UINT32_MAX &&
 		scene_buffer->opacity == 1.0;
 }
 
