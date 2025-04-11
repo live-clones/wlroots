@@ -40,13 +40,15 @@ static const struct xdg_system_bell_v1_interface bell_impl = {
 
 static void bell_bind(struct wl_client *client, void *data,
 		uint32_t version, uint32_t id) {
+	struct wlr_xdg_system_bell_v1 *bell = data;
+
 	struct wl_resource *resource = wl_resource_create(client,
 		&xdg_system_bell_v1_interface, version, id);
 	if (resource == NULL) {
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wl_resource_set_implementation(resource, &bell_impl, NULL, NULL);
+	wl_resource_set_implementation(resource, &bell_impl, bell, NULL);
 }
 
 static void handle_display_destroy(struct wl_listener *listener, void *data) {
@@ -71,7 +73,7 @@ struct wlr_xdg_system_bell_v1 *wlr_xdg_system_bell_v1_create(struct wl_display *
 	}
 
 	bell->global = wl_global_create(display, &xdg_system_bell_v1_interface,
-		version, NULL, bell_bind);
+		version, bell, bell_bind);
 	if (bell->global == NULL) {
 		free(bell);
 		return NULL;
