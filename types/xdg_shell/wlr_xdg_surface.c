@@ -262,6 +262,10 @@ static void update_geometry(struct wlr_xdg_surface *surface) {
 			wlr_surface_get_extents(surface->surface, &surface->geometry);
 			wlr_box_intersection(&surface->geometry,
 				&surface->current.geometry, &surface->geometry);
+			if (wlr_box_empty(&surface->geometry)) {
+				wl_resource_post_error(surface->resource, XDG_SURFACE_ERROR_INVALID_SIZE,
+					"the effective window geometry is empty");
+			}
 		}
 	} else {
 		wlr_surface_get_extents(surface->surface, &surface->geometry);
@@ -332,10 +336,10 @@ static void xdg_surface_role_commit(struct wlr_surface *wlr_surface) {
 		break;
 	}
 
-	if (wlr_surface->mapped) {
-		update_geometry(surface);
-	} else if (wlr_surface_has_buffer(wlr_surface)) {
+	if (!wlr_surface->mapped && wlr_surface_has_buffer(wlr_surface)) {
 		wlr_surface_map(wlr_surface);
+	} else {
+		update_geometry(surface);
 	}
 }
 
