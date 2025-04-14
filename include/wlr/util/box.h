@@ -62,6 +62,14 @@ bool wlr_box_intersection(struct wlr_box *dest, const struct wlr_box *box_a,
 	const struct wlr_box *box_b);
 
 /**
+ * Gives the intersecting box between two struct wlr_fbox.
+ *
+ * Returns an empty box if the provided boxes don't intersect.
+ */
+bool wlr_fbox_intersection(struct wlr_fbox *dest, const struct wlr_fbox *box_a,
+	const struct wlr_fbox *box_b);
+
+/**
  * Verifies if a point is contained within the bounds of a given struct wlr_box.
  *
  * For example:
