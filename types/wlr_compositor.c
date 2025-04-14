@@ -1185,31 +1185,72 @@ struct bound_acc {
 	int32_t max_x, max_y;
 };
 
-static void handle_bounding_box_surface(struct wlr_surface *surface,
-		int x, int y, void *data) {
-	struct bound_acc *acc = data;
+static void surface_state_get_extents(const struct wlr_surface_state *state, int x, int y,
+		struct bound_acc *acc);
+
+static void subsurface_state_get_extents(struct wlr_subsurface_parent_state *sub_state,
+		int x, int y, struct bound_acc *acc) {
+	struct wlr_subsurface *subsurface =
+		wl_container_of(sub_state->synced, subsurface, parent_synced);
+
+	// This is somewhat hacky but should be correct
+
+	struct wlr_surface_state *sub_surface_state = NULL;
+	if (sub_state->has_cache) {
+		// Note: states with locks before the one locked by the subsurface are ignored as it is
+		// assumed the whole tree is updated at the same time even if that's not what we have now
+		struct wlr_surface_state *iter;
+		wl_list_for_each(iter, &subsurface->surface->cached, cached_state_link) {
+			// Find the last state that will be applied if the cached state is unlocked
+			if (sub_surface_state != NULL) {
+				if (iter->cached_state_locks > 0) {
+					break;
+				}
+				sub_surface_state = iter;
+			} else if (iter->seq == sub_state->cached_seq) {
+				sub_surface_state = iter;
+			}
+		}
+		assert(sub_surface_state != NULL);
+	} else {
+		sub_surface_state = &subsurface->surface->current;
+	}
+
+	surface_state_get_extents(sub_surface_state, x + sub_state->x, y + sub_state->y, acc);
+}
+
+static void surface_state_get_extents(const struct wlr_surface_state *state, int x, int y,
+		struct bound_acc *acc) {
+	if (!wlr_surface_state_has_buffer(state)) {
+		return;
+	}
 
 	acc->min_x = min(x, acc->min_x);
 	acc->min_y = min(y, acc->min_y);
+	acc->max_x = max(x + state->width, acc->max_x);
+	acc->max_y = max(y + state->height, acc->max_y);
 
-	acc->max_x = max(x + surface->current.width, acc->max_x);
-	acc->max_y = max(y + surface->current.height, acc->max_y);
+	struct wlr_subsurface_parent_state *sub_state;
+	wl_list_for_each(sub_state, &state->subsurfaces_below, link) {
+		subsurface_state_get_extents(sub_state, x, y, acc);
+	}
+	wl_list_for_each(sub_state, &state->subsurfaces_above, link) {
+		subsurface_state_get_extents(sub_state, x, y, acc);
+	}
 }
 
-void wlr_surface_get_extents(struct wlr_surface *surface, struct wlr_box *box) {
-	struct bound_acc acc = {
-		.min_x = 0,
-		.min_y = 0,
-		.max_x = surface->current.width,
-		.max_y = surface->current.height,
-	};
-
-	wlr_surface_for_each_surface(surface, handle_bounding_box_surface, &acc);
+void wlr_surface_state_get_extents(const struct wlr_surface_state *state, struct wlr_box *box) {
+	struct bound_acc acc = {0};
+	surface_state_get_extents(state, 0, 0, &acc);
 
 	box->x = acc.min_x;
 	box->y = acc.min_y;
 	box->width = acc.max_x - acc.min_x;
 	box->height = acc.max_y - acc.min_y;
+}
+
+void wlr_surface_get_extents(struct wlr_surface *surface, struct wlr_box *box) {
+	wlr_surface_state_get_extents(&surface->current, box);
 }
 
 static void crop_region(pixman_region32_t *dst, pixman_region32_t *src,
