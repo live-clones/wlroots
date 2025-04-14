@@ -122,6 +122,17 @@ bool wlr_box_contains_box(const struct wlr_box *bigger, const struct wlr_box *sm
 		smaller->y + smaller->height <= bigger->y + bigger->height;
 }
 
+bool wlr_fbox_contains_box(const struct wlr_fbox *bigger, const struct wlr_fbox *smaller) {
+	if (wlr_fbox_empty(bigger) || wlr_fbox_empty(smaller)) {
+		return false;
+	}
+
+	return smaller->x >= bigger->x &&
+		smaller->x + smaller->width <= bigger->x + bigger->width &&
+		smaller->y >= bigger->y &&
+		smaller->y + smaller->height <= bigger->y + bigger->height;
+}
+
 void wlr_box_transform(struct wlr_box *dest, const struct wlr_box *box,
 		enum wl_output_transform transform, int width, int height) {
 	struct wlr_box src = {0};
