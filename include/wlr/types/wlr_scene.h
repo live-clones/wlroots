@@ -143,7 +143,7 @@ struct wlr_scene_surface {
 /** A scene-graph node displaying a solid-colored rectangle */
 struct wlr_scene_rect {
 	struct wlr_scene_node node;
-	int width, height;
+	double width, height;
 	float color[4];
 };
 
@@ -453,12 +453,12 @@ void wlr_scene_surface_send_frame_done(struct wlr_scene_surface *scene_surface,
  * The color argument must be a premultiplied color value.
  */
 struct wlr_scene_rect *wlr_scene_rect_create(struct wlr_scene_tree *parent,
-		int width, int height, const float color[static 4]);
+		double width, double height, const float color[static 4]);
 
 /**
  * Change the width and height of an existing rectangle node.
  */
-void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, int width, int height);
+void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, double width, double height);
 
 /**
  * Change the color of an existing rectangle node.
