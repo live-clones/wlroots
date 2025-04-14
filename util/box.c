@@ -130,6 +130,17 @@ bool wlr_box_contains_box(const struct wlr_box *bigger, const struct wlr_box *sm
 		smaller->y + smaller->height <= bigger->y + bigger->height;
 }
 
+bool wlr_fbox_contains_box(const struct wlr_fbox *bigger, const struct wlr_fbox *smaller) {
+	if (wlr_fbox_empty(bigger) || wlr_fbox_empty(smaller)) {
+		return false;
+	}
+
+	return smaller->x >= bigger->x &&
+		smaller->x + smaller->width <= bigger->x + bigger->width &&
+		smaller->y >= bigger->y &&
+		smaller->y + smaller->height <= bigger->y + bigger->height;
+}
+
 bool wlr_box_intersects(const struct wlr_box *a, const struct wlr_box *b) {
 	if (wlr_box_empty(a) || wlr_box_empty(b)) {
 		return false;
