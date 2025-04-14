@@ -2166,13 +2166,13 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	// - There is only one entry in the render list
 	// - There are no color transforms that need to be applied
 	// - Damage highlight debugging is not enabled
-	enum scene_direct_scanout_result scanout = SCANOUT_INELIGIBLE;
+	enum scene_direct_scanout_result scanout_result = SCANOUT_INELIGIBLE;
 	if (options->color_transform == NULL && list_len == 1
 			&& debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
-		scanout = scene_entry_try_direct_scanout(&list_data[0], state, &render_data);
+		scanout_result = scene_entry_try_direct_scanout(&list_data[0], state, &render_data);
 	}
 
-	if (scanout == SCANOUT_INELIGIBLE) {
+	if (scanout_result == SCANOUT_INELIGIBLE) {
 		if (scene_output->dmabuf_feedback_debounce > 0) {
 			// We cannot scan out, so count down towards sending composition dmabuf feedback
 			scene_output->dmabuf_feedback_debounce--;
@@ -2183,14 +2183,14 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		scene_output->dmabuf_feedback_debounce++;
 	}
 
-	bool scanout_success = scanout == SCANOUT_SUCCESS;
+	bool scanout = scanout_result == SCANOUT_SUCCESS;
 	if (scene_output->prev_scanout != scanout) {
 		scene_output->prev_scanout = scanout;
 		wlr_log(WLR_DEBUG, "Direct scan-out %s",
 			scanout ? "enabled" : "disabled");
 	}
 
-	if (scanout_success) {
+	if (scanout) {
 		scene_output_state_attempt_gamma(scene_output, state);
 
 		if (timer) {
