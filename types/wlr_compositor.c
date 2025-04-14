@@ -725,12 +725,6 @@ static void surface_destroy_role_object(struct wlr_surface *surface);
 static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	struct wlr_surface *surface = wlr_surface_from_resource(resource);
 
-	struct wlr_surface_output *surface_output, *surface_output_tmp;
-	wl_list_for_each_safe(surface_output, surface_output_tmp,
-			&surface->current_outputs, link) {
-		surface_output_destroy(surface_output);
-	}
-
 	surface_destroy_role_object(surface);
 
 	wl_signal_emit_mutable(&surface->events.destroy, surface);
@@ -762,6 +756,13 @@ static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	if (surface->buffer != NULL) {
 		wlr_buffer_unlock(&surface->buffer->base);
 	}
+
+	struct wlr_surface_output *surface_output, *surface_output_tmp;
+	wl_list_for_each_safe(surface_output, surface_output_tmp,
+			&surface->current_outputs, link) {
+		surface_output_destroy(surface_output);
+	}
+
 	free(surface);
 }
 
