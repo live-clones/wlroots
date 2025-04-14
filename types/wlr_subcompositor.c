@@ -22,13 +22,17 @@ static bool subsurface_is_synchronized(struct wlr_subsurface *subsurface) {
 	return false;
 }
 
+static void subsurface_state_unlock_cached(struct wlr_subsurface_parent_state *state) {
+	if (state->has_cache) {
+		assert(state->surface != NULL);
+		state->has_cache = false;
+		wlr_surface_unlock_cached(state->surface, state->cached_seq);
+	}
+}
+
 static const struct wl_subsurface_interface subsurface_implementation;
 
 static void subsurface_destroy(struct wlr_subsurface *subsurface) {
-	if (subsurface->has_cache) {
-		wlr_surface_unlock_cached(subsurface->surface, subsurface->cached_seq);
-	}
-
 	wlr_surface_unmap(subsurface->surface);
 
 	wl_signal_emit_mutable(&subsurface->events.destroy, subsurface);
@@ -172,11 +176,8 @@ static void subsurface_handle_set_desync(struct wl_client *client,
 	if (subsurface->synchronized) {
 		subsurface->synchronized = false;
 
-		if (!subsurface_is_synchronized(subsurface) &&
-				subsurface->has_cache) {
-			wlr_surface_unlock_cached(subsurface->surface,
-				subsurface->cached_seq);
-			subsurface->has_cache = false;
+		if (!subsurface_is_synchronized(subsurface)) {
+			subsurface_state_unlock_cached(&subsurface->pending);
 		}
 	}
 }
@@ -230,6 +231,7 @@ static void surface_synced_init_state(void *_state) {
 
 static void surface_synced_finish_state(void *_state) {
 	struct wlr_subsurface_parent_state *state = _state;
+	subsurface_state_unlock_cached(state);
 	wl_list_remove(&state->link);
 }
 
@@ -237,7 +239,15 @@ static void surface_synced_move_state(void *_dst, void *_src) {
 	struct wlr_subsurface_parent_state *dst = _dst, *src = _src;
 	dst->x = src->x;
 	dst->y = src->y;
+
 	dst->synced = src->synced;
+	dst->surface = src->surface;
+
+	subsurface_state_unlock_cached(dst);
+
+	dst->has_cache = src->has_cache;
+	dst->cached_seq = src->cached_seq;
+	src->has_cache = false;
 
 	// For the sake of simplicity, copying the position in list is done by the
 	// parent itself
@@ -266,23 +276,21 @@ static void subsurface_handle_surface_client_commit(
 	struct wlr_surface *surface = subsurface->surface;
 
 	if (subsurface_is_synchronized(subsurface)) {
-		if (subsurface->has_cache) {
+		if (subsurface->pending.has_cache) {
 			// We already lock a previous commit. The prevents any future
 			// commit to be applied before we release the previous commit.
 			return;
 		}
-		subsurface->has_cache = true;
-		subsurface->cached_seq = wlr_surface_lock_pending(surface);
-	} else if (subsurface->has_cache) {
-		wlr_surface_unlock_cached(surface, subsurface->cached_seq);
-		subsurface->has_cache = false;
+		subsurface->pending.has_cache = true;
+		subsurface->pending.cached_seq = wlr_surface_lock_pending(surface);
+	} else {
+		subsurface_state_unlock_cached(&subsurface->pending);
 	}
 }
 
 void subsurface_handle_parent_commit(struct wlr_subsurface *subsurface) {
-	if (subsurface->synchronized && subsurface->has_cache) {
-		wlr_surface_unlock_cached(subsurface->surface, subsurface->cached_seq);
-		subsurface->has_cache = false;
+	if (subsurface->synchronized) {
+		subsurface_state_unlock_cached(&subsurface->current);
 	}
 
 	if (!subsurface->added) {
@@ -357,13 +365,16 @@ static void subcompositor_handle_get_subsurface(struct wl_client *client,
 	// iterate over the list of sub-surfaces from a struct wlr_surface_state.
 	// Store a pointer to struct wlr_surface_synced to facilitate this.
 	subsurface->pending.synced = &subsurface->parent_synced;
+	subsurface->pending.surface = surface;
 	subsurface->current.synced = &subsurface->parent_synced;
+	subsurface->current.surface = surface;
 
 	struct wlr_surface_state *cached;
 	wl_list_for_each(cached, &parent->cached, cached_state_link) {
 		struct wlr_subsurface_parent_state *sub_state =
 			wlr_surface_synced_get_state(&subsurface->parent_synced, cached);
 		sub_state->synced = &subsurface->parent_synced;
+		sub_state->surface = surface;
 	}
 
 	wlr_surface_set_role_object(surface, subsurface->resource);
