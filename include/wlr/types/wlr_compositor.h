@@ -410,8 +410,15 @@ void wlr_surface_send_frame_done(struct wlr_surface *surface,
 
 /**
  * Get the bounding box that contains the surface and all subsurfaces in
+ * surface coordinates at a specific state.
+ * x and y may be negative, if there are subsurfaces with negative position.
+ */
+void wlr_surface_state_get_extents(const struct wlr_surface_state *state, struct wlr_box *box);
+
+/**
+ * Get the bounding box that contains the surface and all subsurfaces in
  * surface coordinates.
- * X and y may be negative, if there are subsurfaces with negative position.
+ * x and y may be negative, if there are subsurfaces with negative position.
  */
 void wlr_surface_get_extents(struct wlr_surface *surface, struct wlr_box *box);
 

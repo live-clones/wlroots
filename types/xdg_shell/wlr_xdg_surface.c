@@ -253,25 +253,6 @@ static const struct xdg_surface_interface xdg_surface_implementation = {
 	.set_window_geometry = xdg_surface_handle_set_window_geometry,
 };
 
-// The window geometry is updated on commit, unless the commit is going to map
-// the surface, in which case it's updated on map, so that subsurfaces are
-// mapped and surface extents are computed correctly.
-static void update_geometry(struct wlr_xdg_surface *surface) {
-	if (!wlr_box_empty(&surface->current.geometry)) {
-		if ((surface->current.committed & WLR_XDG_SURFACE_STATE_WINDOW_GEOMETRY) != 0) {
-			wlr_surface_get_extents(surface->surface, &surface->geometry);
-			wlr_box_intersection(&surface->geometry,
-				&surface->current.geometry, &surface->geometry);
-			if (wlr_box_empty(&surface->geometry)) {
-				wl_resource_post_error(surface->resource, XDG_SURFACE_ERROR_INVALID_SIZE,
-					"the effective window geometry is empty");
-			}
-		}
-	} else {
-		wlr_surface_get_extents(surface->surface, &surface->geometry);
-	}
-}
-
 static void xdg_surface_role_client_commit(struct wlr_surface *wlr_surface) {
 	struct wlr_xdg_surface *surface = wlr_xdg_surface_try_from_wlr_surface(wlr_surface);
 	assert(surface != NULL);
@@ -286,6 +267,23 @@ static void xdg_surface_role_client_commit(struct wlr_surface *wlr_surface) {
 		wlr_surface_reject_pending(wlr_surface, surface->resource,
 			XDG_SURFACE_ERROR_NOT_CONSTRUCTED, "xdg_surface must have a role object");
 		return;
+	}
+
+	if ((surface->pending.committed & WLR_XDG_SURFACE_STATE_WINDOW_GEOMETRY) != 0) {
+		struct wlr_box extents;
+		wlr_surface_state_get_extents(&wlr_surface->pending, &extents);
+		wlr_box_intersection(&surface->pending.geometry, &surface->pending.geometry, &extents);
+		if (wlr_box_empty(&surface->pending.geometry)) {
+			wlr_surface_reject_pending(wlr_surface, surface->resource,
+				XDG_SURFACE_ERROR_INVALID_SIZE, "the effective window geometry is empty");
+			return;
+		}
+
+		surface->has_geometry = true;
+	}
+
+	if (!surface->has_geometry) {
+		wlr_surface_state_get_extents(&wlr_surface->pending, &surface->pending.geometry);
 	}
 
 	switch (surface->role) {
@@ -336,18 +334,11 @@ static void xdg_surface_role_commit(struct wlr_surface *wlr_surface) {
 		break;
 	}
 
-	if (!wlr_surface->mapped && wlr_surface_has_buffer(wlr_surface)) {
+	surface->geometry = surface->current.geometry;
+
+	if (wlr_surface_has_buffer(wlr_surface)) {
 		wlr_surface_map(wlr_surface);
-	} else {
-		update_geometry(surface);
 	}
-}
-
-static void xdg_surface_role_map(struct wlr_surface *wlr_surface) {
-	struct wlr_xdg_surface *surface = wlr_xdg_surface_try_from_wlr_surface(wlr_surface);
-	assert(surface != NULL);
-
-	update_geometry(surface);
 }
 
 static void xdg_surface_role_destroy(struct wlr_surface *wlr_surface) {
@@ -364,7 +355,6 @@ static const struct wlr_surface_role xdg_surface_role = {
 	.name = "xdg_surface",
 	.client_commit = xdg_surface_role_client_commit,
 	.commit = xdg_surface_role_commit,
-	.map = xdg_surface_role_map,
 	.destroy = xdg_surface_role_destroy,
 };
 

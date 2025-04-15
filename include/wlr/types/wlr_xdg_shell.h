@@ -317,6 +317,8 @@ struct wlr_xdg_surface {
 		struct wlr_surface_synced synced;
 
 		struct wl_listener role_resource_destroy;
+
+		bool has_geometry;
 	} WLR_PRIVATE;
 };
 
