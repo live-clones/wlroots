@@ -1,7 +1,5 @@
 #include <assert.h>
-#include <errno.h>
 #include <fcntl.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdlib.h>
@@ -14,7 +12,6 @@
 #include <wlr/util/log.h>
 #include <wlr/xwayland/shell.h>
 #include <wlr/xwayland/xwayland.h>
-#include "sockets.h"
 #include "xwayland/xwm.h"
 
 struct wlr_xwayland_cursor {

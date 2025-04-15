@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -12,7 +11,6 @@
 #include <wlr/config.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/util/log.h>
-#include "backend/multi.h"
 #include "types/wlr_output.h"
 #include "util/env.h"
 #include "util/time.h"

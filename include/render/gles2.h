@@ -5,7 +5,6 @@
 #include <GLES2/gl2ext.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 #include <time.h>
 #include <wlr/render/egl.h>
 #include <wlr/render/gles2.h>

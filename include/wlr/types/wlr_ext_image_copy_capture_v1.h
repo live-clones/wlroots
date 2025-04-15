@@ -9,9 +9,12 @@
 #ifndef WLR_TYPES_WLR_EXT_IMAGE_COPY_CAPTURE_V1_H
 #define WLR_TYPES_WLR_EXT_IMAGE_COPY_CAPTURE_V1_H
 
+#include <pixman.h>
 #include <wayland-server.h>
 #include <time.h>
 #include "ext-image-copy-capture-v1-protocol.h"
+
+struct wlr_renderer;
 
 struct wlr_ext_image_copy_capture_manager_v1 {
 	struct wl_global *global;

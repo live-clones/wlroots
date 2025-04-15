@@ -13,6 +13,7 @@
 
 struct wlr_backend;
 struct wlr_backend_output_state;
+struct wlr_output;
 
 /**
  * Helper to allocate swapchains for mode-setting.

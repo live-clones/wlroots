@@ -25,7 +25,6 @@
 #include <wlr/render/vulkan.h>
 #endif // WLR_HAS_VULKAN_RENDERER
 
-#include "render/pixel_format.h"
 #include "render/wlr_renderer.h"
 #include "util/env.h"
 

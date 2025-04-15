@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -9,7 +10,6 @@
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 #include "input-method-unstable-v2-protocol.h"
-#include "util/shm.h"
 
 // Note: zwp_input_popup_surface_v2 and zwp_input_method_keyboard_grab_v2 objects
 // become inert when the corresponding zwp_input_method_v2 is destroyed

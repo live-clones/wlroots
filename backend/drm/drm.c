@@ -1,7 +1,6 @@
 #include <assert.h>
 #include <drm_fourcc.h>
 #include <drm_mode.h>
-#include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdint.h>
@@ -25,9 +24,6 @@
 #include "backend/drm/fb.h"
 #include "backend/drm/iface.h"
 #include "backend/drm/util.h"
-#include "render/pixel_format.h"
-#include "render/drm_format_set.h"
-#include "render/wlr_renderer.h"
 #include "types/wlr_output.h"
 #include "util/env.h"
 #include "config.h"

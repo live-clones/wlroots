@@ -2,6 +2,10 @@
 #define BACKEND_DRM_FB_H
 
 #include <stdbool.h>
+#include <stdint.h>
+#include <wlr/util/addon.h>
+
+struct wlr_drm_format_set;
 
 struct wlr_drm_fb {
 	struct wlr_buffer *wlr_buf;

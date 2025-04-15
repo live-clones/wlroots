@@ -9,7 +9,6 @@
 #ifndef WLR_TYPES_WLR_INPUT_METHOD_V2_H
 #define WLR_TYPES_WLR_INPUT_METHOD_V2_H
 #include <stdint.h>
-#include <stdlib.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/box.h>

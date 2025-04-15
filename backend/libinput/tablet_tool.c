@@ -6,6 +6,7 @@
 #include <wlr/interfaces/wlr_tablet_tool.h>
 #include <wlr/util/log.h>
 #include "backend/libinput.h"
+#include "config.h"
 
 struct tablet_tool {
 	struct wlr_tablet_tool wlr_tool;
