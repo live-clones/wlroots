@@ -85,7 +85,7 @@ struct wlr_output *wlr_output_layout_output_at(
  * already a part of the output layout, it will become manually configured and
  * will be moved to the specified coordinates.
  *
- * Returns true on success, false on a memory allocation error.
+ * Returns the output's output layout, or NULL on error.
  */
 struct wlr_output_layout_output *wlr_output_layout_add(struct wlr_output_layout *layout,
 	struct wlr_output *output, int lx, int ly);
@@ -97,7 +97,7 @@ struct wlr_output_layout_output *wlr_output_layout_add(struct wlr_output_layout 
  * changes. If the output is already a part of the layout, it will become
  * automatically configured.
  *
- * Returns true on success, false on a memory allocation error.
+ * Returns the output's output layout, or NULL on error.
  */
 struct wlr_output_layout_output *wlr_output_layout_add_auto(struct wlr_output_layout *layout,
 	struct wlr_output *output);
