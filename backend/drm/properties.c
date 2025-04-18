@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <wlr/util/log.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -79,14 +80,14 @@ static bool scan_properties(int fd, uint32_t id, uint32_t type, uint32_t *result
 		const struct prop_info *info, size_t info_len) {
 	drmModeObjectProperties *props = drmModeObjectGetProperties(fd, id, type);
 	if (!props) {
-		wlr_log_errno(WLR_ERROR, "Failed to get DRM object properties");
+		wlr_log_errno(WLR_ERROR, "Failed to get DRM object %" PRIu32 " properties", id);
 		return false;
 	}
 
 	for (uint32_t i = 0; i < props->count_props; ++i) {
 		drmModePropertyRes *prop = drmModeGetProperty(fd, props->props[i]);
 		if (!prop) {
-			wlr_log_errno(WLR_ERROR, "Failed to get DRM object property");
+			wlr_log_errno(WLR_ERROR, "Failed to get property %" PRIu32 " of DRM object %" PRIu32, props->props[i], id);
 			continue;
 		}
 
