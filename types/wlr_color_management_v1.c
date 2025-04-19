@@ -371,9 +371,25 @@ static void surface_feedback_handle_get_preferred(struct wl_client *client,
 		surface_feedback_resource, id, &surface_feedback->data, true);
 }
 
+static void surface_feedback_handle_get_preferred_parametric(struct wl_client *client,
+		struct wl_resource *surface_feedback_resource, uint32_t id) {
+	struct wlr_color_management_surface_feedback_v1 *surface_feedback =
+		surface_feedback_from_resource(surface_feedback_resource);
+	if (surface_feedback == NULL) {
+		wl_resource_post_error(surface_feedback_resource,
+			WP_COLOR_MANAGEMENT_SURFACE_FEEDBACK_V1_ERROR_INERT,
+			"get_preferred_parametric sent on inert feedback surface");
+		return;
+	}
+
+	image_desc_create_ready(surface_feedback->manager,
+		surface_feedback_resource, id, &surface_feedback->data, true);
+}
+
 static const struct wp_color_management_surface_feedback_v1_interface surface_feedback_impl = {
 	.destroy = resource_handle_destroy,
 	.get_preferred = surface_feedback_handle_get_preferred,
+	.get_preferred_parametric = surface_feedback_handle_get_preferred_parametric,
 };
 
 static void surface_feedback_destroy(struct wlr_color_management_surface_feedback_v1 *surface_feedback) {
