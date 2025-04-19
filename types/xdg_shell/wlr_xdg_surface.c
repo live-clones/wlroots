@@ -257,22 +257,24 @@ static const struct xdg_surface_interface xdg_surface_implementation = {
 // the surface, in which case it's updated on map, so that subsurfaces are
 // mapped and surface extents are computed correctly.
 static void update_geometry(struct wlr_xdg_surface *surface) {
-	if ((surface->current.committed & WLR_XDG_SURFACE_STATE_WINDOW_GEOMETRY) != 0) {
-		wlr_surface_get_extents(surface->surface, &surface->geometry);
+	if (!wlr_box_empty(&surface->current.geometry)) {
+		if ((surface->current.committed & WLR_XDG_SURFACE_STATE_WINDOW_GEOMETRY) != 0) {
+			struct wlr_box *geom = &surface->geometry;
+			wlr_surface_get_extents(surface->surface, geom);
 
-		struct wlr_box effective;
-		wlr_box_intersection(&effective, &surface->geometry, &surface->current.geometry);
+			wlr_box_intersection(geom, geom, &surface->current.geometry);
+			if (wlr_box_empty(geom)) {
+				wlr_log(WLR_INFO,
+					"A client has committed an invalid effective window geometry (%d,%d %dx%d); "
+					"this will result in client disconnection in the future",
+					geom->x, geom->y, geom->width, geom->height);
 
-		if (wlr_box_empty(&effective)) {
-			wlr_log(WLR_INFO,
-				"A client has committed an invalid effective window geometry (%d,%d %dx%d); "
-				"this will result in client disconnection in the future",
-				effective.x, effective.y, effective.width, effective.height);
-			// The extents are used instead
-		} else {
-			surface->geometry = effective;
+				// Fall back to the explicitly set window geometry as extents could be empty which
+				// would result in strange state when the client commits a buffer later
+				*geom = surface->current.geometry;
+			}
 		}
-	} else if (wlr_box_empty(&surface->geometry)) {
+	} else {
 		wlr_surface_get_extents(surface->surface, &surface->geometry);
 	}
 }
