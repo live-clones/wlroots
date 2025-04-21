@@ -14,16 +14,24 @@
 #include <time.h>
 #include <wayland-server-core.h>
 
+/**
+ * Xwayland spawn function. pathname and args are compatible with the execv
+ * family of functions. envp is a NULL terminated list of enironment variables
+ * that must be added before exec, while uncloexec is a -1 terminated list of
+ * file descriptors that must have CLOEXEC unset after fork but before exec.
+ */
+typedef bool (*xwayland_spawn_func_t)(char *pathname, char *args[], char *envp[], int uncloexec[]);
+
 struct wlr_xwayland_server_options {
 	bool lazy;
 	bool enable_wm;
 	bool no_touch_pointer_emulation;
 	bool force_xrandr_emulation;
 	int terminate_delay; // in seconds, 0 to terminate immediately
+	xwayland_spawn_func_t spawn_handler;
 };
 
 struct wlr_xwayland_server {
-	pid_t pid;
 	struct wl_client *client;
 	struct wl_event_source *pipe_source;
 	int wm_fd[2], wl_fd[2];

@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 700 // for putenv
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -23,25 +24,48 @@ static void safe_close(int fd) {
 	}
 }
 
-noreturn static void exec_xwayland(struct wlr_xwayland_server *server,
-		int notify_fd) {
-	if (!set_cloexec(server->x_fd[0], false) ||
-			!set_cloexec(server->x_fd[1], false) ||
-			!set_cloexec(server->wl_fd[1], false)) {
-		wlr_log(WLR_ERROR, "Failed to unset CLOEXEC on FD");
-		_exit(EXIT_FAILURE);
-	}
-	if (server->options.enable_wm && !set_cloexec(server->wm_fd[1], false)) {
-		wlr_log(WLR_ERROR, "Failed to unset CLOEXEC on FD");
-		_exit(EXIT_FAILURE);
+static bool default_xwayland_spawn_func(char *program, char *args[], char *envp[], int uncloexec[]) {
+	for (int idx = 0; uncloexec[idx] != -1; idx++) {
+		if (!set_cloexec(uncloexec[idx], false)) {
+			wlr_log(WLR_ERROR, "Unable to clear CLOEXEC");
+			_exit(EXIT_FAILURE);
+		}
 	}
 
-	// The compositor may have messed with signal handling, try to clean it up
-	sigset_t set;
-	sigemptyset(&set);
-	sigprocmask(SIG_SETMASK, &set, NULL);
-	signal(SIGPIPE, SIG_DFL);
-	signal(SIGCHLD, SIG_DFL);
+	for (int idx = 0; envp[idx] != NULL; idx++) {
+		if (putenv(envp[idx]) != 0) {
+			wlr_log_errno(WLR_ERROR, "Unable to putenv: %s", envp[idx]);
+			_exit(EXIT_FAILURE);
+		}
+	}
+
+	enum wlr_log_importance verbosity = wlr_log_get_verbosity();
+	int devnull = open("/dev/null", O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
+	if (devnull < 0) {
+		wlr_log_errno(WLR_ERROR, "xwayland: failed to open /dev/null");
+		_exit(EXIT_FAILURE);
+	}
+	if (verbosity < WLR_INFO) {
+		dup2(devnull, STDOUT_FILENO);
+	}
+	if (verbosity < WLR_INFO) {
+		dup2(devnull, STDERR_FILENO);
+	}
+
+	execv(program, args);
+	wlr_log_errno(WLR_ERROR, "execve failed");
+	_exit(EXIT_SUCCESS); // Close child process
+}
+
+static bool spawn_xwayland(struct wlr_xwayland_server *server,
+		int notify_fd) {
+	int uncloexec[] = {
+		server->x_fd[0],
+		server->x_fd[1],
+		server->wl_fd[1],
+		server->options.enable_wm ? server->wm_fd[1] : -1,
+		-1,
+	};
 
 	char *argv[64] = {0};
 	size_t i = 0;
@@ -107,27 +131,15 @@ noreturn static void exec_xwayland(struct wlr_xwayland_server *server,
 
 	assert(i <= sizeof(argv) / sizeof(argv[0]));
 
-	char wayland_socket_str[16];
-	snprintf(wayland_socket_str, sizeof(wayland_socket_str), "%d", server->wl_fd[1]);
-	setenv("WAYLAND_SOCKET", wayland_socket_str, true);
+	char wayland_socket_str[32];
+	snprintf(wayland_socket_str, sizeof(wayland_socket_str), "WAYLAND_SOCKET=%d", server->wl_fd[1]);
 
-	wlr_log(WLR_INFO, "Starting Xwayland on :%d", server->display);
+	char *envp[] = {
+		wayland_socket_str,
+		NULL,
+	};
 
-	// Closes stdout/stderr depending on log verbosity
-	enum wlr_log_importance verbosity = wlr_log_get_verbosity();
-	int devnull = open("/dev/null", O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
-	if (devnull < 0) {
-		wlr_log_errno(WLR_ERROR, "XWayland: failed to open /dev/null");
-		_exit(EXIT_FAILURE);
-	}
-	if (verbosity < WLR_INFO) {
-		dup2(devnull, STDOUT_FILENO);
-	}
-	if (verbosity < WLR_ERROR) {
-		dup2(devnull, STDERR_FILENO);
-	}
-
-	const char *xwayland_path = getenv("WLR_XWAYLAND");
+	char *xwayland_path = getenv("WLR_XWAYLAND");
 	if (xwayland_path) {
 		wlr_log(WLR_INFO, "Using Xwayland binary '%s' due to WLR_XWAYLAND",
 			xwayland_path);
@@ -135,12 +147,7 @@ noreturn static void exec_xwayland(struct wlr_xwayland_server *server,
 		xwayland_path = XWAYLAND_PATH;
 	}
 
-	// This returns if and only if the call fails
-	execvp(xwayland_path, argv);
-
-	wlr_log_errno(WLR_ERROR, "failed to exec %s", xwayland_path);
-	close(devnull);
-	_exit(EXIT_FAILURE);
+	return server->options.spawn_handler(xwayland_path, argv, envp, uncloexec);
 }
 
 static void server_finish_process(struct wlr_xwayland_server *server) {
@@ -260,24 +267,6 @@ static int xserver_handle_ready(int fd, uint32_t mask, void *data) {
 		}
 	}
 
-	while (waitpid(server->pid, NULL, 0) < 0) {
-		if (errno == EINTR) {
-			continue;
-		}
-
-		/* If some application has installed a SIGCHLD handler, they
-		 * may race and waitpid() on our child, which will cause this
-		 * waitpid() to fail. We have a signal from the
-		 * notify pipe that things are ready, so this waitpid() is only
-		 * to prevent zombies, which will have already been reaped by
-		 * the application's SIGCHLD handler.
-		 */
-		if (errno == ECHILD) {
-			break;
-		}
-		wlr_log_errno(WLR_ERROR, "waitpid for Xwayland fork failed");
-		goto error;
-	}
 	/* Xwayland will only write on the fd once it has finished its
 	 * initial setup. Getting an event here without READABLE means
 	 * the server end failed.
@@ -387,23 +376,12 @@ static bool server_start(struct wlr_xwayland_server *server) {
 
 	wl_signal_emit_mutable(&server->events.start, NULL);
 
-	server->pid = fork();
-	if (server->pid < 0) {
-		wlr_log_errno(WLR_ERROR, "fork failed");
+	if (!spawn_xwayland(server, notify_fd[1])) {
+		wlr_log(WLR_ERROR, "Spawning Xwayland failed");
 		close(notify_fd[0]);
 		close(notify_fd[1]);
 		server_finish_process(server);
 		return false;
-	} else if (server->pid == 0) {
-		pid_t pid = fork();
-		if (pid < 0) {
-			wlr_log_errno(WLR_ERROR, "second fork failed");
-			_exit(EXIT_FAILURE);
-		} else if (pid == 0) {
-			exec_xwayland(server, notify_fd[1]);
-		}
-
-		_exit(EXIT_SUCCESS);
 	}
 
 	/* close child fds */
@@ -487,6 +465,10 @@ struct wlr_xwayland_server *wlr_xwayland_server_create(
 
 	server->wl_display = wl_display;
 	server->options = *options;
+
+	if (server->options.spawn_handler == NULL) {
+		server->options.spawn_handler = default_xwayland_spawn_func;
+	}
 
 #if !HAVE_XWAYLAND_TERMINATE_DELAY
 	server->options.terminate_delay = 0;

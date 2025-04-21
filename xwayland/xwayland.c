@@ -136,7 +136,7 @@ struct wlr_xwayland *wlr_xwayland_create_with_server(struct wl_display *wl_displ
 }
 
 struct wlr_xwayland *wlr_xwayland_create(struct wl_display *wl_display,
-		struct wlr_compositor *compositor, bool lazy) {
+		struct wlr_compositor *compositor, bool lazy, xwayland_spawn_func_t spawn_func) {
 	struct wlr_xwayland_shell_v1 *shell_v1 = wlr_xwayland_shell_v1_create(wl_display, 1);
 	if (shell_v1 == NULL) {
 		return NULL;
@@ -145,6 +145,7 @@ struct wlr_xwayland *wlr_xwayland_create(struct wl_display *wl_display,
 	struct wlr_xwayland_server_options options = {
 		.lazy = lazy,
 		.enable_wm = true,
+		.spawn_handler = spawn_func,
 #if HAVE_XCB_XFIXES_SET_CLIENT_DISCONNECT_MODE
 		.terminate_delay = lazy ? 10 : 0,
 #endif
