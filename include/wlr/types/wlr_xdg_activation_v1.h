@@ -39,6 +39,7 @@ struct wlr_xdg_activation_token_v1 {
 };
 
 struct wlr_xdg_activation_v1 {
+	struct wl_global *global;
 	uint32_t token_timeout_msec; // token timeout in milliseconds (0 to disable)
 
 	struct wl_list tokens; // wlr_xdg_activation_token_v1.link
@@ -51,7 +52,6 @@ struct wlr_xdg_activation_v1 {
 
 	struct {
 		struct wl_display *display;
-		struct wl_global *global;
 
 		struct wl_listener display_destroy;
 	} WLR_PRIVATE;
