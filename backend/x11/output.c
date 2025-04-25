@@ -770,6 +770,9 @@ void handle_x11_present_event(struct wlr_x11_backend *x11,
 
 		output->last_msc = complete_notify->msc;
 
+		struct timespec t;
+		timespec_from_nsec(&t, complete_notify->ust * 1000);
+
 		uint32_t flags = 0;
 		if (complete_notify->mode == XCB_PRESENT_COMPLETE_MODE_FLIP) {
 			flags |= WLR_OUTPUT_PRESENT_ZERO_COPY;
@@ -780,10 +783,10 @@ void handle_x11_present_event(struct wlr_x11_backend *x11,
 			.output = &output->wlr_output,
 			.commit_seq = complete_notify->serial,
 			.presented = presented,
+			.when = &t,
 			.seq = complete_notify->msc,
 			.flags = flags,
 		};
-		timespec_from_nsec(&present_event.when, complete_notify->ust * 1000);
 		wlr_output_send_present(&output->wlr_output, &present_event);
 
 		wlr_output_send_frame(&output->wlr_output);
