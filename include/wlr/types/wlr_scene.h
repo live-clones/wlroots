@@ -190,7 +190,7 @@ struct wlr_scene_buffer {
 	float opacity;
 	enum wlr_scale_filter_mode filter_mode;
 	struct wlr_fbox src_box;
-	int dst_width, dst_height;
+	double dst_width, dst_height;
 	enum wl_output_transform transform;
 	pixman_region32_t opaque_region;
 	enum wlr_color_transfer_function transfer_function;
@@ -538,7 +538,7 @@ void wlr_scene_buffer_set_source_box(struct wlr_scene_buffer *scene_buffer,
  * destination size is zero.
  */
 void wlr_scene_buffer_set_dest_size(struct wlr_scene_buffer *scene_buffer,
-	int width, int height);
+	double width, double height);
 
 /**
  * Set a transform which will be applied to the buffer.
