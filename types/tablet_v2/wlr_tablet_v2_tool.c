@@ -103,7 +103,10 @@ void destroy_tablet_tool_v2(struct wl_resource *resource) {
 	}
 
 	if (client->tool && client->tool->current_client == client) {
+		wl_list_remove(&client->tool->surface_destroy.link);
+		wl_list_init(&client->tool->surface_destroy.link);
 		client->tool->current_client = NULL;
+		client->tool->focused_surface = NULL;
 	}
 
 	wl_list_remove(&client->seat_link);
