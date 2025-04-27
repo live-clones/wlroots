@@ -831,12 +831,14 @@ void wlr_output_send_present(struct wlr_output *output,
 	assert(event);
 	event->output = output;
 
-	if (event->presented && (event->when.tv_sec == 0 && event->when.tv_nsec == 0)) {
-		if (clock_gettime(CLOCK_MONOTONIC, &event->when) != 0) {
+	struct timespec now;
+	if (event->presented && event->when == NULL) {
+		if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
 			wlr_log_errno(WLR_ERROR, "failed to send output present event: "
 				"failed to read clock");
 			return;
 		}
+		event->when = &now;
 	}
 
 	wl_signal_emit_mutable(&output->events.present, event);

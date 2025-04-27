@@ -2018,15 +2018,16 @@ static void handle_page_flip(int fd, unsigned seq,
 		present_flags |= WLR_OUTPUT_PRESENT_ZERO_COPY;
 	}
 
+	struct timespec present_time = {
+		.tv_sec = tv_sec,
+		.tv_nsec = tv_usec * 1000,
+	};
 	struct wlr_output_event_present present_event = {
 		/* The DRM backend guarantees that the presentation event will be for
 		 * the last submitted frame. */
 		.commit_seq = conn->output.commit_seq,
 		.presented = drm->session->active,
-		.when = {
-			.tv_sec = tv_sec,
-			.tv_nsec = tv_usec * 1000,
-		},
+		.when = &present_time,
 		.seq = seq,
 		.refresh = mhz_to_nsec(conn->refresh),
 		.flags = present_flags,

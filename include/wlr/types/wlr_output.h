@@ -277,7 +277,7 @@ struct wlr_output_event_present {
 	// Whether the frame was presented at all.
 	bool presented;
 	// Time when the content update turned into light the first time.
-	struct timespec when;
+	struct timespec *when;
 	// Vertical retrace counter. Zero if unavailable.
 	unsigned seq;
 	// Prediction of how many nanoseconds after `when` the very next output

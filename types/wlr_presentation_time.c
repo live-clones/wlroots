@@ -244,8 +244,8 @@ void wlr_presentation_event_from_output(struct wlr_presentation_event *event,
 		const struct wlr_output_event_present *output_event) {
 	*event = (struct wlr_presentation_event){
 		.output = output_event->output,
-		.tv_sec = (uint64_t)output_event->when.tv_sec,
-		.tv_nsec = (uint32_t)output_event->when.tv_nsec,
+		.tv_sec = (uint64_t)output_event->when->tv_sec,
+		.tv_nsec = (uint32_t)output_event->when->tv_nsec,
 		.refresh = (uint32_t)output_event->refresh,
 		.seq = (uint64_t)output_event->seq,
 		.flags = output_event->flags,
