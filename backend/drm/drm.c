@@ -1531,14 +1531,14 @@ static struct wlr_drm_connector *create_drm_connector(struct wlr_drm_backend *dr
 		return NULL;
 	}
 
-	const char *conn_name =
+	const char *conn_type_name =
 		drmModeGetConnectorTypeName(drm_conn->connector_type);
-	if (conn_name == NULL) {
-		conn_name = "Unknown";
+	if (conn_type_name == NULL) {
+		conn_type_name = "Unknown";
 	}
 
 	snprintf(wlr_conn->name, sizeof(wlr_conn->name),
-		"%s-%"PRIu32, conn_name, drm_conn->connector_type_id);
+		"%s-%"PRIu32, conn_type_name, drm_conn->connector_type_id);
 
 	wlr_conn->possible_crtcs =
 		drmModeConnectorGetPossibleCrtcs(drm->fd, drm_conn);
