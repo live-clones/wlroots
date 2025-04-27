@@ -175,7 +175,7 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_presentation *wlr_presentation_create(struct wl_display *display,
-		struct wlr_backend *backend, int version) {
+		struct wlr_backend *backend, uint32_t version) {
 	assert(version <= PRESENTATION_VERSION);
 
 	struct wlr_presentation *presentation = calloc(1, sizeof(*presentation));

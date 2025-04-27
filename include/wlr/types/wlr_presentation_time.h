@@ -59,7 +59,7 @@ struct wlr_presentation_event {
 struct wlr_backend;
 
 struct wlr_presentation *wlr_presentation_create(struct wl_display *display,
-	struct wlr_backend *backend, int version);
+	struct wlr_backend *backend, uint32_t version);
 /**
  * Mark the current surface's buffer as sampled.
  *
