@@ -77,7 +77,7 @@ struct wlr_scene_node {
 	struct wlr_addon_set addons;
 
 	struct {
-		pixman_region32_t visible;
+		pixman_region64f_t visible;
 	} WLR_PRIVATE;
 };
 
@@ -192,7 +192,7 @@ struct wlr_scene_buffer {
 	struct wlr_fbox src_box;
 	double dst_width, dst_height;
 	enum wl_output_transform transform;
-	pixman_region32_t opaque_region;
+	pixman_region64f_t opaque_region;
 	enum wlr_color_transfer_function transfer_function;
 	enum wlr_color_named_primaries primaries;
 	enum wlr_color_encoding color_encoding;
@@ -519,7 +519,7 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
  * determine if buffers which reside under this one need to be rendered or not.
  */
 void wlr_scene_buffer_set_opaque_region(struct wlr_scene_buffer *scene_buffer,
-	const pixman_region32_t *region);
+	const pixman_region64f_t *region);
 
 /**
  * Set the source rectangle describing the region of the buffer which will be
