@@ -52,10 +52,17 @@ void wlr_region_scalef_xy(pixman_region32_t *dst, const pixman_region64f_t *src,
 	}
 
 	for (int i = 0; i < nrects; ++i) {
-		dst_rects[i].x1 = round(src_rects[i].x1 * scale_x);
-		dst_rects[i].x2 = round(src_rects[i].x2 * scale_x);
-		dst_rects[i].y1 = round(src_rects[i].y1 * scale_y);
-		dst_rects[i].y2 = round(src_rects[i].y2 * scale_y);
+		const pixman_box64f_t* rect = &src_rects[i];
+
+		double x = rect->x1;
+		double y = rect->y1;
+		double w = rect->x2 - rect->x1;
+		double h = rect->y2 - rect->y1;
+
+		dst_rects[i].x1 = round((x) * scale_x);
+		dst_rects[i].x2 = round((x + w) * scale_x);
+		dst_rects[i].y1 = round((y) * scale_y);
+		dst_rects[i].y2 = round((y + h) * scale_y);
 	}
 
 	pixman_region32_fini(dst);
