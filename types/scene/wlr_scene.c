@@ -349,20 +349,12 @@ static void output_to_buffer_coords(pixman_region32_t *damage, struct wlr_output
 		wlr_output_transform_invert(output->transform), width, height);
 }
 
-static int scale_length(double length, double offset, float scale) {
-	return round((offset + length) * scale) - round(offset * scale);
-}
-
-static void scale_box(struct wlr_box *box, struct wlr_fbox *src, float scale) {
-	box->width = scale_length(src->width, src->x, scale);
-	box->height = scale_length(src->height, src->y, scale);
-	box->x = round(src->x * scale);
-	box->y = round(src->y * scale);
-}
-
 static void transform_output_box(struct wlr_box *box, struct wlr_fbox *src, const struct render_data *data) {
 	enum wl_output_transform transform = wlr_output_transform_invert(data->transform);
-	scale_box(box, src, data->scale);
+	box->width = round(src->width * data->scale);
+	box->height = round(src->height * data->scale);
+	box->x = round(src->x * data->scale);
+	box->y = round(src->y * data->scale);
 	wlr_box_transform(box, box, transform, data->trans_width, data->trans_height);
 }
 
