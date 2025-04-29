@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_buffer.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/render/dmabuf.h>
 #include <wlr/render/drm_format_set.h>
 
@@ -23,6 +24,7 @@ struct wlr_dmabuf_v1_buffer {
 
 	struct wl_resource *resource; // can be NULL if the client destroyed it
 	struct wlr_dmabuf_attributes attributes;
+	struct wlr_color_representation_v1_state color_repr;
 
 	struct {
 		struct wl_listener release;

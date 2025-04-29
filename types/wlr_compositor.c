@@ -4,7 +4,9 @@
 #include <wayland-server-core.h>
 #include <wlr/render/interface.h>
 #include <wlr/types/wlr_buffer.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/log.h>
@@ -199,6 +201,17 @@ static void surface_finalize_pending(struct wlr_surface *surface) {
 		}
 
 		if (pending->buffer != NULL) {
+			// If buffer is a dmabuf, copy color representation from surface
+			struct wlr_dmabuf_v1_buffer *dmabuf_buffer =
+				wlr_dmabuf_v1_buffer_try_from_buffer(pending->buffer);
+			if (dmabuf_buffer != NULL) {
+				const struct wlr_color_representation_v1_state *surface_color_repr =
+					wlr_color_representation_v1_get_surface_state(surface);
+				if (surface_color_repr != NULL) {
+					dmabuf_buffer->color_repr = *surface_color_repr;
+				}
+			}
+
 			pending->buffer_width = pending->buffer->width;
 			pending->buffer_height = pending->buffer->height;
 		} else {
