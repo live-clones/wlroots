@@ -170,7 +170,7 @@ static bool init_plane(struct wlr_drm_backend *drm,
 	}
 
 	p->type = type;
-	p->id = drm_plane->plane_id;
+	p->id = id;
 	p->props = props;
 	p->initial_crtc_id = drm_plane->crtc_id;
 
