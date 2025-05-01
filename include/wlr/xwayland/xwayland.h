@@ -140,13 +140,12 @@ struct wlr_xwayland_surface {
 	bool override_redirect;
 	float opacity;
 
-	char *title;
+	const char *title;
 	char *class;
 	char *instance;
 	char *role;
 	char *startup_id;
 	pid_t pid;
-	bool has_utf8_title;
 
 	struct wl_list children; // wlr_xwayland_surface.parent_link
 	struct wlr_xwayland_surface *parent;
@@ -232,6 +231,8 @@ struct wlr_xwayland_surface {
 	void *data;
 
 	struct {
+		char *wm_name, *net_wm_name;
+
 		struct wl_listener surface_commit;
 		struct wl_listener surface_map;
 		struct wl_listener surface_unmap;
