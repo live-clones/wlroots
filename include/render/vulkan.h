@@ -384,7 +384,6 @@ struct wlr_vk_render_pass {
 	struct wlr_vk_command_buffer *command_buffer;
 	struct rect_union updated_region;
 	VkPipeline bound_pipeline;
-	float projection[9];
 	bool failed;
 	bool srgb_pathway; // if false, rendering via intermediate blending buffer
 	struct wlr_color_transform *color_transform;
