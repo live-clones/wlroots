@@ -480,7 +480,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		.semaphore = renderer->timeline_semaphore,
 		.value = render_timeline_point,
 	};
-	if (renderer->dev->implicit_sync_interop) {
+	if (renderer->dev->implicit_sync_interop || pass->signal_timeline != NULL) {
 		if (render_cb->binary_semaphore == VK_NULL_HANDLE) {
 			VkExportSemaphoreCreateInfo export_info = {
 				.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO,

@@ -989,6 +989,8 @@ bool vulkan_sync_render_buffer(struct wlr_vk_renderer *renderer,
 		return vulkan_wait_command_buffer(cb, renderer);
 	}
 
+	assert(cb->binary_semaphore != VK_NULL_HANDLE);
+
 	// Note: vkGetSemaphoreFdKHR implicitly resets the semaphore
 	const VkSemaphoreGetFdInfoKHR get_fence_fd_info = {
 		.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
