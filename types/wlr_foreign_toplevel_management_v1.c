@@ -273,12 +273,13 @@ static void toplevel_handle_output_bind(struct wl_listener *listener,
 	toplevel_update_idle_source(toplevel_output->toplevel);
 }
 
+static void toplevel_output_destroy(struct wlr_foreign_toplevel_handle_v1_output *toplevel_output);
+
 static void toplevel_handle_output_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_foreign_toplevel_handle_v1_output *toplevel_output =
 		wl_container_of(listener, toplevel_output, output_destroy);
-	wlr_foreign_toplevel_handle_v1_output_leave(toplevel_output->toplevel,
-		toplevel_output->output);
+	toplevel_output_destroy(toplevel_output);
 }
 
 void wlr_foreign_toplevel_handle_v1_output_enter(
