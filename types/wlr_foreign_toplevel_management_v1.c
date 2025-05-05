@@ -273,12 +273,27 @@ static void toplevel_handle_output_bind(struct wl_listener *listener,
 	toplevel_update_idle_source(toplevel_output->toplevel);
 }
 
+static void toplevel_output_destroy(
+		struct wlr_foreign_toplevel_handle_v1_output *toplevel_output) {
+	wl_list_remove(&toplevel_output->link);
+	wl_list_remove(&toplevel_output->output_bind.link);
+	wl_list_remove(&toplevel_output->output_destroy.link);
+	free(toplevel_output);
+}
+
+static void toplevel_output_leave(
+		struct wlr_foreign_toplevel_handle_v1_output *toplevel_output) {
+	struct wlr_foreign_toplevel_handle_v1 *toplevel = toplevel_output->toplevel;
+	struct wlr_output *output = toplevel_output->output;
+	toplevel_send_output(toplevel, output, false);
+	toplevel_output_destroy(toplevel_output);
+}
+
 static void toplevel_handle_output_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_foreign_toplevel_handle_v1_output *toplevel_output =
 		wl_container_of(listener, toplevel_output, output_destroy);
-	wlr_foreign_toplevel_handle_v1_output_leave(toplevel_output->toplevel,
-		toplevel_output->output);
+	toplevel_output_leave(toplevel_output);
 }
 
 void wlr_foreign_toplevel_handle_v1_output_enter(
@@ -310,33 +325,18 @@ void wlr_foreign_toplevel_handle_v1_output_enter(
 	toplevel_send_output(toplevel, output, true);
 }
 
-static void toplevel_output_destroy(
-		struct wlr_foreign_toplevel_handle_v1_output *toplevel_output) {
-	wl_list_remove(&toplevel_output->link);
-	wl_list_remove(&toplevel_output->output_bind.link);
-	wl_list_remove(&toplevel_output->output_destroy.link);
-	free(toplevel_output);
-}
-
 void wlr_foreign_toplevel_handle_v1_output_leave(
 		struct wlr_foreign_toplevel_handle_v1 *toplevel,
 		struct wlr_output *output) {
 	struct wlr_foreign_toplevel_handle_v1_output *toplevel_output_iterator;
-	struct wlr_foreign_toplevel_handle_v1_output *toplevel_output = NULL;
-
 	wl_list_for_each(toplevel_output_iterator, &toplevel->outputs, link) {
 		if (toplevel_output_iterator->output == output) {
-			toplevel_output = toplevel_output_iterator;
-			break;
+			toplevel_output_leave(toplevel_output_iterator);
+			return;
 		}
 	}
 
-	if (toplevel_output) {
-		toplevel_send_output(toplevel, output, false);
-		toplevel_output_destroy(toplevel_output);
-	} else {
-		// XXX: log an error? crash?
-	}
+	// XXX: log an error? crash?
 }
 
 static void fill_array_from_toplevel_state(struct wl_array *states,
