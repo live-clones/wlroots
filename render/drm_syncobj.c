@@ -136,7 +136,7 @@ bool wlr_drm_syncobj_timeline_import_sync_file(struct wlr_drm_syncobj_timeline *
 	uint32_t syncobj_handle;
 	if (drmSyncobjCreate(timeline->drm_fd, 0, &syncobj_handle) != 0) {
 		wlr_log_errno(WLR_ERROR, "drmSyncobjCreate failed");
-		return -1;
+		return false;
 	}
 
 	if (drmSyncobjImportSyncFile(timeline->drm_fd, syncobj_handle,
