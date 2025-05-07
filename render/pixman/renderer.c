@@ -43,7 +43,7 @@ bool begin_pixman_data_ptr_access(struct wlr_buffer *wlr_buffer, pixman_image_t 
 
 		pixman_image_t *new_image = pixman_image_create_bits_no_clear(format,
 			wlr_buffer->width, wlr_buffer->height, data, stride);
-		if (image == NULL) {
+		if (new_image == NULL) {
 			wlr_buffer_end_data_ptr_access(wlr_buffer);
 			return false;
 		}
