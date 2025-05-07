@@ -63,12 +63,6 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	wlr_render_texture_options_get_dst_box(options, &dst_box);
 
 	pixman_image_t *mask = NULL;
-	float alpha = wlr_render_texture_options_get_alpha(options);
-	if (alpha != 1) {
-		mask = pixman_image_create_solid_fill(&(struct pixman_color){
-			.alpha = 0xFFFF * alpha,
-		});
-	}
 
 	// Rotate the source size into destination coordinates
 	struct wlr_box src_box_transformed;
