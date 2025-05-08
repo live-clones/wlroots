@@ -331,17 +331,16 @@ static bool add_connector(drmModeAtomicReq *req,
 		if (crtc->props.vrr_enabled != 0) {
 			ok = ok && add_prop(req, crtc->id, crtc->props.vrr_enabled, state->vrr_enabled);
 		}
-		struct wlr_fbox src_box;
-		struct wlr_box dst_box;
-		output_state_get_buffer_src_box(state->base, &src_box);
-		output_state_get_buffer_dst_box(state->base, &dst_box);
 
-		ok = ok &&
-			set_plane_props(crtc->primary, crtc->primary->liftoff_layer,
-				state->primary_fb, 0, &dst_box, &src_box);
-		ok = ok &&
-			set_plane_props(crtc->primary, crtc->liftoff_composition_layer,
-				state->primary_fb, 0, &dst_box, &src_box);
+		ok = ok && set_plane_props(crtc->primary,
+			crtc->primary->liftoff_layer, state->primary_fb, 0,
+			&state->primary_viewport.dst_box,
+			&state->primary_viewport.src_box);
+		ok = ok && set_plane_props(crtc->primary,
+			crtc->liftoff_composition_layer, state->primary_fb, 0,
+			&state->primary_viewport.dst_box,
+			&state->primary_viewport.src_box);
+
 		liftoff_layer_set_property(crtc->primary->liftoff_layer,
 			"FB_DAMAGE_CLIPS", state->fb_damage_clips);
 		liftoff_layer_set_property(crtc->liftoff_composition_layer,
