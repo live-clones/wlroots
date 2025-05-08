@@ -11,6 +11,7 @@
 #include "types/wlr_output.h"
 #include "util/env.h"
 #include "util/global.h"
+#include "util/signal.h"
 
 #define OUTPUT_VERSION 4
 
@@ -377,7 +378,7 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 }
 
 void wlr_output_finish(struct wlr_output *output) {
-	wl_signal_emit_mutable(&output->events.destroy, output);
+	wlr_signal_emit_final(&output->events.destroy, output);
 	wlr_addon_set_finish(&output->addons);
 
 	assert(wl_list_empty(&output->events.frame.listener_list));
