@@ -133,6 +133,18 @@ void wlr_output_state_set_signal_timeline(struct wlr_output_state *state,
 	state->signal_point = dst_point;
 }
 
+void wlr_output_state_set_primary_color_representation(
+		struct wlr_output_state *state,
+		const struct wlr_color_representation_v1_state *color_representation) {
+	if (color_representation != NULL) {
+		state->committed |= WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
+		memcpy(&state->color_representation, color_representation,
+			sizeof(state->color_representation));
+	} else {
+		state->committed &= ~WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
+	}
+}
+
 bool wlr_output_state_copy(struct wlr_output_state *dst,
 		const struct wlr_output_state *src) {
 	struct wlr_output_state copy = *src;
