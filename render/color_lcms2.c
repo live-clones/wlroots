@@ -17,6 +17,7 @@ static void handle_lcms_error(cmsContext ctx, cmsUInt32Number code, const char *
 }
 
 struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
+		enum wlr_color_named_primaries primaries,
 		const void *data, size_t size) {
 	struct wlr_color_transform_lut3d *tx = NULL;
 
@@ -100,6 +101,7 @@ struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
 		goto out_lcms_tr;
 	}
 	tx->base.type = COLOR_TRANSFORM_LUT_3D;
+	tx->base.primaries = primaries;
 	tx->dim_len = dim_len;
 	tx->lut_3d = lut_3d;
 	tx->base.ref_count = 1;
