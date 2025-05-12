@@ -53,6 +53,11 @@ struct wlr_backend *wlr_drm_backend_get_parent(struct wlr_backend *backend);
 uint32_t wlr_drm_connector_get_id(struct wlr_output *output);
 
 /**
+ * Get the KMS connector type.
+ */
+uint32_t wlr_drm_connector_get_type(struct wlr_output *output);
+
+/**
  * Tries to open non-master DRM FD. The compositor must not call drmSetMaster()
  * on the returned FD.
  *
