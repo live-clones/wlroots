@@ -390,7 +390,11 @@ static bool query_modifier_support(struct wlr_vk_device *dev,
 		return false;
 	}
 
-	vkGetPhysicalDeviceFormatProperties2(dev->phdev, props->format.vk, &fmtp);
+	VkResult res = vkGetPhysicalDeviceFormatProperties2(dev->phdev, props->format.vk, &fmtp);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkGetPhysicalDeviceFormatProperties2", res);
+		return false;
+	}
 
 	props->dmabuf.render_mods =
 		calloc(modp.drmFormatModifierCount, sizeof(*props->dmabuf.render_mods));
@@ -507,7 +511,11 @@ void vulkan_format_props_query(struct wlr_vk_device *dev,
 		.pNext = &modp,
 	};
 
-	vkGetPhysicalDeviceFormatProperties2(dev->phdev, format->vk, &fmtp);
+	VkResult res = vkGetPhysicalDeviceFormatProperties2(dev->phdev, format->vk, &fmtp);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkGetPhysicalDeviceFormatProperties2", res);
+		return;
+	}
 
 	bool add_fmt_props = false;
 	struct wlr_vk_format_props props = {0};
