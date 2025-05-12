@@ -120,8 +120,6 @@ struct wlr_drm_backend {
 
 	struct wlr_session *session;
 
-	uint64_t cursor_width, cursor_height;
-
 	struct wlr_drm_format_set mgpu_formats;
 
 	bool supports_tearing_page_flips;
