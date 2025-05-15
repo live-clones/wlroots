@@ -232,6 +232,8 @@ struct wlr_xwayland_surface {
 	void *data;
 
 	struct {
+		char *wm_name, *net_wm_name;
+
 		struct wl_listener surface_commit;
 		struct wl_listener surface_map;
 		struct wl_listener surface_unmap;

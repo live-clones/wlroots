@@ -629,7 +629,8 @@ static void xwayland_surface_destroy(struct wlr_xwayland_surface *xsurface) {
 
 	wl_event_source_remove(xsurface->ping_timer);
 
-	free(xsurface->title);
+	free(xsurface->wm_name);
+	free(xsurface->net_wm_name);
 	free(xsurface->class);
 	free(xsurface->instance);
 	free(xsurface->role);
@@ -739,7 +740,7 @@ static void read_surface_role(struct wlr_xwm *xwm,
 }
 
 static void read_surface_title(struct wlr_xwm *xwm,
-		struct wlr_xwayland_surface *xsurface,
+		struct wlr_xwayland_surface *xsurface, xcb_atom_t property,
 		xcb_get_property_reply_t *reply) {
 	if (reply->type != XCB_ATOM_STRING && reply->type != xwm->atoms[UTF8_STRING] &&
 			reply->type != XCB_ATOM_NONE) {
@@ -747,21 +748,34 @@ static void read_surface_title(struct wlr_xwm *xwm,
 		return;
 	}
 
-	bool is_utf8 = reply->type == xwm->atoms[UTF8_STRING];
-	if (!is_utf8 && xsurface->has_utf8_title && reply->type != XCB_ATOM_NONE) {
-		return;
+	size_t len = xcb_get_property_value_length(reply);
+	const char *title_buffer = xcb_get_property_value(reply);
+	char *title = NULL;
+	if (len > 0) {
+		title = strndup(title_buffer, len);
 	}
 
-	size_t len = xcb_get_property_value_length(reply);
-	char *title = xcb_get_property_value(reply);
+	if (property == XCB_ATOM_WM_NAME) {
+		free(xsurface->wm_name);
+		xsurface->wm_name = title;
+	} else if (property == xwm->atoms[NET_WM_NAME]) {
+		free(xsurface->net_wm_name);
+		xsurface->net_wm_name = title;
+	} else {
+		abort(); // unreachable
+	}
 
-	free(xsurface->title);
-	if (len > 0) {
-		xsurface->title = strndup(title, len);
+	// Prefer _NET_WM_NAME over WM_NAME if available
+	if (xsurface->net_wm_name != NULL) {
+		xsurface->title = xsurface->net_wm_name;
+	} else if (xsurface->wm_name != NULL) {
+		xsurface->title = xsurface->wm_name;
 	} else {
 		xsurface->title = NULL;
 	}
-	xsurface->has_utf8_title = is_utf8;
+
+	// TODO: drop this field
+	xsurface->has_utf8_title = reply->type == xwm->atoms[UTF8_STRING];
 
 	wl_signal_emit_mutable(&xsurface->events.set_title, NULL);
 }
@@ -1061,7 +1075,7 @@ static void read_surface_property(struct wlr_xwm *xwm,
 		read_surface_class(xwm, xsurface, reply);
 	} else if (property == XCB_ATOM_WM_NAME ||
 			property == xwm->atoms[NET_WM_NAME]) {
-		read_surface_title(xwm, xsurface, reply);
+		read_surface_title(xwm, xsurface, property, reply);
 	} else if (property == XCB_ATOM_WM_TRANSIENT_FOR) {
 		read_surface_parent(xwm, xsurface, reply);
 	} else if (property == xwm->atoms[NET_WM_PID]) {
