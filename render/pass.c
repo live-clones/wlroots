@@ -1,6 +1,8 @@
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 #include <wlr/render/interface.h>
+#include <wlr/util/log.h>
 
 void wlr_render_pass_init(struct wlr_render_pass *render_pass,
 		const struct wlr_render_pass_impl *impl) {
@@ -50,6 +52,20 @@ void wlr_render_texture_options_get_dst_box(const struct wlr_render_texture_opti
 	*box = options->dst_box;
 	if (wlr_box_empty(box)) {
 		box->width = options->texture->width;
+		box->height = options->texture->height;
+	}
+
+	// 1px mismatch may be caused by fractional scaling,
+	// change dst size to match texture to avoid unnecessary
+	// resizing that causes buffers to become blurry
+	if (abs(box->width - (int)options->texture->width) == 1) {
+		wlr_log(WLR_DEBUG, "Texture and buffer width mismatch: src %u, dst %u",
+				options->texture->width, box->width);
+		box->width = options->texture->width;
+	}
+	if (abs(box->height - (int)options->texture->height) == 1) {
+		wlr_log(WLR_DEBUG, "Texture and buffer height mismatch: src %u dst %u",
+				options->texture->height, box->height);
 		box->height = options->texture->height;
 	}
 }
