@@ -16,6 +16,7 @@
 #include <wayland-util.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_buffer.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/util/addon.h>
 #include <wlr/util/box.h>
 
@@ -74,6 +75,7 @@ enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_LAYERS = 1 << 10,
 	WLR_OUTPUT_STATE_WAIT_TIMELINE = 1 << 11,
 	WLR_OUTPUT_STATE_SIGNAL_TIMELINE = 1 << 12,
+	WLR_OUTPUT_STATE_COLOR_REPRESENTATION = 1 << 13,
 };
 
 enum wlr_output_state_mode_type {
@@ -114,6 +116,9 @@ struct wlr_output_state {
 	 * cannot be performed, in which case the caller should fall back to a
 	 * regular page-flip at the next wlr_output.frame event. */
 	bool tearing_page_flip;
+
+	// Set if (committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION)
+	struct wlr_color_representation_v1_state color_representation;
 
 	enum wlr_output_state_mode_type mode_type;
 	struct wlr_output_mode *mode;
@@ -586,6 +591,13 @@ void wlr_output_state_set_wait_timeline(struct wlr_output_state *state,
  */
 void wlr_output_state_set_signal_timeline(struct wlr_output_state *state,
 	struct wlr_drm_syncobj_timeline *timeline, uint64_t dst_point);
+
+/**
+ * Set the color-representation attributes of the primary scanout buffer
+ */
+void wlr_output_state_set_primary_color_representation(
+	struct wlr_output_state *state,
+	const struct wlr_color_representation_v1_state *color_representation);
 
 /**
  * Copies the output state from src to dst. It is safe to then
