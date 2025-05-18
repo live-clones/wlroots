@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <wlr/types/wlr_compositor.h>
-#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
+#include <types/wlr_foreign_toplevel.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 #include "ext-foreign-toplevel-list-v1-protocol.h"
@@ -132,7 +132,7 @@ static struct wl_resource *create_toplevel_resource_for_resource(
 	return resource;
 }
 
-static void toplevel_send_details_to_toplevel_resource(
+void foreign_toplevel_send_details_to_resource(
 		struct wlr_ext_foreign_toplevel_handle_v1 *toplevel,
 		struct wl_resource *resource) {
 	if (toplevel->title) {
@@ -189,7 +189,7 @@ wlr_ext_foreign_toplevel_handle_v1_create(struct wlr_ext_foreign_toplevel_list_v
 		if (!toplevel_resource) {
 			continue;
 		}
-		toplevel_send_details_to_toplevel_resource(toplevel, toplevel_resource);
+		foreign_toplevel_send_details_to_resource(toplevel, toplevel_resource);
 	}
 
 	return toplevel;
@@ -247,7 +247,7 @@ static void foreign_toplevel_list_bind(struct wl_client *client, void *data,
 	wl_list_for_each(toplevel, &list->toplevels, link) {
 		struct wl_resource *toplevel_resource =
 			create_toplevel_resource_for_resource(toplevel, resource);
-		toplevel_send_details_to_toplevel_resource(toplevel,
+		foreign_toplevel_send_details_to_resource(toplevel,
 			toplevel_resource);
 	}
 }
