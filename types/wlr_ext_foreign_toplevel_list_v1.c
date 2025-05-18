@@ -10,6 +10,7 @@
 #include "util/token.h"
 
 #define FOREIGN_TOPLEVEL_LIST_V1_VERSION 1
+#define FOREIGN_TOPLEVEL_HANDLE_V1_VERSION 1
 
 static const struct ext_foreign_toplevel_handle_v1_interface toplevel_handle_impl;
 
@@ -117,8 +118,7 @@ static struct wl_resource *create_toplevel_resource_for_resource(
 		struct wl_resource *list_resource) {
 	struct wl_client *client = wl_resource_get_client(list_resource);
 	struct wl_resource *resource = wl_resource_create(client,
-			&ext_foreign_toplevel_handle_v1_interface,
-			wl_resource_get_version(list_resource), 0);
+		&ext_foreign_toplevel_handle_v1_interface, toplevel->version, 0);
 	if (!resource) {
 		wl_client_post_no_memory(client);
 		return NULL;
@@ -148,13 +148,15 @@ static void toplevel_send_details_to_toplevel_resource(
 
 struct wlr_ext_foreign_toplevel_handle_v1 *
 wlr_ext_foreign_toplevel_handle_v1_create(struct wlr_ext_foreign_toplevel_list_v1 *list,
-		const struct wlr_ext_foreign_toplevel_handle_v1_state *state) {
+		const struct wlr_ext_foreign_toplevel_handle_v1_state *state, uint32_t version) {
+	assert(version <= FOREIGN_TOPLEVEL_HANDLE_V1_VERSION);
 	struct wlr_ext_foreign_toplevel_handle_v1 *toplevel = calloc(1, sizeof(*toplevel));
 	if (!toplevel) {
 		wlr_log(WLR_ERROR, "failed to allocate memory for toplevel handle");
 		return NULL;
 	}
 
+	toplevel->version = version;
 	toplevel->identifier = calloc(TOKEN_SIZE, sizeof(char));
 	if (toplevel->identifier == NULL) {
 		wlr_log(WLR_ERROR, "failed to allocate memory for toplevel identifier");
