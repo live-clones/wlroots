@@ -113,10 +113,8 @@ static void foreign_toplevel_resource_destroy(struct wl_resource *resource) {
 	wl_list_remove(wl_resource_get_link(resource));
 }
 
-static struct wl_resource *create_toplevel_resource_for_resource(
-		struct wlr_ext_foreign_toplevel_handle_v1 *toplevel,
-		struct wl_resource *list_resource) {
-	struct wl_client *client = wl_resource_get_client(list_resource);
+struct wl_resource *foreign_toplevel_create_resource_for_client(
+		struct wlr_ext_foreign_toplevel_handle_v1 *toplevel, struct wl_client *client) {
 	struct wl_resource *resource = wl_resource_create(client,
 		&ext_foreign_toplevel_handle_v1_interface, toplevel->version, 0);
 	if (!resource) {
@@ -128,6 +126,14 @@ static struct wl_resource *create_toplevel_resource_for_resource(
 		foreign_toplevel_resource_destroy);
 
 	wl_list_insert(&toplevel->resources, wl_resource_get_link(resource));
+	return resource;
+}
+
+static struct wl_resource *create_toplevel_resource_for_resource(
+		struct wlr_ext_foreign_toplevel_handle_v1 *toplevel,
+		struct wl_resource *list_resource) {
+	struct wl_resource *resource = foreign_toplevel_create_resource_for_client(
+		toplevel, wl_resource_get_client(list_resource));
 	ext_foreign_toplevel_list_v1_send_toplevel(list_resource, resource);
 	return resource;
 }
