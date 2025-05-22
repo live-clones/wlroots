@@ -1956,7 +1956,7 @@ struct wlr_vk_pipeline_layout *get_or_create_pipeline_layout(
 		VkSamplerYcbcrConversionCreateInfo conversion_create_info = {
 			.sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO,
 			.format = key->ycbcr_format->vk,
-			.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_601,
+			.ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_YCBCR_709,
 			.ycbcrRange = VK_SAMPLER_YCBCR_RANGE_ITU_NARROW,
 			.xChromaOffset = VK_CHROMA_LOCATION_MIDPOINT,
 			.yChromaOffset = VK_CHROMA_LOCATION_MIDPOINT,
