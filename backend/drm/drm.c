@@ -47,13 +47,6 @@ static const uint32_t SUPPORTED_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_BACKEND_OPTIONAL | COMMIT_OUTPUT_STATE;
 
 bool check_drm_features(struct wlr_drm_backend *drm) {
-	if (drmGetCap(drm->fd, DRM_CAP_CURSOR_WIDTH, &drm->cursor_width)) {
-		drm->cursor_width = 64;
-	}
-	if (drmGetCap(drm->fd, DRM_CAP_CURSOR_HEIGHT, &drm->cursor_height)) {
-		drm->cursor_height = 64;
-	}
-
 	uint64_t cap;
 	if (drmGetCap(drm->fd, DRM_CAP_PRIME, &cap) ||
 			!(cap & DRM_PRIME_CAP_IMPORT)) {
@@ -228,10 +221,16 @@ static bool init_plane(struct wlr_drm_backend *drm,
 
 		drmModeFreePropertyBlob(blob);
 	} else {
+		uint64_t width = 0, height = 0;
+
+		drmGetCap(drm->fd, DRM_CAP_CURSOR_WIDTH, &width);
+		drmGetCap(drm->fd, DRM_CAP_CURSOR_HEIGHT, &height);
+
 		const struct drm_plane_size_hint size_hint = {
-			.width = drm->cursor_width,
-			.height = drm->cursor_height,
+			.width = width ? width : 64,
+			.height = height ? height : 64,
 		};
+
 		if (!init_plane_cursor_sizes(p, &size_hint, 1)) {
 			return false;
 		}
