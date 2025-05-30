@@ -38,4 +38,7 @@ void match_connectors_with_crtcs(size_t num_conns,
 	size_t num_crtcs, const uint32_t prev_crtcs[static restrict num_crtcs],
 	uint32_t new_crtcs[static restrict num_crtcs]);
 
+char *get_drm_bus_str(const drmDevice *dev);
+bool parse_dp_mst_path(const char *path, uint32_t *parent_conn_id, const char **child_path);
+
 #endif
