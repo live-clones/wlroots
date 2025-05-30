@@ -221,6 +221,7 @@ struct wlr_xwayland_surface {
 		struct wl_signal set_override_redirect;
 		struct wl_signal set_geometry;
 		struct wl_signal set_opacity;
+		struct wl_signal set_icon; /* xcb_ewmh_get_wm_icon_reply_t */
 		struct wl_signal focus_in;
 		struct wl_signal grab_focus;
 		/* can be used to set initial maximized/fullscreen geometry */
