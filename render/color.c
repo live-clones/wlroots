@@ -21,12 +21,14 @@ static const struct wlr_color_primaries COLOR_PRIMARIES_BT2020 = { // code point
 	.white = { 0.3127, 0.3290 },
 };
 
-struct wlr_color_transform *wlr_color_transform_init_srgb(void) {
+struct wlr_color_transform *wlr_color_transform_init_srgb(
+		enum wlr_color_named_primaries primaries) {
 	struct wlr_color_transform *tx = calloc(1, sizeof(struct wlr_color_transform));
 	if (!tx) {
 		return NULL;
 	}
 	tx->type = COLOR_TRANSFORM_SRGB;
+	tx->primaries = primaries;
 	tx->ref_count = 1;
 	wlr_addon_set_init(&tx->addons);
 	return tx;
