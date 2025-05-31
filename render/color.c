@@ -21,20 +21,32 @@ static const struct wlr_color_primaries COLOR_PRIMARIES_BT2020 = { // code point
 	.white = { 0.3127, 0.3290 },
 };
 
-struct wlr_color_transform *wlr_color_transform_init_srgb(void) {
-	struct wlr_color_transform *tx = calloc(1, sizeof(struct wlr_color_transform));
+void wlr_color_transform_init(struct wlr_color_transform *tr,
+		enum wlr_color_transform_type type,
+		enum wlr_color_named_primaries primaries) {
+	*tr = (struct wlr_color_transform){
+		.type = type,
+		.primaries = primaries,
+		.ref_count = 1,
+	};
+	wlr_addon_set_init(&tr->addons);
+}
+
+struct wlr_color_transform *wlr_color_transform_init_linear_to_inverse_eotf(
+		enum wlr_color_named_primaries primaries,
+		enum wlr_color_transfer_function tf) {
+	struct wlr_color_transform_inverse_eotf *tx = calloc(1, sizeof(*tx));
 	if (!tx) {
 		return NULL;
 	}
-	tx->type = COLOR_TRANSFORM_SRGB;
-	tx->ref_count = 1;
-	wlr_addon_set_init(&tx->addons);
-	return tx;
+	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_INVERSE_EOTF, primaries);
+	tx->tf = tf;
+	return &tx->base;
 }
 
 static void color_transform_destroy(struct wlr_color_transform *tr) {
 	switch (tr->type) {
-	case COLOR_TRANSFORM_SRGB:
+	case COLOR_TRANSFORM_INVERSE_EOTF:
 		break;
 	case COLOR_TRANSFORM_LUT_3D:;
 		struct wlr_color_transform_lut3d *lut3d =
@@ -60,6 +72,13 @@ void wlr_color_transform_unref(struct wlr_color_transform *tr) {
 	if (tr->ref_count == 0) {
 		color_transform_destroy(tr);
 	}
+}
+
+struct wlr_color_transform_inverse_eotf *wlr_color_transform_inverse_eotf_from_base(
+		struct wlr_color_transform *tr) {
+	assert(tr->type == COLOR_TRANSFORM_INVERSE_EOTF);
+	struct wlr_color_transform_inverse_eotf *inverse_eotf = wl_container_of(tr, inverse_eotf, base);
+	return inverse_eotf;
 }
 
 struct wlr_color_transform_lut3d *wlr_color_transform_lut3d_from_base(
