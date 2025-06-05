@@ -11,19 +11,39 @@
 #include <wlr/util/transform.h>
 #include "types/wlr_scene.h"
 
+static double get_surface_preferred_buffer_scale(struct wlr_surface *surface) {
+	double scale = 1;
+	struct wlr_surface_output *surface_output;
+	wl_list_for_each(surface_output, &surface->current_outputs, link) {
+		if (surface_output->output->scale > scale) {
+			scale = surface_output->output->scale;
+		}
+	}
+	return scale;
+}
+
+static struct wlr_output *get_surface_frame_pacing_output(struct wlr_surface *surface) {
+	struct wlr_output *frame_pacing_output = NULL;
+	struct wlr_surface_output *surface_output;
+	wl_list_for_each(surface_output, &surface->current_outputs, link) {
+		if (frame_pacing_output == NULL ||
+				surface_output->output->refresh > frame_pacing_output->refresh) {
+			frame_pacing_output = surface_output->output;
+		}
+	}
+	return frame_pacing_output;
+}
+
 static void handle_scene_buffer_outputs_update(
 		struct wl_listener *listener, void *data) {
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, outputs_update);
 
-	if (surface->buffer->primary_output == NULL) {
-		return;
-	}
-	double scale = surface->buffer->primary_output->output->scale;
+	surface->frame_pacing_output = get_surface_frame_pacing_output(surface->surface);
+
+	double scale = get_surface_preferred_buffer_scale(surface->surface);
 	wlr_fractional_scale_v1_notify_scale(surface->surface, scale);
 	wlr_surface_set_preferred_buffer_scale(surface->surface, ceil(scale));
-	wlr_surface_set_preferred_buffer_transform(surface->surface,
-		surface->buffer->primary_output->output->transform);
 }
 
 static void handle_scene_buffer_output_enter(
@@ -49,15 +69,15 @@ static void handle_scene_buffer_output_sample(
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, output_sample);
 	const struct wlr_scene_output_sample_event *event = data;
-	struct wlr_scene_output *scene_output = event->output;
-	if (surface->buffer->primary_output != scene_output) {
+	struct wlr_output *output = event->output->output;
+	if (surface->frame_pacing_output != output) {
 		return;
 	}
 
 	if (event->direct_scanout) {
-		wlr_presentation_surface_scanned_out_on_output(surface->surface, scene_output->output);
+		wlr_presentation_surface_scanned_out_on_output(surface->surface, output);
 	} else {
-		wlr_presentation_surface_textured_on_output(surface->surface, scene_output->output);
+		wlr_presentation_surface_textured_on_output(surface->surface, output);
 	}
 }
 
@@ -65,9 +85,19 @@ static void handle_scene_buffer_frame_done(
 		struct wl_listener *listener, void *data) {
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, frame_done);
-	struct timespec *now = data;
+	struct wlr_scene_frame_done_event *event = data;
+	if (surface->frame_pacing_output != event->output->output) {
+		return;
+	}
 
-	wlr_surface_send_frame_done(surface->surface, now);
+	wlr_surface_send_frame_done(surface->surface, &event->when);
+}
+
+void wlr_scene_surface_send_frame_done(struct wlr_scene_surface *scene_surface,
+		const struct timespec *when) {
+	if (!pixman_region32_empty(&scene_surface->buffer->node.visible)) {
+		wlr_surface_send_frame_done(scene_surface->surface, when);
+	}
 }
 
 static void scene_surface_handle_surface_destroy(
