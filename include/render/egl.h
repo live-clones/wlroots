@@ -3,6 +3,8 @@
 
 #include <wlr/render/egl.h>
 
+struct wlr_color_representation_v1_state;
+
 struct wlr_egl {
 	EGLDisplay display;
 	EGLContext context;
@@ -74,7 +76,8 @@ void wlr_egl_destroy(struct wlr_egl *egl);
  * of the dmabuf with wlr_egl_check_import_dmabuf once first.
  */
 EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
-	struct wlr_dmabuf_attributes *attributes, bool *external_only);
+	struct wlr_dmabuf_attributes *attributes, bool *external_only,
+	const struct wlr_color_representation_v1_state *color_repr);
 
 /**
  * Get DMA-BUF formats suitable for sampling usage.

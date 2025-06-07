@@ -12,6 +12,8 @@
 #include <wlr/render/egl.h>
 #include <wlr/render/interface.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_color_representation_v1.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
 #include <xf86drm.h>
@@ -143,8 +145,16 @@ struct wlr_gles2_buffer *gles2_buffer_get_or_create(struct wlr_gles2_renderer *r
 		goto error_buffer;
 	}
 
+	// Try to fetch color representation if present
+	const struct wlr_color_representation_v1_state *color_repr = NULL;
+	struct wlr_dmabuf_v1_buffer *dmabuf_v1_buffer =
+		wlr_dmabuf_v1_buffer_try_from_buffer(wlr_buffer);
+	if (dmabuf_v1_buffer != NULL) {
+		color_repr = &dmabuf_v1_buffer->color_repr;
+	}
+
 	buffer->image = wlr_egl_create_image_from_dmabuf(renderer->egl,
-		&dmabuf, &buffer->external_only);
+		&dmabuf, &buffer->external_only, color_repr);
 	if (buffer->image == EGL_NO_IMAGE_KHR) {
 		goto error_buffer;
 	}
