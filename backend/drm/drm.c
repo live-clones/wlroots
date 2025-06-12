@@ -1293,6 +1293,11 @@ uint32_t wlr_drm_connector_get_id(struct wlr_output *output) {
 	return conn->id;
 }
 
+uint32_t wlr_drm_connector_get_type(struct wlr_output *output) {
+	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
+	return conn->connector_type;
+}
+
 enum wl_output_transform wlr_drm_connector_get_panel_orientation(
 		struct wlr_output *output) {
 	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
@@ -1525,6 +1530,7 @@ static struct wlr_drm_connector *create_drm_connector(struct wlr_drm_backend *dr
 	wlr_conn->backend = drm;
 	wlr_conn->status = DRM_MODE_DISCONNECTED;
 	wlr_conn->id = drm_conn->connector_id;
+	wlr_conn->connector_type = drm_conn->connector_type;
 
 	if (!get_drm_connector_props(drm->fd, wlr_conn->id, &wlr_conn->props)) {
 		free(wlr_conn);
