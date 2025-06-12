@@ -48,6 +48,7 @@ static const struct prop_info crtc_info[] = {
 
 static const struct prop_info plane_info[] = {
 #define INDEX(name) (offsetof(struct wlr_drm_plane_props, name) / sizeof(uint32_t))
+	{ "COLOR_ENCODING", INDEX(color_encoding) },
 	{ "CRTC_H", INDEX(crtc_h) },
 	{ "CRTC_ID", INDEX(crtc_id) },
 	{ "CRTC_W", INDEX(crtc_w) },

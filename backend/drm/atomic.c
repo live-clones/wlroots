@@ -378,6 +378,15 @@ static void set_plane_props(struct atomic *atom, struct wlr_drm_backend *drm,
 	atomic_add(atom, id, props->crtc_y, dst_box->y);
 	atomic_add(atom, id, props->crtc_w, dst_box->width);
 	atomic_add(atom, id, props->crtc_h, dst_box->height);
+
+	// Always set the color encoding on every plane to BT.709.  This only
+	// affects YUV planes (eg. scanout video).  This won't be correct for
+	// all video but at least means we will be consistent and most
+	// importantly should match the GLES2 renderer, so avoids visible
+	// color-shifts when direct scanout is enabled/disabled.
+	if (props->color_encoding) {
+		atomic_add(atom, id, props->color_encoding, DRM_COLOR_YCBCR_BT709);
+	}
 }
 
 static bool supports_cursor_hotspots(const struct wlr_drm_plane *plane) {
