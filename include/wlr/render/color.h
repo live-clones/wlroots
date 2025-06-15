@@ -29,6 +29,40 @@ enum wlr_color_transfer_function {
 };
 
 /**
+ * Well-known color encodings, each representing a set of matrix coefficients
+ * used to convert that particular YCbCr encoding to RGB.  NONE means the
+ * value is unset or unknown.
+ */
+enum wlr_color_encoding {
+	WLR_COLOR_ENCODING_NONE,
+	WLR_COLOR_ENCODING_BT601,
+	WLR_COLOR_ENCODING_BT709,
+	WLR_COLOR_ENCODING_BT2020,
+};
+
+/**
+ * Specifies whether a particular color-encoding uses full- or limited-range
+ * values.  NONE means the value is unset or unknown.
+ */
+enum wlr_color_range {
+	WLR_COLOR_RANGE_NONE,
+	WLR_COLOR_RANGE_LIMITED,
+	WLR_COLOR_RANGE_FULL,
+};
+
+/**
+ * Chroma sample locations, corresponding to Chroma420SampleLocType code
+ * points in H.273.  NONE means the value is unset or unknown.
+ */
+enum wlr_color_chroma_location {
+	WLR_COLOR_CHROMA_LOCATION_NONE,
+	WLR_COLOR_CHROMA_LOCATION_TYPE0,
+	WLR_COLOR_CHROMA_LOCATION_TYPE1,
+	WLR_COLOR_CHROMA_LOCATION_TYPE2,
+	WLR_COLOR_CHROMA_LOCATION_TYPE3,
+};
+
+/**
  * CIE 1931 xy chromaticity coordinates.
  */
 struct wlr_color_cie1931_xy {

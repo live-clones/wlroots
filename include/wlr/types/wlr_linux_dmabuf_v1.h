@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_buffer.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/render/dmabuf.h>
 #include <wlr/render/drm_format_set.h>
 
@@ -23,6 +24,7 @@ struct wlr_dmabuf_v1_buffer {
 
 	struct wl_resource *resource; // can be NULL if the client destroyed it
 	struct wlr_dmabuf_attributes attributes;
+	struct wlr_color_representation_v1_state color_repr;
 
 	struct {
 		struct wl_listener release;
@@ -30,11 +32,18 @@ struct wlr_dmabuf_v1_buffer {
 };
 
 /**
- * Returns the struct wlr_dmabuf_buffer if the given resource was created
+ * Returns the struct wlr_dmabuf_v1_buffer if the given resource was created
  * via the linux-dmabuf buffer protocol or NULL otherwise.
  */
 struct wlr_dmabuf_v1_buffer *wlr_dmabuf_v1_buffer_try_from_buffer_resource(
 	struct wl_resource *buffer_resource);
+
+/**
+ * Returns the struct wlr_dmabuf_v1_buffer if the given buffer is a
+ * linux-dmabuf buffer or NULL otherwise.
+ */
+struct wlr_dmabuf_v1_buffer *wlr_dmabuf_v1_buffer_try_from_buffer(
+	struct wlr_buffer *buffer);
 
 struct wlr_linux_dmabuf_feedback_v1 {
 	dev_t main_device;
