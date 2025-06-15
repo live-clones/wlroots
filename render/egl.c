@@ -745,7 +745,7 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 	}
 
 	unsigned int atti = 0;
-	EGLint attribs[50];
+	EGLint attribs[52];
 	attribs[atti++] = EGL_WIDTH;
 	attribs[atti++] = attributes->width;
 	attribs[atti++] = EGL_HEIGHT;
@@ -802,6 +802,13 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 			attribs[atti++] = attributes->modifier >> 32;
 		}
 	}
+
+	// Always convert YUV to RGB using BT.709 color encoding.  This is to
+	// attempt to be consistent across GL drivers, and also to be
+	// consistent with DRM scanout so there's no color-shift when direct
+	// scanout is enabled/disabled.
+	attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+	attribs[atti++] = EGL_ITU_REC709_EXT;
 
 	// Our clients don't expect our usage to trash the buffer contents
 	attribs[atti++] = EGL_IMAGE_PRESERVED_KHR;
