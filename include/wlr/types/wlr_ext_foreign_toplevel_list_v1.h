@@ -32,6 +32,7 @@ struct wlr_ext_foreign_toplevel_handle_v1 {
 	struct wl_list resources; // wl_resource_get_link()
 	struct wl_list link; // wlr_ext_foreign_toplevel_list_v1.toplevels
 
+	uint32_t version;
 	char *title;
 	char *app_id;
 	char *identifier;
@@ -62,9 +63,8 @@ struct wlr_ext_foreign_toplevel_handle_v1 *wlr_ext_foreign_toplevel_handle_v1_cr
 void wlr_ext_foreign_toplevel_handle_v1_destroy(
 	struct wlr_ext_foreign_toplevel_handle_v1 *toplevel);
 
-void wlr_ext_foreign_toplevel_handle_v1_update_state(
-	struct wlr_ext_foreign_toplevel_handle_v1 *toplevel,
-	const struct wlr_ext_foreign_toplevel_handle_v1_state *state);
+void wlr_ext_foreign_toplevel_handle_v1_update_state(struct wlr_ext_foreign_toplevel_handle_v1 *toplevel,
+	const struct wlr_ext_foreign_toplevel_handle_v1_state *state, uint32_t version);
 
 struct wlr_ext_foreign_toplevel_handle_v1 *wlr_ext_foreign_toplevel_handle_v1_from_resource(
 	struct wl_resource *resource);
