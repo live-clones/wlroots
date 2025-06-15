@@ -66,6 +66,7 @@ struct wlr_scene_node {
 
 	bool enabled;
 	int x, y; // relative to parent
+	double scale;
 
 	struct {
 		struct wl_signal destroy;
@@ -284,6 +285,11 @@ void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled);
  * Set the position of the node relative to its parent.
  */
 void wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y);
+/**
+ * Set the scaling factor of the node. This scales the node's children
+ * accordingly.
+ */
+void wlr_scene_node_set_scale(struct wlr_scene_node *node, double scale);
 /**
  * Move the node right above the specified sibling.
  * Asserts that node and sibling are distinct and share the same parent.
