@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <wlr/backend.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/render/drm_syncobj.h>
@@ -69,6 +70,7 @@ static void scene_node_init(struct wlr_scene_node *node,
 		.type = type,
 		.parent = parent,
 		.enabled = true,
+		.scale = 1.0,
 	};
 
 	wl_list_init(&node->link);
@@ -211,6 +213,8 @@ struct wlr_scene_tree *wlr_scene_tree_create(struct wlr_scene_tree *parent) {
 }
 
 static void scene_node_get_size(struct wlr_scene_node *node, int *lx, int *ly);
+static void scene_node_relative_coords(struct wlr_scene_node *node,
+		int *x, int *y);
 
 typedef bool (*scene_node_box_iterator_func_t)(struct wlr_scene_node *node,
 	int sx, int sy, void *data);
@@ -226,7 +230,10 @@ static bool _scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box
 		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
 		struct wlr_scene_node *child;
 		wl_list_for_each_reverse(child, &scene_tree->children, link) {
-			if (_scene_nodes_in_box(child, box, iterator, user_data, lx + child->x, ly + child->y)) {
+			int x, y;
+			scene_node_relative_coords(child, &x, &y);
+			if (_scene_nodes_in_box(child, box, iterator, user_data,
+						lx + x, ly + y)) {
 				return true;
 			}
 		}
@@ -637,7 +644,9 @@ static void scene_node_bounds(struct wlr_scene_node *node,
 		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
 		struct wlr_scene_node *child;
 		wl_list_for_each(child, &scene_tree->children, link) {
-			scene_node_bounds(child, x + child->x, y + child->y, visible);
+			int cx, cy;
+			scene_node_relative_coords(child, &cx, &cy);
+			scene_node_bounds(child, x + cx, y + cy, visible);
 		}
 		return;
 	}
@@ -1120,7 +1129,20 @@ static struct wlr_texture *scene_buffer_get_texture(
 	return texture;
 }
 
-static void scene_node_get_size(struct wlr_scene_node *node,
+static double _scene_node_get_scale(const struct wlr_scene_node *node,
+		double acc) {
+	if (!node) {
+		return acc;
+	}
+	return _scene_node_get_scale(node->parent ? &node->parent->node : NULL,
+			node->scale * acc);
+}
+
+static double scene_node_get_scale(const struct wlr_scene_node *node) {
+	return _scene_node_get_scale(node, 1.0);
+}
+
+static void scene_node_get_size_unscaled(struct wlr_scene_node *node,
 		int *width, int *height) {
 	*width = 0;
 	*height = 0;
@@ -1147,6 +1169,15 @@ static void scene_node_get_size(struct wlr_scene_node *node,
 	}
 }
 
+static void scene_node_get_size(struct wlr_scene_node *node,
+		int *width, int *height) {
+
+	double scale = scene_node_get_scale(node);
+	scene_node_get_size_unscaled(node, width, height);
+	*width = round(*width * scale);
+	*height = round(*height * scale);
+}
+
 void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled) {
 	if (node->enabled == enabled) {
 		return;
@@ -1171,6 +1202,15 @@ void wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y) {
 
 	node->x = x;
 	node->y = y;
+	scene_node_update(node, NULL);
+}
+
+void wlr_scene_node_set_scale(struct wlr_scene_node *node, double scale) {
+	if (node->scale == scale) {
+		return;
+	}
+
+	node->scale = scale;
 	scene_node_update(node, NULL);
 }
 
@@ -1247,6 +1287,13 @@ void wlr_scene_node_reparent(struct wlr_scene_node *node,
 	scene_node_update(node, &visible);
 }
 
+static void scene_node_relative_coords(struct wlr_scene_node *node,
+		int *x, int *y) {
+	double parent_scale = node->parent ? scene_node_get_scale(&node->parent->node) : 1.0;
+	*x = round(parent_scale * node->x);
+	*y = round(parent_scale * node->y);
+}
+
 bool wlr_scene_node_coords(struct wlr_scene_node *node,
 		int *lx_ptr, int *ly_ptr) {
 	assert(node);
@@ -1254,8 +1301,10 @@ bool wlr_scene_node_coords(struct wlr_scene_node *node,
 	int lx = 0, ly = 0;
 	bool enabled = true;
 	while (true) {
-		lx += node->x;
-		ly += node->y;
+		int x, y;
+		scene_node_relative_coords(node, &x, &y);
+		lx += x;
+		ly += y;
 		enabled = enabled && node->enabled;
 		if (node->parent == NULL) {
 			break;
@@ -1276,8 +1325,10 @@ static void scene_node_for_each_scene_buffer(struct wlr_scene_node *node,
 		return;
 	}
 
-	lx += node->x;
-	ly += node->y;
+	int x, y;
+	scene_node_relative_coords(node, &x, &y);
+	lx += x;
+	ly += y;
 
 	if (node->type == WLR_SCENE_NODE_BUFFER) {
 		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
@@ -2402,8 +2453,10 @@ static void scene_output_for_each_scene_buffer(const struct wlr_box *output_box,
 		return;
 	}
 
-	lx += node->x;
-	ly += node->y;
+	int x, y;
+	scene_node_relative_coords(node, &x, &y);
+	lx += x;
+	ly += y;
 
 	if (node->type == WLR_SCENE_NODE_BUFFER) {
 		struct wlr_box node_box = { .x = lx, .y = ly };
