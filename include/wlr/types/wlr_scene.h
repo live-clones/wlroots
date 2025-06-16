@@ -123,6 +123,10 @@ struct wlr_scene_surface {
 	struct {
 		struct wlr_box clip;
 
+		// Output used for frame pacing (surface frame callbacks, presentation
+		// time feedback, etc), may be NULL
+		struct wlr_output *frame_pacing_output;
+
 		struct wlr_addon addon;
 
 		struct wl_listener outputs_update;
@@ -152,6 +156,11 @@ struct wlr_scene_output_sample_event {
 	bool direct_scanout;
 };
 
+struct wlr_scene_frame_done_event {
+	struct wlr_scene_output *output;
+	struct timespec when;
+};
+
 /** A scene-graph node displaying a buffer */
 struct wlr_scene_buffer {
 	struct wlr_scene_node node;
@@ -164,7 +173,7 @@ struct wlr_scene_buffer {
 		struct wl_signal output_enter; // struct wlr_scene_output
 		struct wl_signal output_leave; // struct wlr_scene_output
 		struct wl_signal output_sample; // struct wlr_scene_output_sample_event
-		struct wl_signal frame_done; // struct timespec
+		struct wl_signal frame_done; // struct wlr_scene_frame_done_event
 	} events;
 
 	// May be NULL
@@ -173,8 +182,7 @@ struct wlr_scene_buffer {
 	/**
 	 * The output that the largest area of this buffer is displayed on.
 	 * This may be NULL if the buffer is not currently displayed on any
-	 * outputs. This is the output that should be used for frame callbacks,
-	 * presentation feedback, etc.
+	 * outputs.
 	 */
 	struct wlr_scene_output *primary_output;
 
@@ -417,6 +425,12 @@ struct wlr_scene_surface *wlr_scene_surface_try_from_buffer(
 	struct wlr_scene_buffer *scene_buffer);
 
 /**
+ * Call wlr_surface_send_frame_done() if the surface is visible.
+ */
+void wlr_scene_surface_send_frame_done(struct wlr_scene_surface *scene_surface,
+	const struct timespec *when);
+
+/**
  * Add a node displaying a solid-colored rectangle to the scene-graph.
  *
  * The color argument must be a premultiplied color value.
@@ -531,7 +545,7 @@ void wlr_scene_buffer_set_filter_mode(struct wlr_scene_buffer *scene_buffer,
  * Calls the buffer's frame_done signal.
  */
 void wlr_scene_buffer_send_frame_done(struct wlr_scene_buffer *scene_buffer,
-	struct timespec *now);
+	struct wlr_scene_frame_done_event *event);
 
 /**
  * Add a viewport for the specified output to the scene-graph.
