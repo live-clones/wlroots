@@ -4,16 +4,7 @@
 #include <wlr/util/box.h>
 #include "util/matrix.h"
 
-void wlr_matrix_identity(float mat[static 9]) {
-	static const float identity[9] = {
-		1.0f, 0.0f, 0.0f,
-		0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 1.0f,
-	};
-	memcpy(mat, identity, sizeof(identity));
-}
-
-void wlr_matrix_multiply(float mat[static 9], const float a[static 9],
+void matrix_multiply(float mat[static 9], const float a[static 9],
 		const float b[static 9]) {
 	float product[9];
 
@@ -32,24 +23,6 @@ void wlr_matrix_multiply(float mat[static 9], const float a[static 9],
 	memcpy(mat, product, sizeof(product));
 }
 
-void wlr_matrix_translate(float mat[static 9], float x, float y) {
-	float translate[9] = {
-		1.0f, 0.0f, x,
-		0.0f, 1.0f, y,
-		0.0f, 0.0f, 1.0f,
-	};
-	wlr_matrix_multiply(mat, mat, translate);
-}
-
-void wlr_matrix_scale(float mat[static 9], float x, float y) {
-	float scale[9] = {
-		x,    0.0f, 0.0f,
-		0.0f, y,    0.0f,
-		0.0f, 0.0f, 1.0f,
-	};
-	wlr_matrix_multiply(mat, mat, scale);
-}
-
 static const float transforms[][9] = {
 	[WL_OUTPUT_TRANSFORM_NORMAL] = {
 		1.0f, 0.0f, 0.0f,
@@ -58,21 +31,21 @@ static const float transforms[][9] = {
 	},
 	[WL_OUTPUT_TRANSFORM_90] = {
 		0.0f, 1.0f, 0.0f,
-		-1.0f, 0.0f, 0.0f,
+		-1.0f, 0.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_180] = {
-		-1.0f, 0.0f, 0.0f,
-		0.0f, -1.0f, 0.0f,
+		-1.0f, 0.0f, 1.0f,
+		0.0f, -1.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_270] = {
-		0.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 1.0f,
 		1.0f, 0.0f, 0.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_FLIPPED] = {
-		-1.0f, 0.0f, 0.0f,
+		-1.0f, 0.0f, 1.0f,
 		0.0f, 1.0f, 0.0f,
 		0.0f, 0.0f, 1.0f,
 	},
@@ -83,62 +56,57 @@ static const float transforms[][9] = {
 	},
 	[WL_OUTPUT_TRANSFORM_FLIPPED_180] = {
 		1.0f, 0.0f, 0.0f,
-		0.0f, -1.0f, 0.0f,
+		0.0f, -1.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 	[WL_OUTPUT_TRANSFORM_FLIPPED_270] = {
-		0.0f, -1.0f, 0.0f,
-		-1.0f, 0.0f, 0.0f,
+		0.0f, -1.0f, 1.0f,
+		-1.0f, 0.0f, 1.0f,
 		0.0f, 0.0f, 1.0f,
 	},
 };
 
-void wlr_matrix_transform(float mat[static 9],
+void matrix_transform(float mat[static 9],
 		enum wl_output_transform transform) {
-	wlr_matrix_multiply(mat, mat, transforms[transform]);
+	matrix_multiply(mat, mat, transforms[transform]);
 }
 
-void matrix_projection(float mat[static 9], int width, int height,
-		enum wl_output_transform transform) {
-	memset(mat, 0, sizeof(*mat) * 9);
+void matrix_projection(float mat[static 9], int width, int height) {
+	struct wlr_fbox fbox = {
+		.x = -1.0f,
+		.y = -1.0f,
+		.width = 2.0f / width,
+		.height = 2.0f / height,
+	};
 
-	const float *t = transforms[transform];
-	float x = 2.0f / width;
-	float y = 2.0f / height;
+	float trans[9];
+	matrix_project_fbox(trans, &fbox);
+	matrix_multiply(mat, trans, mat);
+}
 
-	// Rotation + reflection
-	mat[0] = x * t[0];
-	mat[1] = x * t[1];
-	mat[3] = y * -t[3];
-	mat[4] = y * -t[4];
+void matrix_project_fbox(float mat[static 9], const struct wlr_fbox *box) {
+	mat[0] = box->width;
+	mat[1] = 0.0f;
+	mat[2] = box->x;
 
-	// Translation
-	mat[2] = -copysign(1.0f, mat[0] + mat[1]);
-	mat[5] = -copysign(1.0f, mat[3] + mat[4]);
+	mat[3] = 0.0f;
+	mat[4] = box->height;
+	mat[5] = box->y;
 
-	// Identity
+	mat[6] = 0.0f;
+	mat[7] = 0.0f;
 	mat[8] = 1.0f;
 }
 
-void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
-		enum wl_output_transform transform, const float projection[static 9]) {
-	int x = box->x;
-	int y = box->y;
-	int width = box->width;
-	int height = box->height;
+void matrix_project_box(float mat[static 9], const struct wlr_box *box) {
+	struct wlr_fbox fbox = {
+		.x = box->x,
+		.y = box->y,
+		.width = box->width,
+		.height = box->height,
+	};
 
-	wlr_matrix_identity(mat);
-	wlr_matrix_translate(mat, x, y);
-
-	wlr_matrix_scale(mat, width, height);
-
-	if (transform != WL_OUTPUT_TRANSFORM_NORMAL) {
-		wlr_matrix_translate(mat, 0.5, 0.5);
-		wlr_matrix_transform(mat, transform);
-		wlr_matrix_translate(mat, -0.5, -0.5);
-	}
-
-	wlr_matrix_multiply(mat, projection, mat);
+	matrix_project_fbox(mat, &fbox);
 }
 
 void matrix_invert(float out[static 9], float m[static 9]) {

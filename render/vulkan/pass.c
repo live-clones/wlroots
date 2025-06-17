@@ -616,10 +616,11 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 	switch (options->blend_mode) {
 	case WLR_RENDER_BLEND_MODE_PREMULTIPLIED:;
-		float proj[9], matrix[9];
-		wlr_matrix_identity(proj);
-		wlr_matrix_project_box(matrix, &box, WL_OUTPUT_TRANSFORM_NORMAL, proj);
-		wlr_matrix_multiply(matrix, pass->projection, matrix);
+		float matrix[9];
+		matrix_project_box(matrix, &box);
+		matrix_projection(matrix,
+			pass->render_buffer->wlr_buffer->width,
+			pass->render_buffer->wlr_buffer->height);
 
 		struct wlr_vk_render_format_setup *setup = pass->srgb_pathway ?
 			pass->render_buffer->srgb.render_setup :
@@ -707,10 +708,12 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	wlr_render_texture_options_get_dst_box(options, &dst_box);
 	float alpha = wlr_render_texture_options_get_alpha(options);
 
-	float proj[9], matrix[9];
-	wlr_matrix_identity(proj);
-	wlr_matrix_project_box(matrix, &dst_box, options->transform, proj);
-	wlr_matrix_multiply(matrix, pass->projection, matrix);
+	float matrix[9];
+	matrix_project_box(matrix, &dst_box);
+	matrix_transform(matrix, options->transform);
+	matrix_projection(matrix,
+		pass->render_buffer->wlr_buffer->width,
+		pass->render_buffer->wlr_buffer->height);
 
 	struct wlr_vk_vert_pcr_data vert_pcr_data = {
 		.uv_off = {
@@ -1155,10 +1158,6 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		.height = height,
 		.maxDepth = 1,
 	});
-
-	// matrix_projection() assumes a GL coordinate system so we need
-	// to pass WL_OUTPUT_TRANSFORM_FLIPPED_180 to adjust it for vulkan.
-	matrix_projection(pass->projection, width, height, WL_OUTPUT_TRANSFORM_FLIPPED_180);
 
 	wlr_buffer_lock(buffer->wlr_buffer);
 	pass->render_buffer = buffer;
