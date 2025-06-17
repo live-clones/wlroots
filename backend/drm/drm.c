@@ -20,6 +20,7 @@
 #include <wlr/util/transform.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include "backend/drm/color.h"
 #include "backend/drm/drm.h"
 #include "backend/drm/fb.h"
 #include "backend/drm/iface.h"
@@ -707,6 +708,7 @@ static void drm_connector_state_finish(struct wlr_drm_connector_state *state) {
 	drm_fb_clear(&state->primary_fb);
 	drm_fb_clear(&state->cursor_fb);
 	wlr_drm_syncobj_timeline_unref(state->wait_timeline);
+	drm_crtc_color_transform_unref(state->crtc_color_transform);
 }
 
 static bool drm_connector_state_update_primary_fb(struct wlr_drm_connector *conn,
@@ -858,11 +860,15 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 		}
 	}
 
-	if ((state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) && state->color_transform != NULL &&
-			state->color_transform->type != COLOR_TRANSFORM_LUT_3X1D) {
-		wlr_drm_conn_log(conn, WLR_DEBUG,
-			"Only 3x1D LUT color transforms are supported");
-		return false;
+	if ((state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) && state->color_transform != NULL) {
+		assert(conn_state->crtc_color_transform == NULL);
+		conn_state->crtc_color_transform = drm_crtc_color_transform_import(conn->backend,
+			conn->crtc, state->color_transform);
+		if (conn_state->crtc_color_transform == NULL) {
+			wlr_drm_conn_log(conn, WLR_DEBUG,
+				"Failed to import color transform");
+			return false;
+		}
 	}
 
 	if ((state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) &&

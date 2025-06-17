@@ -15,6 +15,8 @@
 #include "backend/drm/properties.h"
 #include "backend/drm/renderer.h"
 
+struct wlr_drm_crtc_color_transform;
+
 struct wlr_drm_viewport {
 	struct wlr_fbox src_box;
 	struct wlr_box dst_box;
@@ -151,6 +153,8 @@ struct wlr_drm_connector_state {
 
 	struct wlr_drm_syncobj_timeline *wait_timeline;
 	uint64_t wait_point;
+
+	struct wlr_drm_crtc_color_transform *crtc_color_transform;
 
 	// used by atomic
 	uint32_t mode_id;

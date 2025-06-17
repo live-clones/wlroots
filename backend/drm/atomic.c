@@ -6,6 +6,7 @@
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
 #include <xf86drmMode.h>
+#include "backend/drm/color.h"
 #include "backend/drm/drm.h"
 #include "backend/drm/fb.h"
 #include "backend/drm/iface.h"
@@ -334,11 +335,9 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	if (state->base->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) {
 		size_t dim = 0;
 		uint16_t *lut = NULL;
-		if (state->base->color_transform != NULL) {
-			struct wlr_color_transform_lut_3x1d *tr =
-				color_transform_lut_3x1d_from_base(state->base->color_transform);
-			dim = tr->dim;
-			lut = tr->lut_3x1d;
+		if (state->crtc_color_transform != NULL) {
+			dim = state->crtc_color_transform->lut_3x1d->dim;
+			lut = state->crtc_color_transform->lut_3x1d->lut_3x1d;
 		}
 
 		// Fallback to legacy gamma interface when gamma properties are not
