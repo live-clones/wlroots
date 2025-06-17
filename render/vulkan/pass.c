@@ -67,18 +67,26 @@ static float color_to_linear_premult(float non_linear, float alpha) {
 	return (alpha == 0) ? 0 : color_to_linear(non_linear / alpha) * alpha;
 }
 
-static void mat3_to_mat4(const float mat3[9], float mat4[4][4]) {
-	memset(mat4, 0, sizeof(float) * 16);
-	mat4[0][0] = mat3[0];
-	mat4[0][1] = mat3[1];
-	mat4[0][3] = mat3[2];
+static void encode_proj_matrix(const float mat3[9], float mat4[4][4]) {
+	float result[4][4] = {
+		{ mat3[0], mat3[1], 0, mat3[2] },
+		{ mat3[3], mat3[4], 0, mat3[5] },
+		{ 0, 0, 1, 0 },
+		{ 0, 0, 0, 1 },
+	};
 
-	mat4[1][0] = mat3[3];
-	mat4[1][1] = mat3[4];
-	mat4[1][3] = mat3[5];
+	memcpy(mat4, result, sizeof(result));
+}
 
-	mat4[2][2] = 1.f;
-	mat4[3][3] = 1.f;
+static void encode_color_matrix(const float mat3[9], float mat4[4][4]) {
+	float result[4][4] = {
+		{ mat3[0], mat3[1], mat3[2], 0 },
+		{ mat3[3], mat3[4], mat3[5], 0 },
+		{ mat3[6], mat3[7], mat3[8], 0 },
+		{ 0, 0, 0, 0 },
+	};
+
+	memcpy(mat4, result, sizeof(result));
 }
 
 static void render_pass_destroy(struct wlr_vk_render_pass *pass) {
@@ -178,6 +186,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
 		};
+		encode_proj_matrix(final_matrix, vert_pcr_data.mat4);
 
 		struct wlr_vk_color_transform *transform = NULL;
 		size_t dim = 1;
@@ -191,9 +200,26 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			.lut_3d_offset = 0.5f / dim,
 			.lut_3d_scale = (float)(dim - 1) / dim,
 		};
-		mat3_to_mat4(final_matrix, vert_pcr_data.mat4);
 
-		if (pass->color_transform) {
+		float matrix[9];
+		if (pass->has_primaries) {
+			struct wlr_color_primaries srgb;
+			wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
+
+			float srgb_to_xyz[9];
+			wlr_color_primaries_to_xyz(&srgb, srgb_to_xyz);
+			float dst_primaries_to_xyz[9];
+			wlr_color_primaries_to_xyz(&pass->primaries, dst_primaries_to_xyz);
+			float xyz_to_dst_primaries[9];
+			matrix_invert(xyz_to_dst_primaries, dst_primaries_to_xyz);
+
+			wlr_matrix_multiply(matrix, srgb_to_xyz, xyz_to_dst_primaries);
+		} else {
+			wlr_matrix_identity(matrix);
+		}
+		encode_color_matrix(matrix, frag_pcr_data.matrix);
+
+		if (pass->color_transform && pass->color_transform->type != COLOR_TRANSFORM_SRGB) {
 			bind_pipeline(pass, render_buffer->plain.render_setup->output_pipe_lut3d);
 		} else {
 			bind_pipeline(pass, render_buffer->plain.render_setup->output_pipe_srgb);
@@ -639,7 +665,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
 		};
-		mat3_to_mat4(matrix, vert_pcr_data.mat4);
+		encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
 		bind_pipeline(pass, pipe->vk);
 		vkCmdPushConstants(cb, pipe->layout->vk,
@@ -722,7 +748,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 			src_box.height / options->texture->height,
 		},
 	};
-	mat3_to_mat4(matrix, vert_pcr_data.mat4);
+	encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
 	struct wlr_vk_render_format_setup *setup = pass->srgb_pathway ?
 		pass->render_buffer->srgb.render_setup :
@@ -1103,6 +1129,10 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	if (options != NULL && options->signal_timeline != NULL) {
 		pass->signal_timeline = wlr_drm_syncobj_timeline_ref(options->signal_timeline);
 		pass->signal_point = options->signal_point;
+	}
+	if (options != NULL && options->primaries != NULL) {
+		pass->has_primaries = true;
+		pass->primaries = *options->primaries;
 	}
 
 	rect_union_init(&pass->updated_region);
