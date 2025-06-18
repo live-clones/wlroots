@@ -237,6 +237,9 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			}
 
 			switch (tf) {
+			case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
+				pipeline = render_buffer->plain.render_setup->output_pipe_identity;
+				break;
 			case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
 				pipeline = render_buffer->plain.render_setup->output_pipe_srgb;
 				break;
@@ -778,6 +781,30 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	};
 	encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
+	enum wlr_color_transfer_function tf = options->transfer_function;
+	if (tf == 0) {
+		tf = WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+	}
+
+	bool srgb_image_view = false;
+	enum wlr_vk_texture_transform tex_transform = 0;
+	switch (tf) {
+	case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
+		if (texture->using_mutable_srgb) {
+			tex_transform = WLR_VK_TEXTURE_TRANSFORM_IDENTITY;
+			srgb_image_view = true;
+		} else {
+			tex_transform = WLR_VK_TEXTURE_TRANSFORM_SRGB;
+		}
+		break;
+	case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
+		tex_transform = WLR_VK_TEXTURE_TRANSFORM_IDENTITY;
+		break;
+	case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
+		tex_transform = WLR_VK_TEXTURE_TRANSFORM_ST2084_PQ;
+		break;
+	}
+
 	struct wlr_vk_render_format_setup *setup = pass->srgb_pathway ?
 		pass->render_buffer->srgb.render_setup :
 		pass->render_buffer->plain.render_setup;
@@ -789,7 +816,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 				.ycbcr_format = texture->format->is_ycbcr ? texture->format : NULL,
 				.filter_mode = options->filter_mode,
 			},
-			.texture_transform = texture->transform,
+			.texture_transform = tex_transform,
 			.blend_mode = !texture->has_alpha && alpha == 1.0 ?
 				WLR_RENDER_BLEND_MODE_NONE : options->blend_mode,
 		});
@@ -799,11 +826,43 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	}
 
 	struct wlr_vk_texture_view *view =
-		vulkan_texture_get_or_create_view(texture, pipe->layout);
+		vulkan_texture_get_or_create_view(texture, pipe->layout, srgb_image_view);
 	if (!view) {
 		pass->failed = true;
 		return;
 	}
+
+	float color_matrix[9];
+	if (options->primaries != NULL) {
+		struct wlr_color_primaries srgb;
+		wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
+
+		float src_primaries_to_xyz[9];
+		wlr_color_primaries_to_xyz(options->primaries, src_primaries_to_xyz);
+		float srgb_to_xyz[9];
+		wlr_color_primaries_to_xyz(&srgb, srgb_to_xyz);
+		float xyz_to_srgb[9];
+		matrix_invert(xyz_to_srgb, srgb_to_xyz);
+
+		wlr_matrix_multiply(color_matrix, xyz_to_srgb, src_primaries_to_xyz);
+	} else {
+		wlr_matrix_identity(color_matrix);
+	}
+
+	float luminance_multiplier = 1;
+	if (tf != WLR_COLOR_TRANSFER_FUNCTION_SRGB) {
+		struct wlr_color_luminances src_lum, srgb_lum;
+		wlr_color_transfer_function_get_default_luminance(tf, &src_lum);
+		wlr_color_transfer_function_get_default_luminance(
+			WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
+		luminance_multiplier = get_luminance_multiplier(&src_lum, &srgb_lum);
+	}
+
+	struct wlr_vk_frag_texture_pcr_data frag_pcr_data = {
+		.alpha = alpha,
+		.luminance_multiplier = luminance_multiplier,
+	};
+	encode_color_matrix(color_matrix, frag_pcr_data.matrix);
 
 	bind_pipeline(pass, pipe->vk);
 
@@ -813,8 +872,8 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	vkCmdPushConstants(cb, pipe->layout->vk,
 		VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vert_pcr_data), &vert_pcr_data);
 	vkCmdPushConstants(cb, pipe->layout->vk,
-		VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data), sizeof(float),
-		&alpha);
+		VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data),
+		sizeof(frag_pcr_data), &frag_pcr_data);
 
 	pixman_region32_t clip;
 	get_clip_region(pass, options->clip, &clip);
