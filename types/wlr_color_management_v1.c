@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_output.h>
@@ -1047,4 +1048,49 @@ wlr_color_manager_v1_primaries_to_wlr(enum wp_color_manager_v1_primaries primari
 	default:
 		abort();
 	}
+}
+
+enum wp_color_manager_v1_transfer_function *
+wlr_color_manager_v1_transfer_function_list_from_renderer(struct wlr_renderer *renderer, size_t *len) {
+	if (!renderer->features.input_color_transform) {
+		*len = 0;
+		return NULL;
+	}
+
+	const enum wp_color_manager_v1_transfer_function list[] = {
+		WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_SRGB,
+		WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ,
+		WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR,
+	};
+
+	enum wp_color_manager_v1_transfer_function *out = NULL;
+	if (!memdup(&out, list, sizeof(list))) {
+		*len = 0;
+		return NULL;
+	}
+
+	*len = sizeof(list) / sizeof(list[0]);
+	return out;
+}
+
+enum wp_color_manager_v1_primaries *
+wlr_color_manager_v1_primaries_list_from_renderer(struct wlr_renderer *renderer, size_t *len) {
+	if (!renderer->features.input_color_transform) {
+		*len = 0;
+		return NULL;
+	}
+
+	const enum wp_color_manager_v1_primaries list[] = {
+		WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
+		WP_COLOR_MANAGER_V1_PRIMARIES_BT2020,
+	};
+
+	enum wp_color_manager_v1_primaries *out = NULL;
+	if (!memdup(&out, list, sizeof(list))) {
+		*len = 0;
+		return NULL;
+	}
+
+	*len = sizeof(list) / sizeof(list[0]);
+	return out;
 }
