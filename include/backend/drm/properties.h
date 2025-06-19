@@ -65,6 +65,18 @@ struct wlr_drm_plane_props {
 	uint32_t hotspot_x;
 	uint32_t hotspot_y;
 	uint32_t in_fence_fd;
+
+	uint32_t color_encoding; // Not guaranteed to exist
+};
+
+/*
+ * The encoding and range enums are defined in the kernel but not
+ * exposed in public headers.
+ */
+enum drm_color_encoding {
+	DRM_COLOR_YCBCR_BT601,
+	DRM_COLOR_YCBCR_BT709,
+	DRM_COLOR_YCBCR_BT2020,
 };
 
 bool get_drm_connector_props(int fd, uint32_t id,
