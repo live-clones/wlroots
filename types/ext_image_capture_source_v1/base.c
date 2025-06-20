@@ -9,6 +9,8 @@
 #include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_ext_image_capture_source_v1.h>
 #include <wlr/util/log.h>
+#include "render/drm_format_set.h"
+#include "render/wlr_renderer.h"
 #include "ext-image-capture-source-v1-protocol.h"
 
 static void source_handle_destroy(struct wl_client *client,
@@ -101,24 +103,32 @@ bool wlr_ext_image_capture_source_v1_set_constraints_from_swapchain(struct wlr_e
 	source->width = swapchain->width;
 	source->height = swapchain->height;
 
+	// If we are dealing with a CPU renderer, we will only be able to target
+	// shm buffers, and any format conversion will be very expensive. To avoid
+	// taking on that cost, we only advertise the swapchain's current format.
+	// TODO: Consider allowing more formats if swapchain is not CPU buffer.
 	uint32_t shm_format = get_swapchain_shm_format(swapchain, renderer);
 	if (shm_format != DRM_FORMAT_INVALID) {
-		uint32_t *shm_formats = calloc(1, sizeof(shm_formats[0]));
-		if (shm_formats == NULL) {
-			wlr_log(WLR_ERROR, "Allocation failed");
+		if (shm_format == DRM_FORMAT_INVALID) {
+			wlr_log(WLR_ERROR, "Unable to get swapchain format");
 			return false;
 		}
-		shm_formats[0] = shm_format;
-
-		source->shm_formats_len = 1;
-		free(source->shm_formats);
+		uint32_t *shm_formats = calloc(1, sizeof(*shm_formats));
+		if (shm_formats == NULL) {
+			wlr_log_errno(WLR_ERROR, "Allocation failed");
+			return false;
+		}
 		source->shm_formats = shm_formats;
+		source->shm_formats[0] = shm_format;
+		source->shm_formats_len = 1;
+	} else {
+		free(source->shm_formats);
+		source->shm_formats_len = 0;
+		source->shm_formats = NULL;
 	}
 
 	int drm_fd = wlr_renderer_get_drm_fd(renderer);
-	if (swapchain->allocator != NULL &&
-			(swapchain->allocator->buffer_caps & WLR_BUFFER_CAP_DMABUF) &&
-			drm_fd >= 0) {
+	if (renderer->render_buffer_caps & WLR_BUFFER_CAP_DMABUF && drm_fd >= 0) {
 		struct stat dev_stat;
 		if (fstat(drm_fd, &dev_stat) != 0) {
 			wlr_log_errno(WLR_ERROR, "fstat() failed");
@@ -127,13 +137,16 @@ bool wlr_ext_image_capture_source_v1_set_constraints_from_swapchain(struct wlr_e
 
 		source->dmabuf_device = dev_stat.st_rdev;
 
+		const struct wlr_drm_format_set *render_formats =
+			wlr_renderer_get_render_formats(renderer);
+		assert(render_formats);
+
 		wlr_drm_format_set_finish(&source->dmabuf_formats);
 		source->dmabuf_formats = (struct wlr_drm_format_set){0};
-
-		for (size_t i = 0; i < swapchain->format.len; i++) {
-			wlr_drm_format_set_add(&source->dmabuf_formats,
-				swapchain->format.format, swapchain->format.modifiers[i]);
-		}
+		wlr_drm_format_set_copy(&source->dmabuf_formats, render_formats);
+	} else {
+		wlr_drm_format_set_finish(&source->dmabuf_formats);
+		source->dmabuf_formats = (struct wlr_drm_format_set){0};
 	}
 
 	wl_signal_emit_mutable(&source->events.constraints_update, NULL);
