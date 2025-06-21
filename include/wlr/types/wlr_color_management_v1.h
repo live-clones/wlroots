@@ -14,6 +14,7 @@
 
 #include "color-management-v1-protocol.h"
 
+struct wlr_renderer;
 struct wlr_surface;
 
 struct wlr_image_description_v1_data {
@@ -88,5 +89,11 @@ wlr_surface_get_image_description_v1_data(struct wlr_surface *surface);
 void wlr_color_manager_v1_set_surface_preferred_image_description(
 	struct wlr_color_manager_v1 *manager, struct wlr_surface *surface,
 	const struct wlr_image_description_v1_data *data);
+
+enum wp_color_manager_v1_transfer_function *
+wlr_color_manager_v1_transfer_function_list_from_renderer(struct wlr_renderer *renderer, size_t *len);
+
+enum wp_color_manager_v1_primaries *
+wlr_color_manager_v1_primaries_list_from_renderer(struct wlr_renderer *renderer, size_t *len);
 
 #endif
