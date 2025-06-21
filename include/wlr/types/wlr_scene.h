@@ -154,6 +154,8 @@ struct wlr_scene_outputs_update_event {
 struct wlr_scene_output_sample_event {
 	struct wlr_scene_output *output;
 	bool direct_scanout;
+	struct wlr_drm_syncobj_timeline *release_timeline;
+	uint64_t release_point;
 };
 
 struct wlr_scene_frame_done_event {
@@ -206,6 +208,7 @@ struct wlr_scene_buffer {
 
 		struct wlr_drm_syncobj_timeline *wait_timeline;
 		uint64_t wait_point;
+		struct wlr_drm_syncobj_merger *release_merger;
 
 		struct wl_listener buffer_release;
 		struct wl_listener renderer_destroy;
@@ -260,6 +263,8 @@ struct wlr_scene_output {
 
 		struct wlr_drm_syncobj_timeline *in_timeline;
 		uint64_t in_point;
+		struct wlr_drm_syncobj_timeline *out_timeline;
+		uint64_t out_point;
 	} WLR_PRIVATE;
 };
 
@@ -488,6 +493,13 @@ struct wlr_scene_buffer_set_buffer_options {
 	// Wait for a timeline synchronization point before reading from the buffer.
 	struct wlr_drm_syncobj_timeline *wait_timeline;
 	uint64_t wait_point;
+
+	// Signal a timeline synchronization point after last read from the buffer.
+	struct wlr_drm_syncobj_timeline *release_timeline;
+	uint64_t release_point;
+
+	// Set as part of a commit that does replace buffer and timeline points
+	bool new_frame;
 };
 
 /**
