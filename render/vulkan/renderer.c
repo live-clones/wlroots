@@ -591,6 +591,12 @@ void vulkan_reset_command_buffer(struct wlr_vk_command_buffer *cb) {
 	}
 }
 
+static void finish_render_buffer_out(struct wlr_vk_render_buffer_out *out,
+		VkDevice dev) {
+	vkDestroyFramebuffer(dev, out->framebuffer, NULL);
+	vkDestroyImageView(dev, out->image_view, NULL);
+}
+
 static void destroy_render_buffer(struct wlr_vk_render_buffer *buffer) {
 	wl_list_remove(&buffer->link);
 	wlr_addon_finish(&buffer->addon);
@@ -604,11 +610,9 @@ static void destroy_render_buffer(struct wlr_vk_render_buffer *buffer) {
 		wlr_vk_error("vkQueueWaitIdle", res);
 	}
 
-	vkDestroyFramebuffer(dev, buffer->srgb.framebuffer, NULL);
-	vkDestroyImageView(dev, buffer->srgb.image_view, NULL);
+	finish_render_buffer_out(&buffer->srgb.out, dev);
 
-	vkDestroyFramebuffer(dev, buffer->two_pass.framebuffer, NULL);
-	vkDestroyImageView(dev, buffer->two_pass.image_view, NULL);
+	finish_render_buffer_out(&buffer->two_pass.out, dev);
 	vkDestroyImage(dev, buffer->two_pass.blend_image, NULL);
 	vkFreeMemory(dev, buffer->two_pass.blend_memory, NULL);
 	vkDestroyImageView(dev, buffer->two_pass.blend_image_view, NULL);
@@ -663,7 +667,7 @@ bool vulkan_setup_two_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
 		},
 	};
 
-	res = vkCreateImageView(dev, &view_info, NULL, &buffer->two_pass.image_view);
+	res = vkCreateImageView(dev, &view_info, NULL, &buffer->two_pass.out.image_view);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImageView failed", res);
 		goto error;
@@ -773,7 +777,7 @@ bool vulkan_setup_two_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
 
 	VkImageView attachments[2] = {
 		buffer->two_pass.blend_image_view,
-		buffer->two_pass.image_view
+		buffer->two_pass.out.image_view
 	};
 	VkFramebufferCreateInfo fb_info = {
 		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -786,7 +790,7 @@ bool vulkan_setup_two_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
 		.renderPass = buffer->two_pass.render_setup->render_pass,
 	};
 
-	res = vkCreateFramebuffer(dev, &fb_info, NULL, &buffer->two_pass.framebuffer);
+	res = vkCreateFramebuffer(dev, &fb_info, NULL, &buffer->two_pass.out.framebuffer);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateFramebuffer", res);
 		goto error;
@@ -831,7 +835,7 @@ static bool vulkan_setup_one_pass_framebuffer(struct wlr_vk_render_buffer *buffe
 		},
 	};
 
-	res = vkCreateImageView(dev, &view_info, NULL, &buffer->srgb.image_view);
+	res = vkCreateImageView(dev, &view_info, NULL, &buffer->srgb.out.image_view);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImageView failed", res);
 		goto error;
@@ -846,7 +850,7 @@ static bool vulkan_setup_one_pass_framebuffer(struct wlr_vk_render_buffer *buffe
 	VkFramebufferCreateInfo fb_info = {
 		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
 		.attachmentCount = 1,
-		.pAttachments = &buffer->srgb.image_view,
+		.pAttachments = &buffer->srgb.out.image_view,
 		.flags = 0u,
 		.width = dmabuf->width,
 		.height = dmabuf->height,
@@ -854,7 +858,7 @@ static bool vulkan_setup_one_pass_framebuffer(struct wlr_vk_render_buffer *buffe
 		.renderPass = buffer->srgb.render_setup->render_pass,
 	};
 
-	res = vkCreateFramebuffer(dev, &fb_info, NULL, &buffer->srgb.framebuffer);
+	res = vkCreateFramebuffer(dev, &fb_info, NULL, &buffer->srgb.out.framebuffer);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateFramebuffer", res);
 		goto error;
