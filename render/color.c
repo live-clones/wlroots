@@ -168,7 +168,7 @@ static float st2084_pq_eval_inverse_eotf(float x) {
 	return powf((c1 + c2 * pow_n) / (1 + c3 * pow_n), m);
 }
 
-static float transfer_function_eval_inverse_eotf(
+float wlr_color_transfer_function_eval_inverse_eotf(
 		enum wlr_color_transfer_function tf, float x) {
 	switch (tf) {
 	case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
@@ -185,7 +185,7 @@ static void color_transform_inverse_eotf_eval(
 		struct wlr_color_transform_inverse_eotf *tr,
 		float out[static 3], const float in[static 3]) {
 	for (size_t i = 0; i < 3; i++) {
-		out[i] = transfer_function_eval_inverse_eotf(tr->tf, in[i]);
+		out[i] = wlr_color_transfer_function_eval_inverse_eotf(tr->tf, in[i]);
 	}
 }
 
