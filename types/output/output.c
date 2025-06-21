@@ -233,6 +233,15 @@ static void output_apply_state(struct wlr_output *output,
 		output->transform = state->transform;
 	}
 
+	if (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
+		if (state->image_description != NULL) {
+			output->image_description_value = *state->image_description;
+			output->image_description = &output->image_description_value;
+		} else {
+			output->image_description = NULL;
+		}
+	}
+
 	bool geometry_updated = state->committed &
 		(WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_TRANSFORM |
 		WLR_OUTPUT_STATE_SUBPIXEL);
@@ -489,6 +498,14 @@ bool output_pending_enabled(struct wlr_output *output,
 		return state->enabled;
 	}
 	return output->enabled;
+}
+
+const struct wlr_output_image_description *output_pending_image_description(
+		struct wlr_output *output, const struct wlr_output_state *state) {
+	if (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
+		return state->image_description;
+	}
+	return output->image_description;
 }
 
 /**
