@@ -408,31 +408,13 @@ static void scene_damage_outputs(struct wlr_scene *scene, const pixman_region64f
 	}
 }
 
-static void update_node_update_outputs(struct wlr_scene_node *node,
-		struct wl_list *outputs, struct wlr_scene_output *ignore,
-		struct wlr_scene_output *force) {
-	if (node->type != WLR_SCENE_NODE_BUFFER) {
-		return;
-	}
-
-	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-
+static void visible_region_active_outputs(struct wl_list *outputs, struct wlr_scene_output *ignore, pixman_region64f_t *visible,
+		uint64_t *active_outputs, size_t *count, struct wlr_scene_output **primary_output) {
 	double largest_overlap = 0;
-	struct wlr_scene_output *old_primary_output = scene_buffer->primary_output;
-	scene_buffer->primary_output = NULL;
 
-	size_t count = 0;
-	uint64_t active_outputs = 0;
+	if (!pixman_region64f_empty(visible)) {
+		double visible_area = region_area(visible);
 
-	if (!pixman_region64f_empty(&node->visible)) {
-		double visible_area = region_area(&node->visible);
-
-		// let's update the outputs in two steps:
-		//  - the primary outputs
-		//  - the enter/leave signals
-		// This ensures that the enter/leave signals can rely on the primary output
-		// to have a reasonable value. Otherwise, they may get a value that's in
-		// the middle of a calculation.
 		struct wlr_scene_output *scene_output;
 		wl_list_for_each(scene_output, outputs, link) {
 			if (scene_output == ignore) {
@@ -455,7 +437,7 @@ static void update_node_update_outputs(struct wlr_scene_node *node,
 
 			pixman_region64f_t intersection;
 			pixman_region64f_init(&intersection);
-			pixman_region64f_intersect_rectf(&intersection, &node->visible,
+			pixman_region64f_intersect_rectf(&intersection, visible,
 				output_box.x, output_box.y, output_box.width, output_box.height);
 			uint32_t overlap = region_area(&intersection);
 			pixman_region64f_fini(&intersection);
@@ -465,15 +447,40 @@ static void update_node_update_outputs(struct wlr_scene_node *node,
 			if (overlap >= 0.1 * visible_area) {
 				if (overlap >= largest_overlap) {
 					largest_overlap = overlap;
-					scene_buffer->primary_output = scene_output;
+					*primary_output = scene_output;
 				}
 
-				active_outputs |= 1ull << scene_output->index;
-				count++;
+				(*active_outputs) |= 1ull << scene_output->index;
+				(*count)++;
 			}
 		}
 	}
+}
 
+static void update_node_update_outputs(struct wlr_scene_node *node,
+		struct wl_list *outputs, struct wlr_scene_output *ignore,
+		struct wlr_scene_output *force) {
+	if (node->type != WLR_SCENE_NODE_BUFFER) {
+		return;
+	}
+
+	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+	struct wlr_scene_output *old_primary_output = scene_buffer->primary_output;
+	scene_buffer->primary_output = NULL;
+
+	// let's update the outputs in two steps:
+	//  - the primary outputs
+	//  - the enter/leave signals
+	// This ensures that the enter/leave signals can rely on the primary output
+	// to have a reasonable value. Otherwise, they may get a value that's in
+	// the middle of a calculation.
+	size_t count = 0;
+	uint64_t active_outputs = 0;
+	struct wlr_scene_output *primary_output = NULL;
+	visible_region_active_outputs(outputs, ignore, &node->visible,
+		&active_outputs, &count, &primary_output);
+
+	scene_buffer->primary_output = primary_output;
 	if (old_primary_output != scene_buffer->primary_output) {
 		scene_buffer->prev_feedback_options =
 			(struct wlr_linux_dmabuf_feedback_v1_init_options){0};
