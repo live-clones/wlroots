@@ -72,6 +72,7 @@ struct wlr_scene_node {
 		struct wl_signal destroy;
 	} events;
 
+	bool scaling_group;
 	void *data;
 
 	struct wlr_addon_set addons;
