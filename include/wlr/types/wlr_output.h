@@ -197,6 +197,8 @@ struct wlr_output {
 	uint32_t supported_primaries; // bitfield of enum wlr_color_named_primaries
 	uint32_t supported_transfer_functions; // bitfield of enum wlr_color_transfer_function
 
+	const struct wlr_color_primaries *color_primaries; // NULL if unset
+
 	bool enabled;
 	float scale;
 	enum wl_output_subpixel subpixel;
