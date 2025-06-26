@@ -2289,8 +2289,13 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	if (img_desc != NULL) {
 		color_transform = wlr_color_transform_init_linear_to_inverse_eotf(img_desc->transfer_function);
 
-		wlr_color_primaries_from_named(&primaries_value, img_desc->primaries);
-		primaries = &primaries_value;
+		struct wlr_color_primaries zero_primaries = {0};
+		if (memcmp(&img_desc->mastering_display_primaries, &zero_primaries, sizeof(zero_primaries)) != 0) {
+			primaries = &img_desc->mastering_display_primaries;
+		} else {
+			wlr_color_primaries_from_named(&primaries_value, img_desc->primaries);
+			primaries = &primaries_value;
+		}
 
 		if (img_desc->mastering_luminance.min != 0 || img_desc->mastering_luminance.max != 0) {
 			struct wlr_color_luminances default_lum = {0};
