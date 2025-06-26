@@ -1924,7 +1924,7 @@ enum scene_direct_scanout_result {
 
 static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 		struct render_list_entry *entry, struct wlr_output_state *state,
-		const struct render_data *data) {
+		const struct render_data *data, struct wlr_color_transform *color_transform) {
 	struct wlr_scene_output *scene_output = data->output;
 	struct wlr_scene_node *node = entry->node;
 
@@ -2023,6 +2023,7 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 	if (buffer->wait_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(&pending, buffer->wait_timeline, buffer->wait_point);
 	}
+	wlr_output_state_set_color_transform(&pending, color_transform);
 	if (!wlr_output_test_state(scene_output->output, &pending)) {
 		wlr_output_state_finish(&pending);
 		return SCANOUT_CANDIDATE;
@@ -2220,9 +2221,8 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	// - There are no color transforms that need to be applied
 	// - Damage highlight debugging is not enabled
 	enum scene_direct_scanout_result scanout_result = SCANOUT_INELIGIBLE;
-	if (options->color_transform == NULL && list_len == 1
-			&& debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
-		scanout_result = scene_entry_try_direct_scanout(&list_data[0], state, &render_data);
+	if (list_len == 1 && debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
+		scanout_result = scene_entry_try_direct_scanout(&list_data[0], state, &render_data, options->color_transform);
 	}
 
 	if (scanout_result == SCANOUT_INELIGIBLE) {
@@ -2415,6 +2415,9 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		wlr_output_state_set_wait_timeline(state, scene_output->in_timeline,
 			scene_output->in_point);
 	}
+
+	// TODO: prefer applying transform in KMS
+	wlr_output_state_set_color_transform(state, NULL);
 
 	scene_output_state_attempt_gamma(scene_output, state);
 
