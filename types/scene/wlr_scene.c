@@ -349,10 +349,20 @@ static void output_to_buffer_coords(pixman_region32_t *damage, struct wlr_output
 		wlr_output_transform_invert(output->transform), width, height);
 }
 
-static void transform_output_box(struct wlr_box *box, struct wlr_fbox *src, const struct render_data *data) {
+static int scale_length(double length, double offset, float scale) {
+	return round((offset + length) * scale) - round(offset * scale);
+}
+
+static void transform_output_box(struct wlr_box *box, struct wlr_fbox *src,
+		const struct render_data *data, bool scale_stretch) {
 	enum wl_output_transform transform = wlr_output_transform_invert(data->transform);
-	box->width = round(src->width * data->scale);
-	box->height = round(src->height * data->scale);
+	if (scale_stretch) {
+		box->width = scale_length(src->width, src->x, data->scale);
+		box->height = scale_length(src->height, src->y, data->scale);
+	} else {
+		box->width = round(src->width * data->scale);
+		box->height = round(src->height * data->scale);
+	}
 	box->x = round(src->x * data->scale);
 	box->y = round(src->y * data->scale);
 	wlr_box_transform(box, box, transform, data->trans_width, data->trans_height);
@@ -1440,6 +1450,7 @@ struct wlr_scene_node *wlr_scene_node_at(struct wlr_scene_node *node,
 
 struct render_list_entry {
 	struct wlr_scene_node *node;
+	bool scale_stretch;
 	bool highlight_transparent_region;
 	double x, y;
 };
@@ -1472,7 +1483,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	};
 	scene_node_get_size(node, &node_box.width, &node_box.height);
 	struct wlr_box dst_box = {0};
-	transform_output_box(&dst_box, &node_box, data);
+	transform_output_box(&dst_box, &node_box, data, entry->scale_stretch);
 
 	pixman_region64f_t logical_opaque;
 	pixman_region64f_init(&logical_opaque);
@@ -1898,6 +1909,7 @@ static bool scene_node_invisible(struct wlr_scene_node *node) {
 struct render_list_constructor_data {
 	struct wlr_fbox box;
 	struct wl_array *render_list;
+	struct wlr_scene_output *scene_output;
 	bool calculate_visibility;
 	bool highlight_transparent_region;
 	bool fractional_scale;
@@ -1910,6 +1922,21 @@ static bool scene_buffer_is_black_opaque(struct wlr_scene_buffer *scene_buffer) 
 		scene_buffer->single_pixel_buffer_color[2] == 0 &&
 		scene_buffer->single_pixel_buffer_color[3] == UINT32_MAX &&
 		scene_buffer->opacity == 1.0;
+}
+
+static struct wlr_scene_node *scene_node_scaling_group(struct wlr_scene_node *node) {
+	struct wlr_scene_node *scaling_group = node;
+	while (true) {
+		if (node->scaling_group) {
+			scaling_group = node;
+			break;
+		}
+		if (node->parent == NULL) {
+			break;
+		}
+		node = &node->parent->node;
+	}
+	return scaling_group;
 }
 
 static bool construct_render_list_iterator(struct wlr_scene_node *node,
@@ -1956,6 +1983,29 @@ static bool construct_render_list_iterator(struct wlr_scene_node *node,
 
 	pixman_region64f_fini(&intersection);
 
+	bool scale_stretch = false;
+	if (data->scene_output != NULL) {
+		struct wlr_scene_node *scaling_group = scene_node_scaling_group(node);
+
+		double x, y;
+		wlr_scene_node_coords(scaling_group, &x, &y);
+
+		pixman_region64f_t visible;
+		pixman_region64f_init(&visible);
+		scene_node_bounds(scaling_group, x, y, &visible);
+
+		uint64_t active_outputs;
+		size_t count;
+		struct wlr_scene_output *primary_output = NULL;
+		visible_region_active_outputs(&data->scene_output->scene->outputs, NULL, &visible,
+			&active_outputs, &count, &primary_output);
+		pixman_region64f_fini(&visible);
+
+		scale_stretch = primary_output != NULL &&
+			data->scene_output != primary_output &&
+			data->scene_output->output->scale != primary_output->output->scale;
+	}
+
 	struct render_list_entry *entry = wl_array_add(data->render_list, sizeof(*entry));
 	if (!entry) {
 		return false;
@@ -1965,6 +2015,7 @@ static bool construct_render_list_iterator(struct wlr_scene_node *node,
 		.node = node,
 		.x = lx,
 		.y = ly,
+		.scale_stretch = scale_stretch,
 		.highlight_transparent_region = data->highlight_transparent_region,
 	};
 
@@ -2127,7 +2178,7 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 		.y = entry->y - scene_output->y
 	};
 	scene_node_get_size(node, &node_box.width, &node_box.height);
-	transform_output_box(&pending.buffer_dst_box, &node_box, data);
+	transform_output_box(&pending.buffer_dst_box, &node_box, data, false);
 
 	struct wlr_buffer *wlr_buffer = buffer->buffer;
 	struct wlr_client_buffer *client_buffer = wlr_client_buffer_get(wlr_buffer);
@@ -2275,6 +2326,16 @@ cleanup_transforms:
 	return result;
 }
 
+static bool scene_outputs_have_multiple_scale_factors(struct wlr_scene *scene, float scale) {
+	struct wlr_scene_output *scene_output;
+	wl_list_for_each(scene_output, &scene->outputs, link) {
+		if (scene_output->output->enabled && scene_output->output->scale != scale) {
+			return true;
+		}
+	}
+	return false;
+}
+
 bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		struct wlr_output_state *state, const struct wlr_scene_output_state_options *options) {
 	struct wlr_scene_output_state_options default_options = {0};
@@ -2343,9 +2404,13 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	render_data.logical.width = render_data.trans_width / render_data.scale;
 	render_data.logical.height = render_data.trans_height / render_data.scale;
 
+	bool multiple_output_scales =
+		scene_outputs_have_multiple_scale_factors(scene_output->scene, render_data.scale);
+
 	struct render_list_constructor_data list_con = {
 		.box = render_data.logical,
 		.render_list = &scene_output->render_list,
+		.scene_output = multiple_output_scales ? scene_output : NULL,
 		.calculate_visibility = scene_output->scene->calculate_visibility,
 		.highlight_transparent_region = scene_output->scene->highlight_transparent_region,
 		.fractional_scale = floor(render_data.scale) != render_data.scale,
