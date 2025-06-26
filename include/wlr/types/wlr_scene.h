@@ -577,6 +577,12 @@ struct wlr_scene_output_state_options {
 	struct wlr_color_transform *color_transform;
 
 	/**
+	 * Image description to use when rendering. Mutually exclusive with
+	 * color_transform.
+	 */
+	const struct wlr_output_image_description *render_image_description;
+
+	/**
 	 * Allows use of a custom swapchain. This can be useful when trying out an
 	 * output configuration. The swapchain dimensions must match the respective
 	 * wlr_output_state or output size if not specified.

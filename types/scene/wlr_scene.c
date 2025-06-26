@@ -2100,6 +2100,8 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		*timer = (struct wlr_scene_timer){0};
 	}
 
+	assert(!(options->color_transform && options->render_image_description));
+
 	if ((state->committed & WLR_OUTPUT_STATE_ENABLED) && !state->enabled) {
 		// if the state is being disabled, do nothing.
 		return true;
@@ -2269,14 +2271,31 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		timer->pre_render_duration = timespec_to_nsec(&duration);
 	}
 
+	struct wlr_color_transform *color_transform = NULL;
+	if (options->color_transform != NULL) {
+		color_transform = wlr_color_transform_ref(options->color_transform);
+	} else if (options->render_image_description != NULL) {
+		color_transform = wlr_color_transform_init_linear_to_inverse_eotf(
+			options->render_image_description->transfer_function);
+	}
+
+	const struct wlr_color_primaries *primaries = NULL;
+	struct wlr_color_primaries primaries_value;
+	if (options->render_image_description != NULL) {
+		wlr_color_primaries_from_named(&primaries_value, options->render_image_description->primaries);
+		primaries = &primaries_value;
+	}
+
 	scene_output->in_point++;
 	struct wlr_render_pass *render_pass = wlr_renderer_begin_buffer_pass(output->renderer, buffer,
 			&(struct wlr_buffer_pass_options){
 		.timer = timer ? timer->render_timer : NULL,
-		.color_transform = options->color_transform,
+		.color_transform = color_transform,
+		.primaries = primaries,
 		.signal_timeline = scene_output->in_timeline,
 		.signal_point = scene_output->in_point,
 	});
+	wlr_color_transform_unref(color_transform);
 	if (render_pass == NULL) {
 		wlr_buffer_unlock(buffer);
 		return false;
@@ -2387,6 +2406,10 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	if (scene_output->in_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(state, scene_output->in_timeline,
 			scene_output->in_point);
+	}
+
+	if (options->render_image_description != NULL) {
+		wlr_output_state_set_image_description(state, options->render_image_description);
 	}
 
 	scene_output_state_attempt_gamma(scene_output, state);
