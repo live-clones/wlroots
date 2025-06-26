@@ -198,6 +198,7 @@ struct wlr_output {
 	uint32_t supported_transfer_functions; // bitfield of enum wlr_color_transfer_function
 
 	const struct wlr_color_primaries *color_primaries; // NULL if unset
+	float min_luminance, max_luminance, max_fall; // cd/m², zero if unset
 
 	bool enabled;
 	float scale;
