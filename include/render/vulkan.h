@@ -39,8 +39,6 @@ struct wlr_vk_device {
 	VkPhysicalDevice phdev;
 	VkDevice dev;
 
-	int drm_fd;
-
 	bool sync_file_import_export;
 	bool implicit_sync_interop;
 	bool sampler_ycbcr_conversion;
