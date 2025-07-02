@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <gbm.h>
 #include <wlr/render/egl.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <xf86drm.h>
@@ -733,7 +734,8 @@ bool wlr_egl_restore_context(struct wlr_egl_context *context) {
 }
 
 EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
-		struct wlr_dmabuf_attributes *attributes, bool *external_only) {
+		struct wlr_dmabuf_attributes *attributes, bool *external_only,
+		const struct wlr_color_representation_v1_state *color_repr) {
 	if (!egl->exts.KHR_image_base || !egl->exts.EXT_image_dma_buf_import) {
 		wlr_log(WLR_ERROR, "dmabuf import extension not present");
 		return NULL;
@@ -747,7 +749,7 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 	}
 
 	unsigned int atti = 0;
-	EGLint attribs[50];
+	EGLint attribs[54];
 	attribs[atti++] = EGL_WIDTH;
 	attribs[atti++] = attributes->width;
 	attribs[atti++] = EGL_HEIGHT;
@@ -802,6 +804,39 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 			attribs[atti++] = attributes->modifier & 0xFFFFFFFF;
 			attribs[atti++] = attr_names[i].mod_hi;
 			attribs[atti++] = attributes->modifier >> 32;
+		}
+	}
+
+	// Add color representation metadata, if provided
+	if (color_repr != NULL) {
+		switch (color_repr->coefficients) {
+		case WLR_COLOR_ENCODING_BT601:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC601_EXT;
+			break;
+		case WLR_COLOR_ENCODING_BT709:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC709_EXT;
+			break;
+		case WLR_COLOR_ENCODING_BT2020:
+			attribs[atti++] = EGL_YUV_COLOR_SPACE_HINT_EXT;
+			attribs[atti++] = EGL_ITU_REC2020_EXT;
+			break;
+		default:
+			break;
+		}
+
+		switch (color_repr->range) {
+		case WLR_COLOR_RANGE_FULL:
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_FULL_RANGE_EXT;
+			break;
+		case WLR_COLOR_RANGE_LIMITED:
+			attribs[atti++] = EGL_SAMPLE_RANGE_HINT_EXT;
+			attribs[atti++] = EGL_YUV_NARROW_RANGE_EXT;
+			break;
+		default:
+			break;
 		}
 	}
 
