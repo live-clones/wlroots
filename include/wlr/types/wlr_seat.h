@@ -269,6 +269,8 @@ struct wlr_seat {
 	struct wlr_seat_touch_state touch_state;
 
 	struct {
+		struct wl_signal bind; // struct wlr_seat_bind_event
+
 		struct wl_signal pointer_grab_begin;
 		struct wl_signal pointer_grab_end;
 
@@ -310,6 +312,11 @@ struct wlr_seat {
 		struct wl_listener primary_selection_source_destroy;
 		struct wl_listener drag_source_destroy;
 	} WLR_PRIVATE;
+};
+
+struct wlr_seat_bind_event {
+	struct wlr_seat *seat;
+	struct wl_resource *resource;
 };
 
 struct wlr_seat_pointer_request_set_cursor_event {

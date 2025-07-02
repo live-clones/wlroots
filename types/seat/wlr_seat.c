@@ -211,6 +211,12 @@ static void seat_handle_bind(struct wl_client *client, void *_wlr_seat,
 		wl_seat_send_name(wl_resource, wlr_seat->name);
 	}
 	wl_seat_send_capabilities(wl_resource, wlr_seat->capabilities);
+
+	struct wlr_seat_bind_event event = {
+		.seat = wlr_seat,
+		.resource = wl_resource,
+	};
+	wl_signal_emit_mutable(&wlr_seat->events.bind, &event);
 }
 
 void wlr_seat_destroy(struct wlr_seat *seat) {
@@ -229,6 +235,8 @@ void wlr_seat_destroy(struct wlr_seat *seat) {
 	}
 
 	wl_signal_emit_mutable(&seat->events.destroy, seat);
+
+	assert(wl_list_empty(&seat->events.bind.listener_list));
 
 	assert(wl_list_empty(&seat->pointer_state.events.focus_change.listener_list));
 
@@ -349,6 +357,7 @@ struct wlr_seat *wlr_seat_create(struct wl_display *display, const char *name) {
 	wl_list_init(&seat->selection_offers);
 	wl_list_init(&seat->drag_offers);
 
+	wl_signal_init(&seat->events.bind);
 	wl_signal_init(&seat->events.request_start_drag);
 	wl_signal_init(&seat->events.start_drag);
 
