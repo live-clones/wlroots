@@ -1627,7 +1627,20 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	bool found_current_mode = false;
 	for (int i = 0; i < drm_conn->count_modes; ++i) {
 		if (drm_conn->modes[i].flags & DRM_MODE_FLAG_INTERLACE) {
-			continue;
+			// Filter out any interlaced mode with the same resolution
+			// as a progressive mode (because wlr-randr and arandr
+			// can't currently distinguish them).
+			int j;
+			for (j = 0; j < drm_conn->count_modes; ++j) {
+				if (!(drm_conn->modes[j].flags & DRM_MODE_FLAG_INTERLACE) &&
+				    drm_conn->modes[j].hdisplay == drm_conn->modes[i].hdisplay &&
+				    drm_conn->modes[j].vdisplay == drm_conn->modes[i].vdisplay) {
+					break;
+				}
+			}
+			if (j < drm_conn->count_modes) {
+				continue;
+			}
 		}
 
 		struct wlr_drm_mode *mode = drm_mode_create(&drm_conn->modes[i]);
