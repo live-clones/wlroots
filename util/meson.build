@@ -12,6 +12,7 @@ wlr_files += files(
 	'shm.c',
 	'time.c',
 	'token.c',
+	'trace.c',
 	'transform.c',
 	'utf8.c',
 )
