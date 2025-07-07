@@ -5,6 +5,7 @@
 #include <wlr/render/swapchain.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_damage_ring.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
@@ -2023,6 +2024,15 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 	if (buffer->wait_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(&pending, buffer->wait_timeline, buffer->wait_point);
 	}
+
+	const struct wlr_color_representation_v1_state *color_repr = NULL;
+	struct wlr_scene_surface *scene_surf = wlr_scene_surface_try_from_buffer(buffer);
+	if (scene_surf != NULL) {
+		color_repr = wlr_color_representation_v1_get_surface_state(scene_surf->surface);
+	}
+	// Handles color_repr being set or NULL
+	wlr_output_state_set_primary_color_representation(&pending, color_repr);
+
 	if (!wlr_output_test_state(scene_output->output, &pending)) {
 		wlr_output_state_finish(&pending);
 		return SCANOUT_CANDIDATE;
