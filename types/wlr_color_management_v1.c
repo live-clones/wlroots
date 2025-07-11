@@ -6,6 +6,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/util/addon.h>
 
+#include "color-management-v1-protocol.h"
 #include "render/color.h"
 
 #define COLOR_MANAGEMENT_V1_VERSION 1
