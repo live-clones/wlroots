@@ -251,7 +251,11 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			struct wlr_color_luminances srgb_lum, dst_lum;
 			wlr_color_transfer_function_get_default_luminance(
 				WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
-			wlr_color_transfer_function_get_default_luminance(tf, &dst_lum);
+			if (pass->has_luminances) {
+				dst_lum = pass->luminances;
+			} else {
+				wlr_color_transfer_function_get_default_luminance(tf, &dst_lum);
+			}
 			frag_pcr_data.luminance_multiplier = get_luminance_multiplier(&srgb_lum, &dst_lum);
 		}
 		bind_pipeline(pass, pipeline);
@@ -1220,6 +1224,10 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	if (options != NULL && options->primaries != NULL) {
 		pass->has_primaries = true;
 		pass->primaries = *options->primaries;
+	}
+	if (options != NULL && options->luminances != NULL) {
+		pass->has_luminances = true;
+		pass->luminances = *options->luminances;
 	}
 
 	rect_union_init(&pass->updated_region);

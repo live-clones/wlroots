@@ -195,6 +195,7 @@ struct wlr_drm_connector {
 	drmModeConnection status;
 	uint32_t id;
 	uint64_t max_bpc_bounds[2];
+	struct wlr_color_primaries color_primaries; // might be zero
 	struct wlr_drm_lease *lease;
 
 	struct wlr_drm_crtc *crtc;
