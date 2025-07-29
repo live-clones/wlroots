@@ -27,11 +27,13 @@
 #include "render/color.h"
 #include "types/wlr_output.h"
 #include "util/env.h"
+#include "util/trace.h"
 #include "config.h"
 
 #if HAVE_LIBLIFTOFF
 #include <libliftoff.h>
 #endif
+
 
 // Output state which needs a KMS commit to be applied
 static const uint32_t COMMIT_OUTPUT_STATE =
@@ -615,6 +617,8 @@ static bool drm_commit(struct wlr_drm_backend *drm,
 	// Disallow atomic-only flags
 	assert((flags & ~DRM_MODE_PAGE_FLIP_FLAGS) == 0);
 
+	wlr_trace("drm_commit");
+
 	struct wlr_drm_page_flip *page_flip = NULL;
 	if (flags & DRM_MODE_PAGE_FLIP_EVENT) {
 		page_flip = drm_page_flip_create(drm, state);
@@ -998,7 +1002,11 @@ static bool drm_connector_test(struct wlr_output *output,
 static bool drm_connector_commit(struct wlr_output *output,
 		const struct wlr_output_state *state) {
 	struct wlr_drm_connector *conn = get_drm_connector_from_output(output);
-	return drm_connector_commit_state(conn, state, false);
+	struct wlr_trace_ctx trace_ctx;
+	wlr_trace_begin_ctx(&trace_ctx, "drm_connector_commit");
+	bool ok = drm_connector_commit_state(conn, state, false);
+	wlr_trace_end_ctx(&trace_ctx, "drm_connector_commit");
+	return ok;
 }
 
 size_t drm_crtc_get_gamma_lut_size(struct wlr_drm_backend *drm,
