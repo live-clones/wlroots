@@ -525,6 +525,33 @@ out:
 	return ok;
 }
 
+bool drm_atomic_reset(struct wlr_drm_backend *drm) {
+	struct atomic atom;
+	atomic_begin(&atom);
+
+	for (size_t i = 0; i < drm->num_crtcs; i++) {
+		struct wlr_drm_crtc *crtc = &drm->crtcs[i];
+		atomic_add(&atom, crtc->id, crtc->props.mode_id, 0);
+		atomic_add(&atom, crtc->id, crtc->props.active, 0);
+	}
+
+	struct wlr_drm_connector *conn;
+	wl_list_for_each(conn, &drm->connectors, link) {
+		atomic_add(&atom, conn->id, conn->props.crtc_id, 0);
+	}
+
+	for (size_t i = 0; i < drm->num_planes; i++) {
+		plane_disable(&atom, &drm->planes[i]);
+	}
+
+	uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+	bool ok = atomic_commit(&atom, drm, NULL, NULL, flags);
+	atomic_finish(&atom);
+
+	return ok;
+}
+
 const struct wlr_drm_interface atomic_iface = {
 	.commit = atomic_device_commit,
+	.reset = drm_atomic_reset,
 };
