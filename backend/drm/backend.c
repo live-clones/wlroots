@@ -112,18 +112,11 @@ static void handle_session_active(struct wl_listener *listener, void *data) {
 	wlr_log(WLR_INFO, "DRM FD %s", session->active ? "resumed" : "paused");
 
 	if (!session->active) {
-		// Disconnect any active connectors so that the client will modeset and
-		// rerender when the session is activated again.
-		struct wlr_drm_connector *conn;
-		wl_list_for_each(conn, &drm->connectors, link) {
-			if (conn->status == DRM_MODE_CONNECTED) {
-				wlr_output_destroy(&conn->output);
-			}
-		}
 		return;
 	}
 
 	scan_drm_connectors(drm, NULL);
+	restore_drm_device(drm);
 }
 
 static void handle_dev_change(struct wl_listener *listener, void *data) {
