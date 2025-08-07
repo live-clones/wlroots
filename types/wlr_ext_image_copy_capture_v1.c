@@ -135,19 +135,48 @@ out:
 }
 
 static bool copy_shm(void *data, uint32_t format, size_t stride,
-		struct wlr_buffer *src, struct wlr_renderer *renderer) {
+		struct wlr_buffer *src, struct wlr_renderer *renderer,
+		const pixman_region32_t *damage) {
 	// TODO: bypass renderer if source buffer supports data ptr access
 	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src);
 	if (!texture) {
 		return false;
 	}
 
-	// TODO: only copy damaged region
-	bool ok = wlr_texture_read_pixels(texture, &(struct wlr_texture_read_pixels_options){
-		.data = data,
-		.format = format,
-		.stride = stride,
-	});
+	bool ok = true;
+
+	if (damage && !pixman_region32_empty(damage)) {
+		int rects_len = 0;
+		const pixman_box32_t *rects = pixman_region32_rectangles(damage, &rects_len);
+
+		for (int i = 0; i < rects_len; i++) {
+			const pixman_box32_t *rect = &rects[i];
+			int width = rect->x2 - rect->x1;
+			int height = rect->y2 - rect->y1;
+
+			if (width <= 0 || height <= 0) {
+				continue;
+			}
+
+			ok = wlr_texture_read_pixels(texture, &(struct wlr_texture_read_pixels_options){
+				.data = data,
+				.format = format,
+				.stride = stride,
+				.dst_x = rect->x1,
+				.dst_y = rect->y1,
+				.src_box = {
+					.x = rect->x1,
+					.y = rect->y1,
+					.width = width,
+					.height = height,
+				},
+			});
+
+			if (!ok) {
+				break;
+			}
+		}
+	}
 
 	wlr_texture_destroy(texture);
 
@@ -184,7 +213,7 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
 			ok = false;
 			failure_reason = EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS;
 		} else {
-			ok = copy_shm(data, format, stride, src, renderer);
+			ok = copy_shm(data, format, stride, src, renderer, &frame->buffer_damage);
 		}
 		wlr_buffer_end_data_ptr_access(dst);
 	}
