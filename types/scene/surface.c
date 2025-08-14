@@ -217,10 +217,9 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		// can't use the cached scene_buffer->is_single_pixel_buffer
 		// because that's only set later on.
 		bool is_single_pixel_buffer = false;
-		struct wlr_client_buffer *client_buffer = wlr_client_buffer_get(&surface->buffer->base);
-		if (client_buffer != NULL && client_buffer->source != NULL) {
+		if (surface->buffer->source != NULL) {
 			struct wlr_single_pixel_buffer_v1 *spb =
-				wlr_single_pixel_buffer_v1_try_from_buffer(client_buffer->source);
+				wlr_single_pixel_buffer_v1_try_from_buffer(surface->buffer->source);
 			is_single_pixel_buffer = spb != NULL;
 		}
 		if (!is_single_pixel_buffer) {
@@ -246,7 +245,8 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 			&surface->buffer->base, &options);
 
 		if (syncobj_surface_state != NULL &&
-				(surface->current.committed & WLR_SURFACE_STATE_BUFFER)) {
+				(surface->current.committed & WLR_SURFACE_STATE_BUFFER) &&
+				surface->buffer->source != NULL) {
 			wlr_linux_drm_syncobj_v1_state_signal_release_with_buffer(syncobj_surface_state,
 				surface->buffer->source);
 		}
