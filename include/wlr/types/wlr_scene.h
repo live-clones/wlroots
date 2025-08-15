@@ -102,11 +102,16 @@ struct wlr_scene {
 	// May be NULL
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf_v1;
 	struct wlr_gamma_control_manager_v1 *gamma_control_manager_v1;
+	struct wlr_commit_timing_manager_v1 *commit_timing_manager_v1;
+	struct wl_list commit_timers; // list of wlr_commit_timer_v1
 
 	struct {
 		struct wl_listener linux_dmabuf_v1_destroy;
 		struct wl_listener gamma_control_manager_v1_destroy;
 		struct wl_listener gamma_control_manager_v1_set_gamma;
+		struct wl_listener commit_timing_manager_v1_destroy;
+		struct wl_listener commit_timing_manager_v1_new_timer;
+		struct wl_listener commit_timer_v1_destroy;
 
 		enum wlr_scene_debug_damage_option debug_damage_option;
 		bool direct_scanout;
@@ -365,6 +370,12 @@ void wlr_scene_set_linux_dmabuf_v1(struct wlr_scene *scene,
  */
 void wlr_scene_set_gamma_control_manager_v1(struct wlr_scene *scene,
 	struct wlr_gamma_control_manager_v1 *gamma_control);
+
+/**
+ * Handles commit_timing_manager_v1 for all surfaces and their primary outputs in the scene.
+ */
+void wlr_scene_set_commit_timing_manager_v1(struct wlr_scene *scene,
+	struct wlr_commit_timing_manager_v1 *timing_manager);
 
 /**
  * Add a node displaying nothing but its children.
