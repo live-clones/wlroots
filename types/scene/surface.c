@@ -190,7 +190,7 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		opacity = (float)alpha_modifier_state->multiplier;
 	}
 
-	enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+	enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
 	enum wlr_color_named_primaries primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
 	const struct wlr_image_description_v1_data *img_desc =
 		wlr_surface_get_image_description_v1_data(surface);

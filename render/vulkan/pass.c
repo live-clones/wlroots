@@ -57,10 +57,7 @@ static void convert_pixman_box_to_vk_rect(const pixman_box32_t *box, VkRect2D *r
 }
 
 static float color_to_linear(float non_linear) {
-	// See https://www.w3.org/Graphics/Color/srgb
-	return (non_linear > 0.04045) ?
-		pow((non_linear + 0.055) / 1.055, 2.4) :
-		non_linear / 12.92;
+	return pow(non_linear, 2.2);
 }
 
 static float color_to_linear_premult(float non_linear, float alpha) {
@@ -229,7 +226,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		if (pass->color_transform && pass->color_transform->type != COLOR_TRANSFORM_INVERSE_EOTF) {
 			pipeline = render_buffer->plain.render_setup->output_pipe_lut3d;
 		} else {
-			enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+			enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
 			if (pass->color_transform && pass->color_transform->type == COLOR_TRANSFORM_INVERSE_EOTF) {
 				struct wlr_color_transform_inverse_eotf *inverse_eotf =
 					wlr_color_transform_inverse_eotf_from_base(pass->color_transform);
@@ -786,7 +783,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 
 	enum wlr_color_transfer_function tf = options->transfer_function;
 	if (tf == 0) {
-		tf = WLR_COLOR_TRANSFER_FUNCTION_SRGB;
+		tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
 	}
 
 	bool srgb_image_view = false;
@@ -1184,9 +1181,8 @@ static const struct wlr_addon_interface vk_color_transform_impl = {
 
 struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *renderer,
 		struct wlr_vk_render_buffer *buffer, const struct wlr_buffer_pass_options *options) {
-	bool using_srgb_pathway;
+	bool using_srgb_pathway = false;
 	if (options != NULL && options->color_transform != NULL) {
-		using_srgb_pathway = false;
 
 		if (!get_color_transform(options->color_transform, renderer)) {
 			/* Try to create a new color transform */
@@ -1195,9 +1191,15 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 				return NULL;
 			}
 		}
-	} else {
-		// Use srgb pathway if it is the default/has already been set up
-		using_srgb_pathway = buffer->srgb.framebuffer != VK_NULL_HANDLE;
+
+		if (options->color_transform->type == COLOR_TRANSFORM_INVERSE_EOTF) {
+			struct wlr_color_transform_inverse_eotf *transform =
+				wlr_color_transform_inverse_eotf_from_base(options->color_transform);
+			if (transform->tf == WLR_COLOR_TRANSFER_FUNCTION_SRGB) {
+				// Use srgb pathway if it has already been set up
+				using_srgb_pathway = buffer->srgb.framebuffer != VK_NULL_HANDLE;
+			}
+		}
 	}
 
 	if (!using_srgb_pathway && !buffer->plain.image_view) {
@@ -1226,6 +1228,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	}
 	if (options != NULL && options->primaries != NULL) {
 		pass->has_primaries = true;
+		pass->srgb_pathway = false;
 		pass->primaries = *options->primaries;
 	}
 
