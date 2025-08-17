@@ -97,6 +97,8 @@ static enum wlr_color_transfer_function transfer_function_to_wlr(
 		return WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
 	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR:
 		return WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22:
+		return WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
 	default:
 		abort();
 	}
@@ -111,6 +113,8 @@ static enum wp_color_manager_v1_transfer_function transfer_function_from_wlr(
 		return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ;
 	case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
 		return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR;
+	case WLR_COLOR_TRANSFER_FUNCTION_GAMMA22:
+		return WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22;
 	}
 	abort();
 }
@@ -1038,6 +1042,8 @@ wlr_color_manager_v1_transfer_function_to_wlr(enum wp_color_manager_v1_transfer_
 		return WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
 	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR:
 		return WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22:
+		return WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
 	default:
 		abort();
 	}
