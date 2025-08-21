@@ -874,9 +874,19 @@ static void manager_handle_create_parametric_creator(struct wl_client *client,
 
 static void manager_handle_create_windows_scrgb(struct wl_client *client,
 		struct wl_resource *manager_resource, uint32_t id) {
-	wl_resource_post_error(manager_resource,
-		WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE,
-		"get_windows_scrgb is not supported");
+	struct wlr_color_manager_v1 *manager = manager_from_resource(manager_resource);
+	if (!manager->features.windows_scrgb) {
+		wl_resource_post_error(manager_resource,
+			WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE,
+			"get_windows_scrgb is not supported");
+		return;
+	}
+
+	struct wlr_image_description_v1_data data = {
+		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR,
+		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
+	};
+	image_desc_create_ready(manager, manager_resource, id, &data, false);
 }
 
 static const struct wp_color_manager_v1_interface manager_impl = {
@@ -961,7 +971,6 @@ struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *disp
 	assert(!options->features.set_tf_power);
 	assert(!options->features.set_luminances);
 	assert(!options->features.extended_target_volume);
-	assert(!options->features.windows_scrgb);
 
 	struct wlr_color_manager_v1 *manager = calloc(1, sizeof(*manager));
 	if (manager == NULL) {
