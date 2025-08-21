@@ -19,18 +19,11 @@ layout (constant_id = 0) const int TEXTURE_TRANSFORM = 0;
 #define TEXTURE_TRANSFORM_SRGB 1
 #define TEXTURE_TRANSFORM_ST2084_PQ 2
 
-float srgb_channel_to_linear(float x) {
-	return mix(x / 12.92,
-		pow((x + 0.055) / 1.055, 2.4),
-		x > 0.04045);
-}
-
 vec3 srgb_color_to_linear(vec3 color) {
-	return vec3(
-		srgb_channel_to_linear(color.r),
-		srgb_channel_to_linear(color.g),
-		srgb_channel_to_linear(color.b)
-	);
+	bvec3 isLow = lessThanEqual(color, vec3(0.04045));
+	vec3 loPart = color / 12.92;
+	vec3 hiPart = pow((color + 0.055) / 1.055, vec3(12.0 / 5.0));
+	return mix(hiPart, loPart, isLow);
 }
 
 vec3 pq_color_to_linear(vec3 color) {
