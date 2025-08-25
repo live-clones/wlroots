@@ -591,6 +591,12 @@ void vulkan_reset_command_buffer(struct wlr_vk_command_buffer *cb) {
 	}
 }
 
+static void finish_render_buffer_out(struct wlr_vk_render_buffer_out *out,
+		VkDevice dev) {
+	vkDestroyFramebuffer(dev, out->framebuffer, NULL);
+	vkDestroyImageView(dev, out->image_view, NULL);
+}
+
 static void destroy_render_buffer(struct wlr_vk_render_buffer *buffer) {
 	wl_list_remove(&buffer->link);
 	wlr_addon_finish(&buffer->addon);
@@ -604,17 +610,16 @@ static void destroy_render_buffer(struct wlr_vk_render_buffer *buffer) {
 		wlr_vk_error("vkQueueWaitIdle", res);
 	}
 
-	vkDestroyFramebuffer(dev, buffer->srgb.framebuffer, NULL);
-	vkDestroyImageView(dev, buffer->srgb.image_view, NULL);
+	finish_render_buffer_out(&buffer->linear.out, dev);
+	finish_render_buffer_out(&buffer->srgb.out, dev);
 
-	vkDestroyFramebuffer(dev, buffer->plain.framebuffer, NULL);
-	vkDestroyImageView(dev, buffer->plain.image_view, NULL);
-	vkDestroyImage(dev, buffer->plain.blend_image, NULL);
-	vkFreeMemory(dev, buffer->plain.blend_memory, NULL);
-	vkDestroyImageView(dev, buffer->plain.blend_image_view, NULL);
-	if (buffer->plain.blend_attachment_pool) {
-		vulkan_free_ds(buffer->renderer, buffer->plain.blend_attachment_pool,
-			buffer->plain.blend_descriptor_set);
+	finish_render_buffer_out(&buffer->two_pass.out, dev);
+	vkDestroyImage(dev, buffer->two_pass.blend_image, NULL);
+	vkFreeMemory(dev, buffer->two_pass.blend_memory, NULL);
+	vkDestroyImageView(dev, buffer->two_pass.blend_image_view, NULL);
+	if (buffer->two_pass.blend_attachment_pool) {
+		vulkan_free_ds(buffer->renderer, buffer->two_pass.blend_attachment_pool,
+			buffer->two_pass.blend_descriptor_set);
 	}
 
 	vkDestroyImage(dev, buffer->image, NULL);
@@ -635,7 +640,7 @@ static struct wlr_addon_interface render_buffer_addon_impl = {
 	.destroy = handle_render_buffer_destroy,
 };
 
-bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
+bool vulkan_setup_two_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
 		const struct wlr_dmabuf_attributes *dmabuf) {
 	struct wlr_vk_renderer *renderer = buffer->renderer;
 	VkResult res;
@@ -663,15 +668,15 @@ bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
 		},
 	};
 
-	res = vkCreateImageView(dev, &view_info, NULL, &buffer->plain.image_view);
+	res = vkCreateImageView(dev, &view_info, NULL, &buffer->two_pass.out.image_view);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImageView failed", res);
 		goto error;
 	}
 
-	buffer->plain.render_setup = find_or_create_render_setup(
+	buffer->two_pass.render_setup = find_or_create_render_setup(
 		renderer, &fmt->format, true);
-	if (!buffer->plain.render_setup) {
+	if (!buffer->two_pass.render_setup) {
 		goto error;
 	}
 
@@ -691,14 +696,14 @@ bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
 		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
 	};
 
-	res = vkCreateImage(dev, &img_info, NULL, &buffer->plain.blend_image);
+	res = vkCreateImage(dev, &img_info, NULL, &buffer->two_pass.blend_image);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImage failed", res);
 		goto error;
 	}
 
 	VkMemoryRequirements mem_reqs;
-	vkGetImageMemoryRequirements(dev, buffer->plain.blend_image, &mem_reqs);
+	vkGetImageMemoryRequirements(dev, buffer->two_pass.blend_image, &mem_reqs);
 
 	int mem_type_index = vulkan_find_mem_type(renderer->dev,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mem_reqs.memoryTypeBits);
@@ -713,13 +718,13 @@ bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
 		.memoryTypeIndex = mem_type_index,
 	};
 
-	res = vkAllocateMemory(dev, &mem_info, NULL, &buffer->plain.blend_memory);
+	res = vkAllocateMemory(dev, &mem_info, NULL, &buffer->two_pass.blend_memory);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkAllocatorMemory failed", res);
 		goto error;
 	}
 
-	res = vkBindImageMemory(dev, buffer->plain.blend_image, buffer->plain.blend_memory, 0);
+	res = vkBindImageMemory(dev, buffer->two_pass.blend_image, buffer->two_pass.blend_memory, 0);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkBindMemory failed", res);
 		goto error;
@@ -727,7 +732,7 @@ bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
 
 	VkImageViewCreateInfo blend_view_info = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-		.image = buffer->plain.blend_image,
+		.image = buffer->two_pass.blend_image,
 		.viewType = VK_IMAGE_VIEW_TYPE_2D,
 		.format = img_info.format,
 		.components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -743,37 +748,37 @@ bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
 		},
 	};
 
-	res = vkCreateImageView(dev, &blend_view_info, NULL, &buffer->plain.blend_image_view);
+	res = vkCreateImageView(dev, &blend_view_info, NULL, &buffer->two_pass.blend_image_view);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImageView failed", res);
 		goto error;
 	}
 
-	buffer->plain.blend_attachment_pool = vulkan_alloc_blend_ds(renderer,
-		&buffer->plain.blend_descriptor_set);
-	if (!buffer->plain.blend_attachment_pool) {
+	buffer->two_pass.blend_attachment_pool = vulkan_alloc_blend_ds(renderer,
+		&buffer->two_pass.blend_descriptor_set);
+	if (!buffer->two_pass.blend_attachment_pool) {
 		wlr_log(WLR_ERROR, "failed to allocate descriptor");
 		goto error;
 	}
 
 	VkDescriptorImageInfo ds_attach_info = {
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		.imageView = buffer->plain.blend_image_view,
+		.imageView = buffer->two_pass.blend_image_view,
 		.sampler = VK_NULL_HANDLE,
 	};
 	VkWriteDescriptorSet ds_write = {
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.descriptorCount = 1,
 		.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
-		.dstSet = buffer->plain.blend_descriptor_set,
+		.dstSet = buffer->two_pass.blend_descriptor_set,
 		.dstBinding = 0,
 		.pImageInfo = &ds_attach_info,
 	};
 	vkUpdateDescriptorSets(dev, 1, &ds_write, 0, NULL);
 
 	VkImageView attachments[2] = {
-		buffer->plain.blend_image_view,
-		buffer->plain.image_view
+		buffer->two_pass.blend_image_view,
+		buffer->two_pass.out.image_view
 	};
 	VkFramebufferCreateInfo fb_info = {
 		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -783,10 +788,10 @@ bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
 		.width = dmabuf->width,
 		.height = dmabuf->height,
 		.layers = 1u,
-		.renderPass = buffer->plain.render_setup->render_pass,
+		.renderPass = buffer->two_pass.render_setup->render_pass,
 	};
 
-	res = vkCreateFramebuffer(dev, &fb_info, NULL, &buffer->plain.framebuffer);
+	res = vkCreateFramebuffer(dev, &fb_info, NULL, &buffer->two_pass.out.framebuffer);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateFramebuffer", res);
 		goto error;
@@ -800,8 +805,8 @@ error:
 	return false;
 }
 
-static bool vulkan_setup_srgb_framebuffer(struct wlr_vk_render_buffer *buffer,
-		const struct wlr_dmabuf_attributes *dmabuf) {
+bool vulkan_setup_one_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
+		const struct wlr_dmabuf_attributes *dmabuf, bool srgb) {
 	struct wlr_vk_renderer *renderer = buffer->renderer;
 	VkResult res;
 	VkDevice dev = renderer->dev->dev;
@@ -810,14 +815,18 @@ static bool vulkan_setup_srgb_framebuffer(struct wlr_vk_render_buffer *buffer,
 		renderer->dev, dmabuf->format);
 	assert(fmt);
 
-	assert(fmt->format.vk_srgb);
-	// Set up the srgb framebuffer by default; plain framebuffer and
+	VkFormat vk_fmt = srgb ? fmt->format.vk_srgb : fmt->format.vk;
+	assert(vk_fmt != VK_FORMAT_UNDEFINED);
+
+	struct wlr_vk_render_buffer_out *out = srgb ? &buffer->srgb.out : &buffer->linear.out;
+
+	// Set up the srgb framebuffer by default; two-pass framebuffer and
 	// blending image will be set up later if necessary
 	VkImageViewCreateInfo view_info = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 		.image = buffer->image,
 		.viewType = VK_IMAGE_VIEW_TYPE_2D,
-		.format = fmt->format.vk_srgb,
+		.format = vk_fmt,
 		.components.r = VK_COMPONENT_SWIZZLE_IDENTITY,
 		.components.g = VK_COMPONENT_SWIZZLE_IDENTITY,
 		.components.b = VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -831,35 +840,43 @@ static bool vulkan_setup_srgb_framebuffer(struct wlr_vk_render_buffer *buffer,
 		},
 	};
 
-	res = vkCreateImageView(dev, &view_info, NULL, &buffer->srgb.image_view);
+	res = vkCreateImageView(dev, &view_info, NULL, &out->image_view);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImageView failed", res);
 		goto error;
 	}
 
-	buffer->srgb.render_setup = find_or_create_render_setup(
-		renderer, &fmt->format, false);
-	if (!buffer->srgb.render_setup) {
+	struct wlr_vk_render_format_setup *render_setup =
+		find_or_create_render_setup(renderer, &fmt->format, false);
+	if (!render_setup) {
 		goto error;
 	}
 
 	VkFramebufferCreateInfo fb_info = {
 		.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
 		.attachmentCount = 1,
-		.pAttachments = &buffer->srgb.image_view,
+		.pAttachments = &out->image_view,
 		.flags = 0u,
 		.width = dmabuf->width,
 		.height = dmabuf->height,
 		.layers = 1u,
-		.renderPass = buffer->srgb.render_setup->render_pass,
+		.renderPass = render_setup->render_pass,
 	};
 
-	res = vkCreateFramebuffer(dev, &fb_info, NULL, &buffer->srgb.framebuffer);
+	res = vkCreateFramebuffer(dev, &fb_info, NULL, &out->framebuffer);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateFramebuffer", res);
 		goto error;
 	}
+
+	if (srgb) {
+		buffer->srgb.render_setup = render_setup;
+	} else {
+		buffer->linear.render_setup = render_setup;
+	}
+
 	return true;
+
 error:
 	// cleaning up everything is the caller's responsibility,
 	// since it will need to do this anyway if framebuffer setup fails
@@ -903,12 +920,12 @@ static struct wlr_vk_render_buffer *create_render_buffer(
 	}
 
 	if (using_mutable_srgb) {
-		if (!vulkan_setup_srgb_framebuffer(buffer, &dmabuf)) {
+		if (!vulkan_setup_one_pass_framebuffer(buffer, &dmabuf, true)) {
 			goto error;
 		}
 	} else {
-		// Set up the plain framebuffer & blending image
-		if (!vulkan_setup_plain_framebuffer(buffer, &dmabuf)) {
+		// Set up the two-pass framebuffer & blending image
+		if (!vulkan_setup_two_pass_framebuffer(buffer, &dmabuf)) {
 			goto error;
 		}
 	}

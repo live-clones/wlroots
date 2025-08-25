@@ -204,6 +204,13 @@ struct wlr_vk_render_format_setup {
 	struct wl_list pipelines; // struct wlr_vk_pipeline.link
 };
 
+// Final output framebuffer and image view
+struct wlr_vk_render_buffer_out {
+	VkImageView image_view;
+	VkFramebuffer framebuffer;
+	bool transitioned;
+};
+
 // Renderer-internal represenation of an wlr_buffer imported for rendering.
 struct wlr_vk_render_buffer {
 	struct wlr_buffer *wlr_buffer;
@@ -215,25 +222,27 @@ struct wlr_vk_render_buffer {
 	uint32_t mem_count;
 	VkImage image;
 
+	// Framebuffer and image view for rendering directly onto the buffer image,
+	// without any color transform.
+	struct {
+		struct wlr_vk_render_buffer_out out;
+		struct wlr_vk_render_format_setup *render_setup;
+	} linear;
+
 	// Framebuffer and image view for rendering directly onto the buffer image.
 	// This requires that the image support an _SRGB VkFormat, and does
 	// not work with color transforms.
 	struct {
+		struct wlr_vk_render_buffer_out out;
 		struct wlr_vk_render_format_setup *render_setup;
-		VkImageView image_view;
-		VkFramebuffer framebuffer;
-		bool transitioned;
 	} srgb;
 
 	// Framebuffer, image view, and blending image to render indirectly
 	// onto the buffer image. This works for general image types and permits
 	// color transforms.
 	struct {
+		struct wlr_vk_render_buffer_out out;
 		struct wlr_vk_render_format_setup *render_setup;
-
-		VkImageView image_view;
-		VkFramebuffer framebuffer;
-		bool transitioned;
 
 		VkImage blend_image;
 		VkImageView blend_image_view;
@@ -241,10 +250,12 @@ struct wlr_vk_render_buffer {
 		VkDescriptorSet blend_descriptor_set;
 		struct wlr_vk_descriptor_pool *blend_attachment_pool;
 		bool blend_transitioned;
-	} plain;
+	} two_pass;
 };
 
-bool vulkan_setup_plain_framebuffer(struct wlr_vk_render_buffer *buffer,
+bool vulkan_setup_one_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
+	const struct wlr_dmabuf_attributes *dmabuf, bool srgb);
+bool vulkan_setup_two_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
 	const struct wlr_dmabuf_attributes *dmabuf);
 
 struct wlr_vk_command_buffer {
@@ -396,12 +407,14 @@ struct wlr_vk_render_pass {
 	struct wlr_render_pass base;
 	struct wlr_vk_renderer *renderer;
 	struct wlr_vk_render_buffer *render_buffer;
+	struct wlr_vk_render_buffer_out *render_buffer_out;
+	struct wlr_vk_render_format_setup *render_setup;
 	struct wlr_vk_command_buffer *command_buffer;
 	struct rect_union updated_region;
 	VkPipeline bound_pipeline;
 	float projection[9];
 	bool failed;
-	bool srgb_pathway; // if false, rendering via intermediate blending buffer
+	bool two_pass; // rendering via intermediate blending buffer
 	struct wlr_color_transform *color_transform;
 
 	bool has_primaries;
