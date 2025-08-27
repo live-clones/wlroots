@@ -66,7 +66,6 @@ protocols = {
 	'input-method-unstable-v2': 'input-method-unstable-v2.xml',
 	'kde-server-decoration': 'server-decoration.xml',
 	'virtual-keyboard-unstable-v1': 'virtual-keyboard-unstable-v1.xml',
-	'wlr-data-control-unstable-v1': 'wlr-data-control-unstable-v1.xml',
 	'wlr-export-dmabuf-unstable-v1': 'wlr-export-dmabuf-unstable-v1.xml',
 	'wlr-foreign-toplevel-management-unstable-v1': 'wlr-foreign-toplevel-management-unstable-v1.xml',
 	'wlr-gamma-control-unstable-v1': 'wlr-gamma-control-unstable-v1.xml',
