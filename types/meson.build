@@ -78,7 +78,6 @@ wlr_files += files(
 	'wlr_primary_selection.c',
 	'wlr_region.c',
 	'wlr_relative_pointer_v1.c',
-	'wlr_screencopy_v1.c',
 	'wlr_security_context_v1.c',
 	'wlr_server_decoration.c',
 	'wlr_session_lock_v1.c',
