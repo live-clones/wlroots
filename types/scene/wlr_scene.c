@@ -1975,7 +1975,7 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 		return false;
 	}
 
-	if (buffer->transfer_function != 0 && buffer->transfer_function != WLR_COLOR_TRANSFER_FUNCTION_SRGB) {
+	if (buffer->transfer_function != 0 && buffer->transfer_function != WLR_COLOR_TRANSFER_FUNCTION_GAMMA22) {
 		return false;
 	}
 	if (buffer->primaries != 0 && buffer->primaries != WLR_COLOR_NAMED_PRIMARIES_SRGB) {
