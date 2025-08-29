@@ -50,6 +50,14 @@ enum wlr_output_mode_aspect_ratio get_picture_aspect_ratio(const drmModeModeInfo
 	}
 }
 
+static void copy_chromaticity_cie1931(struct wlr_color_cie1931_xy *dst,
+		const struct di_chromaticity_cie1931 *src) {
+	*dst = (struct wlr_color_cie1931_xy){
+		.x = src->x,
+		.y = src->y,
+	};
+}
+
 void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data) {
 	struct wlr_output *output = &conn->output;
 
@@ -83,6 +91,15 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 	output->model = di_info_get_model(info);
 	output->serial = di_info_get_serial(info);
 
+	const struct di_color_primaries *primaries = di_info_get_default_color_primaries(info);
+	if (primaries->has_primaries && primaries->has_default_white_point) {
+		copy_chromaticity_cie1931(&conn->color_primaries.red, &primaries->primary[0]);
+		copy_chromaticity_cie1931(&conn->color_primaries.green, &primaries->primary[1]);
+		copy_chromaticity_cie1931(&conn->color_primaries.blue, &primaries->primary[2]);
+		copy_chromaticity_cie1931(&conn->color_primaries.white, &primaries->default_white);
+		output->color_primaries = &conn->color_primaries;
+	}
+
 	const struct di_supported_signal_colorimetry *colorimetry = di_info_get_supported_signal_colorimetry(info);
 	bool has_bt2020 = colorimetry->bt2020_cycc || colorimetry->bt2020_ycc || colorimetry->bt2020_rgb;
 	if (conn->props.colorspace != 0 && has_bt2020) {
@@ -93,6 +110,9 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 	if (conn->props.hdr_output_metadata != 0 && hdr_static_metadata->type1 && hdr_static_metadata->pq) {
 		output->supported_transfer_functions |= WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
 	}
+	output->min_luminance = hdr_static_metadata->desired_content_min_luminance;
+	output->max_luminance = hdr_static_metadata->desired_content_max_luminance;
+	output->max_fall = hdr_static_metadata->desired_content_max_frame_avg_luminance;
 
 	di_info_destroy(info);
 }
