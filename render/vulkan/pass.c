@@ -1110,7 +1110,7 @@ static bool create_3d_lut_image(struct wlr_vk_renderer *renderer,
 		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_SHADER_READ_BIT);
 
 	*ds_pool = vulkan_alloc_texture_ds(renderer,
-		renderer->output_ds_lut3d_layout, ds);
+		renderer->output_ds_lut3d_layout, ds, false);
 	if (!*ds_pool) {
 		wlr_log(WLR_ERROR, "Failed to allocate descriptor");
 		goto fail_imageview;

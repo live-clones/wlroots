@@ -459,6 +459,22 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 	dev->phdev = phdev;
 	dev->instance = ini;
 	dev->drm_fd = -1;
+	dev->max_combined_image_sampler_ds_count = 1;
+
+	VkPhysicalDeviceProperties phdev_props;
+	vkGetPhysicalDeviceProperties(phdev, &phdev_props);
+	if (phdev_props.apiVersion >= VK_API_VERSION_1_4) {
+		VkPhysicalDeviceVulkan14Properties vk14props = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_PROPERTIES,
+		};
+		VkPhysicalDeviceProperties2 props = {
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+			.pNext = &vk14props,
+		};
+		vkGetPhysicalDeviceProperties2(phdev, &props);
+		dev->max_combined_image_sampler_ds_count =
+			vk14props.maxCombinedImageSamplerDescriptorCount;
+	}
 
 	// For dmabuf import we require at least the external_memory_fd,
 	// external_memory_dma_buf, queue_family_foreign,
