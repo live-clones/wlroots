@@ -44,6 +44,7 @@ struct wlr_vk_device {
 	bool sync_file_import_export;
 	bool implicit_sync_interop;
 	bool sampler_ycbcr_conversion;
+	uint32_t max_combined_image_sampler_ds_count;
 
 	// we only ever need one queue for rendering and transfer commands
 	uint32_t queue_family;
@@ -428,7 +429,9 @@ struct wlr_vk_buffer_span vulkan_get_stage_span(
 // return the pool it was allocated from when successful (for freeing it later).
 struct wlr_vk_descriptor_pool *vulkan_alloc_texture_ds(
 	struct wlr_vk_renderer *renderer, VkDescriptorSetLayout ds_layout,
-	VkDescriptorSet *ds);
+	VkDescriptorSet *ds, bool ycbcr);
+void vulkan_free_texture_ds(struct wlr_vk_renderer *renderer,
+	struct wlr_vk_descriptor_pool *pool, VkDescriptorSet ds, bool ycbcr);
 
 // Tries to allocate a descriptor set for the blending image. Will
 // additionally return the pool it was allocated from when successful

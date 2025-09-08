@@ -203,7 +203,8 @@ void vulkan_texture_destroy(struct wlr_vk_texture *texture) {
 
 	struct wlr_vk_texture_view *view, *tmp_view;
 	wl_list_for_each_safe(view, tmp_view, &texture->views, link) {
-		vulkan_free_ds(texture->renderer, view->ds_pool, view->ds);
+		vulkan_free_texture_ds(texture->renderer, view->ds_pool, view->ds,
+			texture->format->is_ycbcr);
 		vkDestroyImageView(dev, view->image_view, NULL);
 		free(view);
 	}
@@ -327,7 +328,8 @@ struct wlr_vk_texture_view *vulkan_texture_get_or_create_view(struct wlr_vk_text
 		return NULL;
 	}
 
-	view->ds_pool = vulkan_alloc_texture_ds(texture->renderer, pipeline_layout->ds, &view->ds);
+	view->ds_pool = vulkan_alloc_texture_ds(texture->renderer, pipeline_layout->ds, &view->ds,
+		texture->format->is_ycbcr);
 	if (!view->ds_pool) {
 		free(view);
 		wlr_log(WLR_ERROR, "failed to allocate descriptor");
