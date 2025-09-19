@@ -3,6 +3,7 @@ wlr_files += files(
 	'data_device/wlr_data_offer.c',
 	'data_device/wlr_data_source.c',
 	'data_device/wlr_drag.c',
+	'wlr_data_receiver.c',
 	'ext_image_capture_source_v1/base.c',
 	'ext_image_capture_source_v1/output.c',
 	'ext_image_capture_source_v1/foreign_toplevel.c',

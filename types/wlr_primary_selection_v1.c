@@ -5,15 +5,33 @@
 #include <unistd.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_primary_selection.h>
+#include <wlr/types/wlr_data_receiver.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 #include "primary-selection-unstable-v1-protocol.h"
 
 #define DEVICE_MANAGER_VERSION 1
 
+// Primary selection offer structure
+struct primary_selection_offer {
+	struct wlr_primary_selection_v1_device *device;
+
+	// Data receiver for this offer
+	struct wlr_data_receiver receiver;
+};
+
+// Primary selection receiver implementation
+static void handle_primary_selection_receiver_destroy(struct wlr_data_receiver *receiver) {
+	// The receiver is embedded in primary_selection_offer, so don't free it
+}
+
+static const struct wlr_data_receiver_impl primary_selection_receiver_impl = {
+	.destroy = handle_primary_selection_receiver_destroy,
+};
+
 static const struct zwp_primary_selection_offer_v1_interface offer_impl;
 
-static struct wlr_primary_selection_v1_device *device_from_offer_resource(
+static struct primary_selection_offer *offer_from_resource(
 		struct wl_resource *resource) {
 	assert(wl_resource_instance_of(resource,
 		&zwp_primary_selection_offer_v1_interface, &offer_impl));
@@ -22,15 +40,19 @@ static struct wlr_primary_selection_v1_device *device_from_offer_resource(
 
 static void offer_handle_receive(struct wl_client *client,
 		struct wl_resource *resource, const char *mime_type, int32_t fd) {
-	struct wlr_primary_selection_v1_device *device =
-		device_from_offer_resource(resource);
-	if (device == NULL || device->seat->primary_selection_source == NULL) {
+	struct primary_selection_offer *offer = offer_from_resource(resource);
+	if (offer == NULL || offer->device == NULL ||
+		offer->device->seat->primary_selection_source == NULL) {
 		close(fd);
 		return;
 	}
 
-	wlr_primary_selection_source_send(device->seat->primary_selection_source,
-		mime_type, fd);
+	// Set receiver fd for this transfer
+	offer->receiver.fd = fd;
+	assert(offer->receiver.client == client);
+
+	wlr_primary_selection_source_send(offer->device->seat->primary_selection_source,
+		mime_type, &offer->receiver);
 }
 
 static void offer_handle_destroy(struct wl_client *client,
@@ -45,6 +67,11 @@ static const struct zwp_primary_selection_offer_v1_interface offer_impl = {
 
 static void offer_handle_resource_destroy(struct wl_resource *resource) {
 	wl_list_remove(wl_resource_get_link(resource));
+	struct primary_selection_offer *offer = offer_from_resource(resource);
+	if (offer) {
+		wlr_data_receiver_destroy(&offer->receiver);
+		free(offer);
+	}
 }
 
 static struct wlr_primary_selection_v1_device *device_from_resource(
@@ -64,7 +91,22 @@ static void create_offer(struct wl_resource *device_resource,
 		wl_resource_post_no_memory(device_resource);
 		return;
 	}
-	wl_resource_set_implementation(resource, &offer_impl, device,
+
+	// Create the offer structure with embedded receiver
+	struct primary_selection_offer *offer = calloc(1, sizeof(*offer));
+	if (offer == NULL) {
+		wl_resource_destroy(resource);
+		wl_resource_post_no_memory(device_resource);
+		return;
+	}
+
+	offer->device = device;
+
+	wlr_data_receiver_init(&offer->receiver, &primary_selection_receiver_impl);
+	offer->receiver.client = client;
+	wl_client_get_credentials(client, &offer->receiver.pid, NULL, NULL);
+
+	wl_resource_set_implementation(resource, &offer_impl, offer,
 		offer_handle_resource_destroy);
 
 	wl_list_insert(&device->offers, wl_resource_get_link(resource));
@@ -80,7 +122,8 @@ static void create_offer(struct wl_resource *device_resource,
 }
 
 static void destroy_offer(struct wl_resource *resource) {
-	if (device_from_offer_resource(resource) == NULL) {
+	struct primary_selection_offer *offer = offer_from_resource(resource);
+	if (offer == NULL) {
 		return;
 	}
 
@@ -101,10 +144,12 @@ struct client_data_source {
 
 static void client_source_send(
 		struct wlr_primary_selection_source *wlr_source,
-		const char *mime_type, int fd) {
+		const char *mime_type, struct wlr_data_receiver *receiver) {
 	struct client_data_source *source = wl_container_of(wlr_source, source, source);
-	zwp_primary_selection_source_v1_send_send(source->resource, mime_type, fd);
-	close(fd);
+
+	zwp_primary_selection_source_v1_send_send(source->resource, mime_type, receiver->fd);
+	close(receiver->fd);
+	receiver->fd = -1;
 }
 
 static void client_source_destroy(
@@ -374,6 +419,8 @@ static void device_manager_handle_create_source(struct wl_client *client,
 		return;
 	}
 	wlr_primary_selection_source_init(&source->source, &client_source_impl);
+	source->source.client = client;
+	wl_client_get_credentials(client, &source->source.pid, NULL, NULL);
 
 	uint32_t version = wl_resource_get_version(manager_resource);
 	source->resource = wl_resource_create(client,

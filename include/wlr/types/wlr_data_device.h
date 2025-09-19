@@ -11,6 +11,7 @@
 
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_data_receiver.h>
 
 struct wlr_data_device_manager {
 	struct wl_global *global;
@@ -42,6 +43,9 @@ struct wlr_data_offer {
 	enum wl_data_device_manager_dnd_action preferred_action;
 	bool in_ask;
 
+	/* Data receiver for this offer */
+	struct wlr_data_receiver receiver;
+
 	struct {
 		struct wl_listener source_destroy;
 	} WLR_PRIVATE;
@@ -53,15 +57,22 @@ struct wlr_data_offer {
  */
 struct wlr_data_source_impl {
 	void (*send)(struct wlr_data_source *source, const char *mime_type,
-		int32_t fd);
+		struct wlr_data_receiver *receiver);
 	void (*accept)(struct wlr_data_source *source, uint32_t serial,
-		const char *mime_type);
+		const char *mime_type, struct wlr_data_receiver *receiver);
+	void (*cancelled)(struct wlr_data_source *source);
 	void (*destroy)(struct wlr_data_source *source);
 
 	void (*dnd_drop)(struct wlr_data_source *source);
 	void (*dnd_finish)(struct wlr_data_source *source);
 	void (*dnd_action)(struct wlr_data_source *source,
 		enum wl_data_device_manager_dnd_action action);
+
+	/**
+	 * Returns the unwrapped source object. This source object maybe is a
+	 * wrapper, its a proxy for the others source.
+	 */
+	struct wlr_data_source *(*get_original)(struct wlr_data_source *source);
 };
 
 struct wlr_data_source {
@@ -73,6 +84,10 @@ struct wlr_data_source {
 
 	// source status
 	bool accepted;
+
+	// source information
+	struct wl_client *client;
+	pid_t pid; // PID of the source process (for XWayland, X11 client PID)
 
 	// drag'n'drop status
 	enum wl_data_device_manager_dnd_action current_dnd_action;
@@ -217,18 +232,23 @@ void wlr_data_source_init(struct wlr_data_source *source,
 	const struct wlr_data_source_impl *impl);
 
 /**
- * Sends the data as the specified MIME type over the passed file descriptor,
- * then close it.
+ * Sends the data as the specified MIME type to the receiver,
+ * with receiver managing the file descriptor and callbacks.
  */
-void wlr_data_source_send(struct wlr_data_source *source, const char *mime_type,
-	int32_t fd);
+void wlr_data_source_send(struct wlr_data_source *source,
+	const char *mime_type, struct wlr_data_receiver *receiver);
 
 /**
  * Notifies the data source that a target accepts one of the offered MIME types.
  * If a target doesn't accept any of the offered types, `mime_type` is NULL.
  */
-void wlr_data_source_accept(struct wlr_data_source *source, uint32_t serial,
-	const char *mime_type);
+void wlr_data_source_accept(struct wlr_data_source *source,
+	uint32_t serial, const char *mime_type, struct wlr_data_receiver *receiver);
+
+/**
+ * Notifies the data source that the operation was cancelled.
+ */
+void wlr_data_source_cancelled(struct wlr_data_source *source);
 
 /**
  * Notifies the data source it is no longer valid and should be destroyed. That
@@ -260,5 +280,18 @@ void wlr_data_source_dnd_finish(struct wlr_data_source *source);
  */
 void wlr_data_source_dnd_action(struct wlr_data_source *source,
 	enum wl_data_device_manager_dnd_action action);
+
+/**
+ * Copy metadata from one data source to another. This is useful for implementing
+ * wrapper data sources that can filter MIME types or other metadata.
+ */
+void wlr_data_source_copy(struct wlr_data_source *dest, struct wlr_data_source *src);
+
+/**
+ * Returns the original source object, it isn't NULL if the source argument
+ * isn't NULL.
+ */
+struct wlr_data_source *
+wlr_data_source_get_original(struct wlr_data_source *source);
 
 #endif

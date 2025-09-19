@@ -47,6 +47,11 @@ compositors = {
 		],
 		'dep': [wayland_client, wayland_egl, egl, glesv2],
 	},
+	'clipboard-control': {
+		'src': 'clipboard-control.c',
+		'dep': [cairo],
+		'proto': ['xdg-shell'],
+	},
 }
 
 foreach name, info : compositors

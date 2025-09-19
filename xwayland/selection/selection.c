@@ -3,11 +3,57 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <wayland-server-protocol.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/util/log.h>
 #include <xcb/xfixes.h>
+#include <xcb/res.h>
 #include "xwayland/selection.h"
 #include "xwayland/xwm.h"
+
+/* Get X11 window PID using XRes extension */
+pid_t get_x11_window_pid(xcb_connection_t *conn, xcb_window_t window) {
+	if (!conn || window == XCB_WINDOW_NONE) {
+		return 0;
+	}
+
+	// Check if XRes extension is available
+	xcb_query_extension_cookie_t ext_cookie = xcb_query_extension(conn,
+		strlen("X-Resource"), "X-Resource");
+	xcb_query_extension_reply_t *ext_reply = xcb_query_extension_reply(conn, ext_cookie, NULL);
+	if (!ext_reply || !ext_reply->present) {
+		free(ext_reply);
+		return 0;
+	}
+	free(ext_reply);
+
+	// Create client ID spec for the window
+	xcb_res_client_id_spec_t spec;
+	spec.client = window;
+	spec.mask = XCB_RES_CLIENT_ID_MASK_LOCAL_CLIENT_PID;
+
+	// Query client IDs for the window
+	xcb_res_query_client_ids_cookie_t cookie = xcb_res_query_client_ids(conn, 1, &spec);
+	xcb_res_query_client_ids_reply_t *reply = xcb_res_query_client_ids_reply(conn, cookie, NULL);
+	if (!reply) {
+		return 0;
+	}
+
+	pid_t pid = 0;
+	xcb_res_client_id_value_iterator_t iter = xcb_res_query_client_ids_ids_iterator(reply);
+	for (; iter.rem; xcb_res_client_id_value_next(&iter)) {
+		if (iter.data->spec.mask & XCB_RES_CLIENT_ID_MASK_LOCAL_CLIENT_PID) {
+			uint32_t *value = xcb_res_client_id_value_value(iter.data);
+			if (value && iter.data->length >= sizeof(uint32_t)) {
+				pid = *value;
+				break;
+			}
+		}
+	}
+
+	free(reply);
+	return pid;
+}
 
 void xwm_selection_transfer_remove_event_source(
 		struct wlr_xwm_selection_transfer *transfer) {
@@ -37,26 +83,6 @@ void xwm_selection_transfer_init(struct wlr_xwm_selection_transfer *transfer,
 		.selection = selection,
 		.wl_client_fd = -1,
 	};
-}
-
-void xwm_selection_transfer_destroy(
-		struct wlr_xwm_selection_transfer *transfer) {
-	if (!transfer) {
-		return;
-	}
-
-	xwm_selection_transfer_destroy_property_reply(transfer);
-	xwm_selection_transfer_remove_event_source(transfer);
-	xwm_selection_transfer_close_wl_client_fd(transfer);
-
-	if (transfer->incoming_window) {
-		struct wlr_xwm *xwm = transfer->selection->xwm;
-		xcb_destroy_window(xwm->xcb_conn, transfer->incoming_window);
-		xwm_schedule_flush(xwm);
-	}
-
-	wl_list_remove(&transfer->link);
-	free(transfer);
 }
 
 xcb_atom_t xwm_mime_type_to_atom(struct wlr_xwm *xwm, char *mime_type) {
@@ -256,7 +282,7 @@ void xwm_selection_finish(struct wlr_xwm_selection *selection) {
 
 	struct wlr_xwm_selection_transfer *incoming;
 	wl_list_for_each_safe(incoming, tmp, &selection->incoming, link) {
-		xwm_selection_transfer_destroy(incoming);
+		xwm_selection_transfer_destroy_incoming(incoming);
 	}
 
 	xcb_destroy_window(selection->xwm->xcb_conn, selection->window);
