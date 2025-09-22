@@ -4,6 +4,7 @@
 #include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -45,6 +46,15 @@ static void handle_scene_buffer_outputs_update(
 	double scale = get_surface_preferred_buffer_scale(surface->surface);
 	wlr_fractional_scale_v1_notify_scale(surface->surface, scale);
 	wlr_surface_set_preferred_buffer_scale(surface->surface, ceil(scale));
+
+	struct wlr_scene *scene = scene_node_get_root(&surface->buffer->node);
+	struct wlr_fifo_v1 *fifo;
+	wl_list_for_each(fifo, &scene->fifo_surfaces, link) {
+		if (fifo->surface == surface->surface && surface->buffer->active_outputs &&
+				fifo->output != surface->buffer->primary_output->output) {
+			wlr_fifo_v1_set_output(fifo, surface->buffer->primary_output->output);
+		}
+	}
 }
 
 static void handle_scene_buffer_output_enter(
