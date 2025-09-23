@@ -781,6 +781,16 @@ static void manager_handle_get_surface_feedback(struct wl_client *client,
 		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
 	};
 
+	struct wlr_color_management_output_v1 *cm_output;
+	wl_list_for_each(cm_output, &manager->outputs, link) {
+		const struct wlr_output_image_description *image_desc = cm_output->output->image_description;
+		if(image_desc) {
+			surface_feedback->data.tf_named = transfer_function_from_wlr(image_desc->transfer_function);
+			surface_feedback->data.primaries_named = named_primaries_from_wlr(image_desc->primaries);
+			break;
+		}
+	}
+
 	surface_feedback->surface_destroy.notify = surface_feedback_handle_surface_destroy;
 	wl_signal_add(&surface->events.destroy, &surface_feedback->surface_destroy);
 
