@@ -341,6 +341,7 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 		.transform = WL_OUTPUT_TRANSFORM_NORMAL,
 		.scale = 1,
 		.commit_seq = 0,
+		.frames_since_locked = 0,
 	};
 
 	wl_list_init(&output->modes);
