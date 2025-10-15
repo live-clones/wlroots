@@ -39,11 +39,8 @@ tasks:
       ninja
   - smoke-test: |
       cd wlroots/build-gcc/tinywl
-      sudo modprobe vkms
-      udevadm settle
       export WLR_BACKENDS=drm
       export WLR_RENDERER=pixman
-      export WLR_DRM_DEVICES=/dev/dri/by-path/platform-vkms-card
+      export WLR_DRM_DEVICES=/dev/dri/card0
       export UBSAN_OPTIONS=halt_on_error=1
-      sudo chmod ugo+rw /dev/dri/by-path/platform-vkms-card
       sudo -E seatd-launch -- ./tinywl -s 'kill $PPID' || [ $? = 143 ]
