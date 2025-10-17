@@ -1942,7 +1942,11 @@ static bool color_management_is_scanout_allowed(const struct wlr_output_image_de
 	// If the output doesn't have colorimetry image description set, we can only
 	// scan out buffers with default colorimetry (gamma2.2 transfer and sRGB
 	// primaries) used in wlroots.
-	return buffer->transfer_function == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22 &&
+	// Additionally, also allow scanout of buffers with sRGB transfer function.
+	// This will result in subtle color shifts, especially near black but is
+	// generally preferable to not allowing scanout at all.
+	return (buffer->transfer_function == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22 ||
+			buffer->transfer_function == WLR_COLOR_TRANSFER_FUNCTION_SRGB) &&
 			buffer->primaries == WLR_COLOR_NAMED_PRIMARIES_SRGB;
 }
 
