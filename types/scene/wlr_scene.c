@@ -30,6 +30,15 @@
 
 #define DMABUF_FEEDBACK_DEBOUNCE_FRAMES  30
 #define HIGHLIGHT_DAMAGE_FADEOUT_TIME   250
+// wlroot's implementation of wlr_screencopy applys a lock for a brief duration
+// every time a frame is captured. If an output is eligible for direct scanout
+// then this will result in direct scanout being rapidly toggled on and off
+// since the lock count constantly flips between 0 and 1. On some hardware this
+// causes stuttering every time direct scanout is enabled then disabled.
+//
+// To mitigate this we wait for there to be 0 locks for 120 frames so that we
+// can be relatively confident that screen recording has stopped.
+#define SCANOUT_UNLOCK_FRAMES 120
 
 struct wlr_scene_tree *wlr_scene_tree_from_node(struct wlr_scene_node *node) {
 	assert(node->type == WLR_SCENE_NODE_TREE);
@@ -2240,12 +2249,19 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	wlr_output_state_set_damage(state, &scene_output->pending_commit_damage);
 
+	if (output->attach_render_locks > 0) {
+		output->frames_since_locked = 0;
+	} else if (output->attach_render_locks <= SCANOUT_UNLOCK_FRAMES) {
+		output->frames_since_locked++;
+	}
 	// We only want to try direct scanout if:
+	// - We are confident that the screen isn't being captured
 	// - There is only one entry in the render list
 	// - There are no color transforms that need to be applied
 	// - Damage highlight debugging is not enabled
 	enum scene_direct_scanout_result scanout_result = SCANOUT_INELIGIBLE;
-	if (options->color_transform == NULL && list_len == 1
+	if (output->frames_since_locked > SCANOUT_UNLOCK_FRAMES
+			&& options->color_transform == NULL && list_len == 1
 			&& debug_damage != WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT) {
 		scanout_result = scene_entry_try_direct_scanout(&list_data[0], state, &render_data);
 	}

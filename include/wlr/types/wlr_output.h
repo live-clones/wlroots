@@ -248,6 +248,8 @@ struct wlr_output {
 
 	int attach_render_locks; // number of locks forcing rendering
 
+	int frames_since_locked;
+
 	struct wl_list cursors; // wlr_output_cursor.link
 	struct wlr_output_cursor *hardware_cursor;
 	struct wlr_swapchain *cursor_swapchain;
