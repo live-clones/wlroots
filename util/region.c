@@ -36,6 +36,54 @@ void wlr_region_scale_xy(pixman_region32_t *dst, const pixman_region32_t *src,
 	free(dst_rects);
 }
 
+void wlr_region_scalef(pixman_region32_t *dst, const pixman_region64f_t *src,
+		float scale) {
+	wlr_region_scalef_xy(dst, src, scale, scale);
+}
+
+void wlr_region_scalef_xy(pixman_region32_t *dst, const pixman_region64f_t *src,
+		float scale_x, float scale_y) {
+	int nrects;
+	const pixman_box64f_t *src_rects = pixman_region64f_rectangles(src, &nrects);
+
+	pixman_box32_t *dst_rects = malloc(nrects * sizeof(pixman_box32_t));
+	if (dst_rects == NULL) {
+		return;
+	}
+
+	for (int i = 0; i < nrects; ++i) {
+		dst_rects[i].x1 = round(src_rects[i].x1 * scale_x);
+		dst_rects[i].x2 = round(src_rects[i].x2 * scale_x);
+		dst_rects[i].y1 = round(src_rects[i].y1 * scale_y);
+		dst_rects[i].y2 = round(src_rects[i].y2 * scale_y);
+	}
+
+	pixman_region32_fini(dst);
+	pixman_region32_init_rects(dst, dst_rects, nrects);
+	free(dst_rects);
+}
+
+void wlr_region64f_copy_from_region32(pixman_region64f_t *dst, const pixman_region32_t *src) {
+	int nrects;
+	const pixman_box32_t *src_rects = pixman_region32_rectangles(src, &nrects);
+
+	pixman_box64f_t *dst_rects = malloc(nrects * sizeof(pixman_box64f_t));
+	if (dst_rects == NULL) {
+		return;
+	}
+
+	for (int i = 0; i < nrects; ++i) {
+		dst_rects[i].x1 = src_rects[i].x1;
+		dst_rects[i].x2 = src_rects[i].x2;
+		dst_rects[i].y1 = src_rects[i].y1;
+		dst_rects[i].y2 = src_rects[i].y2;
+	}
+
+	pixman_region64f_fini(dst);
+	pixman_region64f_init_rects(dst, dst_rects, nrects);
+	free(dst_rects);
+}
+
 void wlr_region_transform(pixman_region32_t *dst, const pixman_region32_t *src,
 		enum wl_output_transform transform, int width, int height) {
 	if (transform == WL_OUTPUT_TRANSFORM_NORMAL) {
