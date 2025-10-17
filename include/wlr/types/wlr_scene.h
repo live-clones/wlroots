@@ -104,12 +104,19 @@ struct wlr_scene {
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf_v1;
 	struct wlr_gamma_control_manager_v1 *gamma_control_manager_v1;
 	struct wlr_color_manager_v1 *color_manager_v1;
+	struct wlr_fifo_manager_v1 *fifo_manager_v1;
+	struct wl_list fifo_surfaces; // list of fifo'ed wlr_surfaces
 
 	struct {
 		struct wl_listener linux_dmabuf_v1_destroy;
 		struct wl_listener gamma_control_manager_v1_destroy;
 		struct wl_listener gamma_control_manager_v1_set_gamma;
 		struct wl_listener color_manager_v1_destroy;
+		struct wl_listener fifo_manager_v1_destroy;
+		struct wl_listener fifo_manager_v1_fifo_destroy;
+		struct wl_listener fifo_manager_v1_new_fifo;
+		struct wl_listener fifo_manager_v1_fifo_barrier;
+		struct wl_listener fifo_v1_destroy;
 
 		enum wlr_scene_debug_damage_option debug_damage_option;
 		bool direct_scanout;
@@ -375,6 +382,12 @@ void wlr_scene_set_gamma_control_manager_v1(struct wlr_scene *scene,
  * Asserts that a struct wlr_color_manager_v1 hasn't already been set for the scene.
  */
 void wlr_scene_set_color_manager_v1(struct wlr_scene *scene, struct wlr_color_manager_v1 *manager);
+
+/**
+ * Handles fifo_v1 for all surfaces and their primary outputs in the scene.
+ */
+void wlr_scene_set_fifo_manager_v1(struct wlr_scene *scene,
+	    struct wlr_fifo_manager_v1 *fifo_manager);
 
 /**
  * Add a node displaying nothing but its children.
