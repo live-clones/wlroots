@@ -225,6 +225,7 @@ void scan_drm_connectors(struct wlr_drm_backend *state,
 void scan_drm_leases(struct wlr_drm_backend *drm);
 bool commit_drm_device(struct wlr_drm_backend *drm,
 	const struct wlr_backend_output_state *states, size_t states_len, bool test_only);
+void restore_drm_device(struct wlr_drm_backend *drm);
 int handle_drm_event(int fd, uint32_t mask, void *data);
 void destroy_drm_connector(struct wlr_drm_connector *conn);
 bool drm_connector_is_cursor_visible(struct wlr_drm_connector *conn);
