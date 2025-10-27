@@ -18,7 +18,7 @@
 
 #if WLR_HAS_GLES2_RENDERER
 #include <wlr/render/egl.h>
-#include <wlr/render/gles2.h>
+#include <wlr/render/gles.h>
 #endif
 
 #if WLR_HAS_VULKAN_RENDERER
@@ -236,9 +236,9 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 			log_creation_failure(is_auto, "Cannot create GLES2 renderer: no DRM FD available");
 		} else {
 #if WLR_HAS_GLES2_RENDERER
-			renderer = wlr_gles2_renderer_create_with_drm_fd(drm_fd);
+			renderer = wlr_gles_renderer_create_with_drm_fd(drm_fd);
 #else
-			wlr_log(WLR_ERROR, "Cannot create GLES renderer: disabled at compile-time");
+			wlr_log(WLR_ERROR, "Cannot create GLES2 renderer: disabled at compile-time");
 #endif
 			if (renderer) {
 				goto out;

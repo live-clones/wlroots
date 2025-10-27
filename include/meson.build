@@ -15,7 +15,7 @@ if not features.get('xwayland')
 	exclude_files += 'xwayland.h'
 endif
 if not features.get('gles2-renderer')
-	exclude_files += ['render/egl.h', 'render/gles2.h']
+	exclude_files += ['render/egl.h', 'render/gles.h']
 endif
 if not features.get('vulkan-renderer')
 	exclude_files += 'render/vulkan.h'

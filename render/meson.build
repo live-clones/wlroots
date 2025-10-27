@@ -47,7 +47,7 @@ if 'gles2' in renderers or 'auto' in renderers
 		wlr_files += files('egl.c')
 		internal_features += { 'egl': true }
 	endif
-	subdir('gles2')
+	subdir('gles')
 endif
 
 if 'vulkan' in renderers or 'auto' in renderers
