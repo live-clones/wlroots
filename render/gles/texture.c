@@ -1,7 +1,16 @@
 #include <assert.h>
 #include <drm_fourcc.h>
+
+#include <wlr/config.h>
+
+#if WLR_HAS_GLES2_RENDERER
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+#else
+#include <GLES3/gl3.h>
+#include <GLES3/gl3ext.h>
+#endif
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <wayland-server-protocol.h>

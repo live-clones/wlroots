@@ -28,6 +28,8 @@
 
 struct wlr_egl;
 
+enum egl_version { GLES2 = 2, GLES3 = 3 };
+
 /**
  * Create a struct wlr_egl with an existing EGL display and context.
  *
@@ -35,7 +37,7 @@ struct wlr_egl;
  * initialization.
  */
 struct wlr_egl *wlr_egl_create_with_context(EGLDisplay display,
-	EGLContext context);
+	EGLContext context, enum egl_version version);
 
 /**
  * Get the EGL display used by the struct wlr_egl.

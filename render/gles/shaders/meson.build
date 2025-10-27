@@ -6,6 +6,11 @@ shaders = [
 	'gles2_tex_rgba.frag',
 	'gles2_tex_rgbx.frag',
 	'gles2_tex_external.frag',
+	'gles3_common.vert',
+	'gles3_quad.frag',
+	'gles3_tex_rgba.frag',
+	'gles3_tex_rgbx.frag',
+	'gles3_tex_external.frag',
 ]
 
 foreach name : shaders

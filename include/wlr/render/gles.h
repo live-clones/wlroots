@@ -15,6 +15,8 @@
 
 struct wlr_egl;
 
+enum egl_version;
+
 /**
  * OpenGL ES renderer.
  *
@@ -28,7 +30,8 @@ struct wlr_egl;
  * render pass can't be used before the nested render pass is submitted.
  */
 
-struct wlr_renderer *wlr_gles_renderer_create_with_drm_fd(int drm_fd);
+struct wlr_renderer *wlr_gles_renderer_create_with_drm_fd(int drm_fd,
+		enum egl_version version);
 struct wlr_renderer *wlr_gles_renderer_create(struct wlr_egl *egl);
 
 struct wlr_egl *wlr_gles_renderer_get_egl(struct wlr_renderer *renderer);

@@ -10,6 +10,7 @@
 #include <wlr/util/region.h>
 #include <xf86drm.h>
 #include "render/egl.h"
+#include "render/gles.h"
 #include "util/env.h"
 
 static enum wlr_log_importance egl_log_importance_to_wlr(EGLint type) {
@@ -191,7 +192,7 @@ static void init_dmabuf_formats(struct wlr_egl *egl) {
 	}
 }
 
-static struct wlr_egl *egl_create(void) {
+static struct wlr_egl *egl_create(enum egl_version version) {
 	const char *client_exts_str = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
 	if (client_exts_str == NULL) {
 		if (eglGetError() == EGL_BAD_DISPLAY) {
@@ -256,6 +257,8 @@ static struct wlr_egl *egl_create(void) {
 		free(egl);
 		return NULL;
 	}
+
+	egl->version = version;
 
 	return egl;
 }
@@ -411,7 +414,7 @@ static bool egl_init(struct wlr_egl *egl, EGLenum platform,
 	size_t atti = 0;
 	EGLint attribs[7];
 	attribs[atti++] = EGL_CONTEXT_CLIENT_VERSION;
-	attribs[atti++] = 2;
+	attribs[atti++] = egl->version;
 
 	// Request a high priority context if possible
 	// TODO: only do this if we're running as the DRM master
@@ -555,10 +558,10 @@ static int open_render_node(int drm_fd) {
 	return render_fd;
 }
 
-struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
+struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd, enum egl_version version) {
 	bool allow_software = drm_fd < 0;
 
-	struct wlr_egl *egl = egl_create();
+	struct wlr_egl *egl = egl_create(version);
 	if (egl == NULL) {
 		wlr_log(WLR_ERROR, "Failed to create EGL context");
 		return NULL;
@@ -615,7 +618,7 @@ error:
 }
 
 struct wlr_egl *wlr_egl_create_with_context(EGLDisplay display,
-		EGLContext context) {
+		EGLContext context, enum egl_version version) {
 	EGLint client_type;
 	if (!eglQueryContext(display, context, EGL_CONTEXT_CLIENT_TYPE, &client_type) ||
 			client_type != EGL_OPENGL_ES_API) {
@@ -630,7 +633,7 @@ struct wlr_egl *wlr_egl_create_with_context(EGLDisplay display,
 		return NULL;
 	}
 
-	struct wlr_egl *egl = egl_create();
+	struct wlr_egl *egl = egl_create(version);
 	if (egl == NULL) {
 		return NULL;
 	}

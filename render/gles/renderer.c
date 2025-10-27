@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <wayland-server-protocol.h>
 #include <wayland-util.h>
+#include <wlr/config.h>
 #include <wlr/render/egl.h>
 #include <wlr/render/interface.h>
 #include <wlr/render/wlr_renderer.h>
@@ -20,11 +21,21 @@
 #include "render/pixel_format.h"
 #include "util/time.h"
 
+#if WLR_HAS_GLES2_RENDERER
 #include "gles2_common_vert_src.h"
 #include "gles2_quad_frag_src.h"
 #include "gles2_tex_rgba_frag_src.h"
 #include "gles2_tex_rgbx_frag_src.h"
 #include "gles2_tex_external_frag_src.h"
+#endif
+
+#if WLR_HAS_GLES3_RENDERER
+#include "gles3_common_vert_src.h"
+#include "gles3_quad_frag_src.h"
+#include "gles3_tex_rgba_frag_src.h"
+#include "gles3_tex_rgbx_frag_src.h"
+#include "gles3_tex_external_frag_src.h"
+#endif
 
 static const struct wlr_renderer_impl renderer_impl;
 static const struct wlr_render_timer_impl render_timer_impl;
@@ -633,9 +644,33 @@ struct wlr_renderer *wlr_gles_renderer_create(struct wlr_egl *egl) {
 
 	push_gles_debug(renderer);
 
+	const char* common_vert_src;
+	const char* quad_frag_src;
+	const char* tex_rgba_frag_src;
+	const char* tex_rgbx_frag_src;
+	const char* tex_external_frag_src;
+
+	if (egl->version == GLES2) {
+#if WLR_HAS_GLES2_RENDERER
+		common_vert_src = gles2_common_vert_src;
+		quad_frag_src = gles2_quad_frag_src;
+		tex_rgba_frag_src = gles2_tex_rgba_frag_src;
+		tex_rgbx_frag_src = gles2_tex_rgbx_frag_src;
+		tex_external_frag_src = gles2_tex_external_frag_src;
+#endif
+	} else {
+#if WLR_HAS_GLES3_RENDERER
+		common_vert_src = gles3_common_vert_src;
+		quad_frag_src = gles3_quad_frag_src;
+		tex_rgba_frag_src = gles3_tex_rgba_frag_src;
+		tex_rgbx_frag_src = gles3_tex_rgbx_frag_src;
+		tex_external_frag_src = gles3_tex_external_frag_src;
+#endif
+	}
+
 	GLuint prog;
 	renderer->shaders.quad.program = prog =
-		link_program(renderer, gles2_common_vert_src, gles2_quad_frag_src);
+		link_program(renderer, common_vert_src, quad_frag_src);
 	if (!renderer->shaders.quad.program) {
 		goto error;
 	}
@@ -644,7 +679,7 @@ struct wlr_renderer *wlr_gles_renderer_create(struct wlr_egl *egl) {
 	renderer->shaders.quad.pos_attrib = glGetAttribLocation(prog, "pos");
 
 	renderer->shaders.tex_rgba.program = prog =
-		link_program(renderer, gles2_common_vert_src, gles2_tex_rgba_frag_src);
+		link_program(renderer, common_vert_src, tex_rgba_frag_src);
 	if (!renderer->shaders.tex_rgba.program) {
 		goto error;
 	}
@@ -655,7 +690,7 @@ struct wlr_renderer *wlr_gles_renderer_create(struct wlr_egl *egl) {
 	renderer->shaders.tex_rgba.pos_attrib = glGetAttribLocation(prog, "pos");
 
 	renderer->shaders.tex_rgbx.program = prog =
-		link_program(renderer, gles2_common_vert_src, gles2_tex_rgbx_frag_src);
+		link_program(renderer, common_vert_src, tex_rgbx_frag_src);
 	if (!renderer->shaders.tex_rgbx.program) {
 		goto error;
 	}
@@ -667,7 +702,7 @@ struct wlr_renderer *wlr_gles_renderer_create(struct wlr_egl *egl) {
 
 	if (renderer->exts.OES_egl_image_external) {
 		renderer->shaders.tex_ext.program = prog =
-			link_program(renderer, gles2_common_vert_src, gles2_tex_external_frag_src);
+			link_program(renderer, common_vert_src, tex_external_frag_src);
 		if (!renderer->shaders.tex_ext.program) {
 			goto error;
 		}

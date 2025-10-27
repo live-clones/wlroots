@@ -1,6 +1,6 @@
 renderers = get_option('renderers')
 if 'auto' in renderers and get_option('auto_features').enabled()
-	renderers = ['gles2', 'vulkan']
+	renderers = ['gles2', 'gles3', 'vulkan']
 elif 'auto' in renderers and get_option('auto_features').disabled()
 	renderers = []
 endif
@@ -25,8 +25,8 @@ endif
 
 internal_config.set10('HAVE_EVENTFD', cc.has_header('sys/eventfd.h'))
 
-if 'gles2' in renderers or 'auto' in renderers
-	egl = dependency('egl', required: 'gles2' in renderers)
+if 'gles2' in renderers or 'gles3' in renderers or 'auto' in renderers
+	egl = dependency('egl', required: 'gles2' in renderers or 'gles3' in renderers)
 	if egl.found()
 		eglext_version = cc.get_define(
 			'EGL_EGLEXT_VERSION',
@@ -36,12 +36,12 @@ if 'gles2' in renderers or 'auto' in renderers
 		if eglext_version < 20210604
 			egl = dependency(
 				'',
-				required: 'gles2' in renderers,
+				required: 'gles2' in renderers or 'gles3' in renderers,
 				not_found_message: 'EGL headers too old',
 			)
 		endif
 	endif
-	gbm = dependency('gbm', required: 'gles2' in renderers)
+	gbm = dependency('gbm', required: 'gles2' in renderers or 'gles3' in renderers)
 	if egl.found() and gbm.found()
 		wlr_deps += [egl, gbm]
 		wlr_files += files('egl.c')

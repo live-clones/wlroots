@@ -16,7 +16,7 @@
 
 #include <wlr/config.h>
 
-#if WLR_HAS_GLES2_RENDERER
+#if WLR_HAS_GLES2_RENDERER || WLR_HAS_GLES3_RENDERER
 #include <wlr/render/egl.h>
 #include <wlr/render/gles.h>
 #endif
@@ -220,6 +220,7 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 	const char *renderer_options[] = {
 		"auto",
 		"gles2",
+		"gles3",
 		"vulkan",
 		"pixman",
 		NULL
@@ -236,7 +237,7 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 			log_creation_failure(is_auto, "Cannot create GLES2 renderer: no DRM FD available");
 		} else {
 #if WLR_HAS_GLES2_RENDERER
-			renderer = wlr_gles_renderer_create_with_drm_fd(drm_fd);
+			renderer = wlr_gles_renderer_create_with_drm_fd(drm_fd, GLES2);
 #else
 			wlr_log(WLR_ERROR, "Cannot create GLES2 renderer: disabled at compile-time");
 #endif
@@ -244,6 +245,23 @@ static struct wlr_renderer *renderer_autocreate(struct wlr_backend *backend, int
 				goto out;
 			} else {
 				log_creation_failure(is_auto, "Failed to create a GLES2 renderer");
+			}
+		}
+	}
+
+	if ((is_auto && WLR_HAS_GLES3_RENDERER) || strcmp(renderer_name, "gles3") == 0) {
+		if (!open_preferred_drm_fd(backend, &drm_fd, &own_drm_fd)) {
+			log_creation_failure(is_auto, "Cannot create GLES3 renderer: no DRM FD available");
+		} else {
+#if WLR_HAS_GLES3_RENDERER
+			renderer = wlr_gles_renderer_create_with_drm_fd(drm_fd, GLES3);
+#else
+			wlr_log(WLR_ERROR, "Cannot create GLES3 renderer: disabled at compile-time");
+#endif
+			if (renderer) {
+				goto out;
+			} else {
+				log_creation_failure(is_auto, "Failed to create a GLES3 renderer");
 			}
 		}
 	}

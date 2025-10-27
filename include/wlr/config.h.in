@@ -31,6 +31,13 @@
  */
 #mesondefine WLR_HAS_GLES2_RENDERER
 /**
+ * Whether the GLES3 renderer is compile-time enabled. Equivalent to the
+ * pkg-config "have_gles3_renderer" variable.
+ *
+ * Required for <wlr/render/gles.h>.
+ */
+#mesondefine WLR_HAS_GLES3_RENDERER
+/**
  * Whether the Vulkan renderer is compile-time enabled. Equivalent to the
  * pkg-config "have_vulkan_renderer" variable.
  *
