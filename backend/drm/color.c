@@ -68,6 +68,8 @@ static bool drm_crtc_color_transform_convert(struct wlr_drm_crtc_color_transform
 		}
 
 		return true;
+	case COLOR_TRANSFORM_MATRIX:
+		return false; // TODO: add support for CTM
 	case COLOR_TRANSFORM_LCMS2:
 		return false; // unsupported
 	case COLOR_TRANSFORM_PIPELINE:;
