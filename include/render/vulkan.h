@@ -426,6 +426,9 @@ struct wlr_vk_render_pass {
 	bool has_primaries;
 	struct wlr_color_primaries primaries;
 
+	bool has_luminances;
+	struct wlr_color_luminances luminances;
+
 	struct wlr_drm_syncobj_timeline *signal_timeline;
 	uint64_t signal_point;
 

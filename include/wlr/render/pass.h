@@ -37,6 +37,8 @@ struct wlr_buffer_pass_options {
 	struct wlr_color_transform *color_transform;
 	/** Primaries describing the color volume of the destination buffer */
 	const struct wlr_color_primaries *primaries;
+	/** Luminances for the destination buffer */
+	const struct wlr_color_luminances *luminances;
 
 	/* Signal a timeline synchronization point when the render pass completes.
 	 *

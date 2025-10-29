@@ -2359,12 +2359,31 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	struct wlr_color_transform *color_transform = NULL;
 	const struct wlr_color_primaries *primaries = NULL;
+	const struct wlr_color_luminances *target_luminances = NULL;
 	struct wlr_color_primaries primaries_value;
+	struct wlr_color_luminances target_luminances_value;
 	const struct wlr_output_image_description *img_desc = output_pending_image_description(output, state);
 	if (img_desc != NULL) {
 		color_transform = wlr_color_transform_init_linear_to_inverse_eotf(img_desc->transfer_function);
-		wlr_color_primaries_from_named(&primaries_value, img_desc->primaries);
-		primaries = &primaries_value;
+
+		struct wlr_color_primaries zero_primaries = {0};
+		if (memcmp(&img_desc->mastering_display_primaries, &zero_primaries, sizeof(zero_primaries)) != 0) {
+			primaries = &img_desc->mastering_display_primaries;
+		} else {
+			wlr_color_primaries_from_named(&primaries_value, img_desc->primaries);
+			primaries = &primaries_value;
+		}
+
+		if (img_desc->mastering_luminance.min != 0 || img_desc->mastering_luminance.max != 0) {
+			struct wlr_color_luminances default_lum = {0};
+			wlr_color_transfer_function_get_default_luminance(img_desc->transfer_function, &default_lum);
+			target_luminances_value = (struct wlr_color_luminances){
+				.min = img_desc->mastering_luminance.min,
+				.max = img_desc->mastering_luminance.max,
+				.reference = default_lum.reference, // TODO: make configurable
+			};
+			target_luminances = &target_luminances_value;
+		}
 	}
 	if (options->color_transform != NULL) {
 		assert(color_transform == NULL);
@@ -2388,6 +2407,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		.timer = timer ? timer->render_timer : NULL,
 		.color_transform = color_transform,
 		.primaries = primaries,
+		.luminances = target_luminances,
 		.signal_timeline = scene_output->in_timeline,
 		.signal_point = scene_output->in_point,
 	});
