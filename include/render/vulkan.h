@@ -565,6 +565,8 @@ struct wlr_vk_color_transform {
 		VkDescriptorSet ds;
 		struct wlr_vk_descriptor_pool *ds_pool;
 	} lut_3d;
+	enum wlr_color_transfer_function transfer_function;
+	float color_matrix[9];
 };
 void vk_color_transform_destroy(struct wlr_addon *addon);
 
