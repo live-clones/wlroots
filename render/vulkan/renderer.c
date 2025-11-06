@@ -1254,7 +1254,7 @@ bool vulkan_read_pixels(struct wlr_vk_renderer *vk_renderer,
 		};
 		res = vkCreateImage(dev, &image_create_info, NULL, &dst_image);
 		if (res != VK_SUCCESS) {
-			wlr_vk_error("vkCreateImage", res);
+			wlr_vk_error("vkCreateImage failed", res);
 			return false;
 		}
 
