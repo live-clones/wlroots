@@ -181,7 +181,8 @@ static uint64_t to_fp16(double v) {
 
 static bool set_layer_props(struct wlr_drm_backend *drm,
 		const struct wlr_output_layer_state *state, uint64_t zpos,
-		struct wl_array *fb_damage_clips_arr) {
+		struct wl_array *fb_damage_clips_arr,
+		bool has_color_encoding) {
 	struct wlr_drm_layer *layer = get_drm_layer(drm, state->layer);
 
 	uint32_t width = 0, height = 0;
@@ -232,7 +233,7 @@ static bool set_layer_props(struct wlr_drm_backend *drm,
 		*ptr = fb_damage_clips;
 	}
 
-	return
+	ret =
 		liftoff_layer_set_property(layer->liftoff, "zpos", zpos) == 0 &&
 		liftoff_layer_set_property(layer->liftoff, "CRTC_X", crtc_x) == 0 &&
 		liftoff_layer_set_property(layer->liftoff, "CRTC_Y", crtc_y) == 0 &&
@@ -243,6 +244,13 @@ static bool set_layer_props(struct wlr_drm_backend *drm,
 		liftoff_layer_set_property(layer->liftoff, "SRC_W", src_w) == 0 &&
 		liftoff_layer_set_property(layer->liftoff, "SRC_H", src_h) == 0 &&
 		liftoff_layer_set_property(layer->liftoff, "FB_DAMAGE_CLIPS", fb_damage_clips) == 0;
+
+	if (has_color_encoding) {
+		ret &= liftoff_layer_set_property(layer->liftoff,
+			"COLOR_ENCODING", DRM_COLOR_YCBCR_BT709) == 0;
+	}
+
+	return ret;
 }
 
 static bool devid_from_fd(int fd, dev_t *devid) {
@@ -332,6 +340,14 @@ static bool add_connector(drmModeAtomicReq *req,
 			ok = ok && add_prop(req, crtc->id, crtc->props.vrr_enabled, state->vrr_enabled);
 		}
 
+		// We want to always set the color encoding for YUV planes to
+		// BT.709 to be consistent with renderers, but we don't know
+		// if the chosen plane will have the COLOR_ENCODING property.
+		// However, empirically, if the primary plane has
+		// COLOR_ENCODING then all other YUV-supporting planes also do.
+		bool has_color_encoding =
+			crtc->primary->props.color_encoding != 0;
+
 		ok = ok && set_plane_props(crtc->primary,
 			crtc->primary->liftoff_layer, state->primary_fb, 0,
 			&state->primary_viewport.dst_box,
@@ -345,6 +361,12 @@ static bool add_connector(drmModeAtomicReq *req,
 			"FB_DAMAGE_CLIPS", state->fb_damage_clips);
 		liftoff_layer_set_property(crtc->liftoff_composition_layer,
 			"FB_DAMAGE_CLIPS", state->fb_damage_clips);
+		if (has_color_encoding) {
+			liftoff_layer_set_property(crtc->primary->liftoff_layer,
+				"COLOR_ENCODING", DRM_COLOR_YCBCR_BT709);
+			liftoff_layer_set_property(crtc->liftoff_composition_layer,
+				"COLOR_ENCODING", DRM_COLOR_YCBCR_BT709);
+		}
 
 		if (state->primary_in_fence_fd >= 0) {
 			liftoff_layer_set_property(crtc->primary->liftoff_layer,
@@ -361,7 +383,7 @@ static bool add_connector(drmModeAtomicReq *req,
 			for (size_t i = 0; i < state->base->layers_len; i++) {
 				const struct wlr_output_layer_state *layer_state = &state->base->layers[i];
 				ok = ok && set_layer_props(drm, layer_state, i + 1,
-					fb_damage_clips_arr);
+					fb_damage_clips_arr, has_color_encoding);
 			}
 		}
 
