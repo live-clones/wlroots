@@ -14,6 +14,7 @@ foreach name : shaders
 		input: name,
 		output: name + '_check',
 		command: [glslang, '@INPUT@'],
+		capture: true,
 		build_by_default: true,
 	)
 
