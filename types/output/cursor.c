@@ -256,25 +256,10 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 	wlr_box_transform(&dst_box, &dst_box, wlr_output_transform_invert(output->transform),
 		buffer->width, buffer->height);
 
-	struct wlr_buffer_pass_options options = {0};
-	if (output->image_description != NULL) {
-		struct wlr_color_primaries primaries_srgb;
-		wlr_color_primaries_from_named(&primaries_srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
-		struct wlr_color_primaries primaries;
-		wlr_color_primaries_from_named(&primaries, output->image_description->primaries);
-		float matrix[9];
-		wlr_color_primaries_transform_absolute_colorimetric(&primaries_srgb, &primaries, matrix);
-		struct wlr_color_transform *transforms[2] = {
-			wlr_color_transform_init_matrix(matrix),
-			wlr_color_transform_init_linear_to_inverse_eotf(
-				output->image_description->transfer_function),
-		};
-		options.color_transform = wlr_color_transform_init_pipeline(transforms, 2);
-		wlr_color_transform_unref(transforms[0]);
-		wlr_color_transform_unref(transforms[1]);
-	}
+	struct wlr_buffer_pass_options options = {
+		.color_transform = cursor->color_transform,
+	};
 	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(renderer, buffer, &options);
-	wlr_color_transform_unref(options.color_transform);
 	if (pass == NULL) {
 		wlr_buffer_unlock(buffer);
 		return NULL;
@@ -508,5 +493,6 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	}
 	wlr_drm_syncobj_timeline_unref(cursor->wait_timeline);
 	wl_list_remove(&cursor->link);
+	wlr_color_transform_unref(cursor->color_transform);
 	free(cursor);
 }

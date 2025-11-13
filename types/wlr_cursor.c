@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
+#include "render/color.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_output.h"
 
@@ -633,11 +634,39 @@ static void cursor_output_cursor_update(struct wlr_cursor_output_cursor *output_
 	}
 }
 
+static void output_cursor_refresh_color_transform(struct wlr_output_cursor *output_cursor,
+		const struct wlr_output_image_description *img_desc) {
+	wlr_color_transform_unref(output_cursor->color_transform);
+	struct wlr_color_transform *new_transform = NULL;
+	if (img_desc != NULL) {
+		struct wlr_color_primaries primaries_srgb;
+		wlr_color_primaries_from_named(&primaries_srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
+		struct wlr_color_primaries primaries;
+		wlr_color_primaries_from_named(&primaries, img_desc->primaries);
+		float matrix[9];
+		wlr_color_primaries_transform_absolute_colorimetric(&primaries_srgb, &primaries, matrix);
+		struct wlr_color_transform *transforms[2] = {
+			wlr_color_transform_init_matrix(matrix),
+			wlr_color_transform_init_linear_to_inverse_eotf(img_desc->transfer_function),
+		};
+		new_transform = wlr_color_transform_init_pipeline(transforms, 2);
+		wlr_color_transform_unref(transforms[0]);
+		wlr_color_transform_unref(transforms[1]);
+	}
+	output_cursor->color_transform = new_transform;
+}
+
 static void output_cursor_output_handle_output_commit(
 		struct wl_listener *listener, void *data) {
 	struct wlr_cursor_output_cursor *output_cursor =
 		wl_container_of(listener, output_cursor, output_commit);
 	const struct wlr_output_event_commit *event = data;
+
+	if (event->state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
+		const struct wlr_output_image_description *img_desc =
+			output_pending_image_description(output_cursor->output_cursor->output, event->state);
+		output_cursor_refresh_color_transform(output_cursor->output_cursor, img_desc);
+	}
 
 	if (event->state->committed & (WLR_OUTPUT_STATE_SCALE | WLR_OUTPUT_STATE_TRANSFORM
 			| WLR_OUTPUT_STATE_ENABLED | WLR_OUTPUT_STATE_IMAGE_DESCRIPTION)) {
@@ -1174,6 +1203,8 @@ static void layout_add(struct wlr_cursor_state *state,
 		&output_cursor->output_commit);
 	output_cursor->output_commit.notify = output_cursor_output_handle_output_commit;
 
+	output_cursor_refresh_color_transform(output_cursor->output_cursor,
+		l_output->output->image_description);
 	output_cursor_move(output_cursor);
 	cursor_output_cursor_update(output_cursor);
 }
