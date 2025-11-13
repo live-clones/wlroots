@@ -14,6 +14,7 @@
 #include <wlr/render/color.h>
 
 struct wlr_surface;
+struct wlr_renderer;
 
 // Supported coefficients and range are always paired together
 struct wlr_color_representation_v1_coeffs_and_range {
@@ -44,18 +45,19 @@ struct wlr_color_representation_manager_v1 {
 
 // Options used when initialising a wlr_color_representation_manager_v1
 struct wlr_color_representation_v1_options {
-	enum wp_color_representation_surface_v1_alpha_mode
-		*supported_alpha_modes;
+	const enum wp_color_representation_surface_v1_alpha_mode *supported_alpha_modes;
 	size_t supported_alpha_modes_len;
 
-	const struct wlr_color_representation_v1_coeffs_and_range
-		*supported_coeffs_and_ranges;
+	const struct wlr_color_representation_v1_coeffs_and_range *supported_coeffs_and_ranges;
 	size_t supported_coeffs_and_ranges_len;
 };
 
 struct wlr_color_representation_manager_v1 *wlr_color_representation_manager_v1_create(
 		struct wl_display *display, uint32_t version,
 		const struct wlr_color_representation_v1_options *options);
+
+struct wlr_color_representation_manager_v1 *wlr_color_representation_manager_v1_create_with_renderer(
+		struct wl_display *display, uint32_t version, struct wlr_renderer *renderer);
 
 // This is all the color-representation state which can be attached to a
 // surface, double-buffered and made current on commit
