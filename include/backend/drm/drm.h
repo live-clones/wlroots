@@ -76,6 +76,7 @@ struct wlr_drm_crtc {
 	bool own_mode_id;
 	uint32_t mode_id;
 	uint32_t gamma_lut;
+	uint32_t ctm;
 
 	// Legacy only
 	int legacy_gamma_size;
@@ -159,6 +160,7 @@ struct wlr_drm_connector_state {
 	// used by atomic
 	uint32_t mode_id;
 	uint32_t gamma_lut;
+	uint32_t ctm;
 	uint32_t fb_damage_clips;
 	int primary_in_fence_fd, out_fence_fd;
 	bool vrr_enabled;

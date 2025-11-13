@@ -391,6 +391,9 @@ void finish_drm_resources(struct wlr_drm_backend *drm) {
 		if (crtc->gamma_lut) {
 			drmModeDestroyPropertyBlob(drm->fd, crtc->gamma_lut);
 		}
+		if (crtc->ctm) {
+			drmModeDestroyPropertyBlob(drm->fd, crtc->ctm);
+		}
 	}
 
 	free(drm->crtcs);

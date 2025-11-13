@@ -3,6 +3,12 @@
 #include "backend/drm/color.h"
 #include "backend/drm/drm.h"
 #include "render/color.h"
+#include "util/matrix.h"
+
+enum wlr_drm_crtc_color_transform_stage {
+	WLR_DRM_CRTC_COLOR_TRANSFORM_MATRIX,
+	WLR_DRM_CRTC_COLOR_TRANSFORM_LUT_3X1D,
+};
 
 static struct wlr_color_transform_lut_3x1d *create_identity_3x1dlut(size_t dim) {
 	if (dim == 0) {
@@ -21,8 +27,21 @@ static struct wlr_color_transform_lut_3x1d *create_identity_3x1dlut(size_t dim) 
 	return color_transform_lut_3x1d_from_base(out);
 }
 
+static bool set_stage(enum wlr_drm_crtc_color_transform_stage *current,
+		enum wlr_drm_crtc_color_transform_stage next) {
+	// Enforce that we fill the pipeline in order: first CTM then GAMMA_LUT
+	if (*current > next) {
+		return false;
+	}
+	*current = next;
+	return true;
+}
+
 static bool drm_crtc_color_transform_init_lut_3x1d(struct wlr_drm_crtc_color_transform *out,
-		size_t dim) {
+		enum wlr_drm_crtc_color_transform_stage *stage, size_t dim) {
+	if (!set_stage(stage, WLR_DRM_CRTC_COLOR_TRANSFORM_LUT_3X1D)) {
+		return false;
+	}
 	if (out->lut_3x1d != NULL) {
 		return true;
 	}
@@ -31,13 +50,14 @@ static bool drm_crtc_color_transform_init_lut_3x1d(struct wlr_drm_crtc_color_tra
 }
 
 static bool drm_crtc_color_transform_convert(struct wlr_drm_crtc_color_transform *out,
-		struct wlr_color_transform *in, size_t lut_3x1d_dim) {
+		struct wlr_color_transform *in, enum wlr_drm_crtc_color_transform_stage *stage,
+		size_t lut_3x1d_dim) {
 	switch (in->type) {
 	case COLOR_TRANSFORM_INVERSE_EOTF:;
 		struct wlr_color_transform_inverse_eotf *inv_eotf =
 			wlr_color_transform_inverse_eotf_from_base(in);
 
-		if (!drm_crtc_color_transform_init_lut_3x1d(out, lut_3x1d_dim)) {
+		if (!drm_crtc_color_transform_init_lut_3x1d(out, stage, lut_3x1d_dim)) {
 			return false;
 		}
 
@@ -58,7 +78,7 @@ static bool drm_crtc_color_transform_convert(struct wlr_drm_crtc_color_transform
 			return false;
 		}
 
-		if (!drm_crtc_color_transform_init_lut_3x1d(out, lut_3x1d_dim)) {
+		if (!drm_crtc_color_transform_init_lut_3x1d(out, stage, lut_3x1d_dim)) {
 			return false;
 		}
 
@@ -68,15 +88,21 @@ static bool drm_crtc_color_transform_convert(struct wlr_drm_crtc_color_transform
 		}
 
 		return true;
-	case COLOR_TRANSFORM_MATRIX:
-		return false; // TODO: add support for CTM
+	case COLOR_TRANSFORM_MATRIX:;
+		struct wlr_color_transform_matrix *matrix = wl_container_of(in, matrix, base);
+		if (!set_stage(stage, WLR_DRM_CRTC_COLOR_TRANSFORM_MATRIX)) {
+			return false;
+		}
+		wlr_matrix_multiply(out->matrix, matrix->matrix, out->matrix);
+		out->has_matrix = true;
+		return true;
 	case COLOR_TRANSFORM_LCMS2:
 		return false; // unsupported
 	case COLOR_TRANSFORM_PIPELINE:;
 		struct wlr_color_transform_pipeline *pipeline = wl_container_of(in, pipeline, base);
 
 		for (size_t i = 0; i < pipeline->len; i++) {
-			if (!drm_crtc_color_transform_convert(out, pipeline->transforms[i], lut_3x1d_dim)) {
+			if (!drm_crtc_color_transform_convert(out, pipeline->transforms[i], stage, lut_3x1d_dim)) {
 				return false;
 			}
 		}
@@ -109,9 +135,11 @@ static struct wlr_drm_crtc_color_transform *drm_crtc_color_transform_create(
 
 	tr->base = base;
 	wlr_addon_init(&tr->addon, &base->addons, crtc, &addon_impl);
+	wlr_matrix_identity(tr->matrix);
 
 	size_t lut_3x1d_dim = drm_crtc_get_gamma_lut_size(backend, crtc);
-	tr->failed = !drm_crtc_color_transform_convert(tr, base, lut_3x1d_dim);
+	enum wlr_drm_crtc_color_transform_stage stage = WLR_DRM_CRTC_COLOR_TRANSFORM_MATRIX;
+	tr->failed = !drm_crtc_color_transform_convert(tr, base, &stage, lut_3x1d_dim);
 
 	return tr;
 }
