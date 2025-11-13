@@ -12,6 +12,8 @@ struct wlr_drm_crtc_color_transform {
 	struct wlr_addon addon; // wlr_color_transform.addons
 	bool failed;
 	struct wlr_color_transform_lut_3x1d *lut_3x1d;
+	float matrix[9];
+	bool has_matrix;
 };
 
 struct wlr_drm_crtc_color_transform *drm_crtc_color_transform_import(
