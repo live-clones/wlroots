@@ -763,6 +763,7 @@ struct wlr_ext_workspace_handle_v1 *wlr_ext_workspace_handle_v1_create(
 	if (id) {
 		workspace->id = strdup(id);
 		if (!workspace->id) {
+			free(workspace);
 			return NULL;
 		}
 	}
