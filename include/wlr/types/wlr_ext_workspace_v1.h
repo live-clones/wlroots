@@ -24,7 +24,7 @@ struct wlr_ext_workspace_manager_v1 {
 	} events;
 
 	struct {
-		struct wl_list clients; // wlr_ext_workspace_manager_client_v1.link
+		struct wl_list resources; // wlr_ext_workspace_manager_v1_resource.link
 		struct wl_event_source *idle_source;
 		struct wl_event_loop *event_loop;
 		struct wl_listener display_destroy;
@@ -43,7 +43,7 @@ struct wlr_ext_workspace_group_handle_v1 {
 
 	struct {
 		struct wl_list outputs; // wlr_ext_workspace_v1_group_output.link
-		struct wl_list clients; // wlr_ext_workspace_manager_client_v1.link
+		struct wl_list resources; // wlr_ext_workspace_manager_v1_resource.link
 	} WLR_PRIVATE;
 };
 
@@ -67,7 +67,7 @@ struct wlr_ext_workspace_handle_v1 {
 	struct wl_list link; // wlr_ext_workspace_manager_v1.workspaces
 
 	struct {
-		struct wl_list clients;
+		struct wl_list resources; // wlr_ext_workspace_v1_resource.link
 	} WLR_PRIVATE;
 };
 
