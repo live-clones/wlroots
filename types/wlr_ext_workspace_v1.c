@@ -425,7 +425,6 @@ static void manager_bind(struct wl_client *client, void *data,
 
 	manager_res->manager = manager;
 	wl_list_init(&manager_res->requests);
-	wl_list_insert(&manager->resources, &manager_res->link);
 
 	manager_res->resource = wl_resource_create(client,
 			&ext_workspace_manager_v1_interface, version, id);
@@ -436,6 +435,7 @@ static void manager_bind(struct wl_client *client, void *data,
 	}
 	wl_resource_set_implementation(manager_res->resource, &manager_impl,
 			manager_res, manager_resource_destroy);
+	wl_list_insert(&manager->resources, &manager_res->link);
 
 	struct wlr_ext_workspace_group_handle_v1 *group;
 	wl_list_for_each(group, &manager->groups, link) {
