@@ -323,8 +323,6 @@ static void manager_handle_commit(struct wl_client *client, struct wl_resource *
 			wl_signal_emit_mutable(
 				&req->workspace->events.remove, NULL);
 			break;
-		default:
-			abort();
 		}
 		destroy_request(req);
 	}
