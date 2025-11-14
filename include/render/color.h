@@ -9,6 +9,7 @@ enum wlr_color_transform_type {
 	COLOR_TRANSFORM_INVERSE_EOTF,
 	COLOR_TRANSFORM_LCMS2,
 	COLOR_TRANSFORM_LUT_3X1D,
+	COLOR_TRANSFORM_MATRIX,
 	COLOR_TRANSFORM_PIPELINE,
 };
 
@@ -38,6 +39,12 @@ struct wlr_color_transform_lut_3x1d {
 
 	uint16_t *lut_3x1d;
 	size_t dim;
+};
+
+struct wlr_color_transform_matrix {
+	struct wlr_color_transform base;
+
+	float matrix[9];
 };
 
 struct wlr_color_transform_pipeline {
@@ -96,5 +103,10 @@ void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, flo
  */
 void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_function tf,
 	struct wlr_color_luminances *lum);
+
+/**
+ * Apply a color transfer function's EOTF⁻¹ operation.
+ */
+float wlr_color_transfer_function_eval_inverse_eotf(enum wlr_color_transfer_function tf, float x);
 
 #endif
