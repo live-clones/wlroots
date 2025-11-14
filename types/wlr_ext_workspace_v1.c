@@ -632,6 +632,10 @@ static void group_send_output(struct wlr_ext_workspace_group_handle_v1 *group,
 
 void wlr_ext_workspace_group_handle_v1_destroy(
 		struct wlr_ext_workspace_group_handle_v1 *group) {
+	if (!group) {
+		return;
+	}
+
 	wl_signal_emit_mutable(&group->events.destroy, NULL);
 
 	assert(wl_list_empty(&group->events.create_workspace.listener_list));
@@ -790,6 +794,10 @@ struct wlr_ext_workspace_handle_v1 *wlr_ext_workspace_handle_v1_create(
 }
 
 void wlr_ext_workspace_handle_v1_destroy(struct wlr_ext_workspace_handle_v1 *workspace) {
+	if (!workspace) {
+		return;
+	}
+
 	wl_signal_emit_mutable(&workspace->events.destroy, NULL);
 
 	assert(wl_list_empty(&workspace->events.activate.listener_list));
