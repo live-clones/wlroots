@@ -31,11 +31,15 @@ struct wlr_ext_workspace_manager_v1 {
 	} WLR_PRIVATE;
 };
 
+struct wlr_ext_workspace_group_handle_v1_create_workspace_event {
+	const char *name;
+};
+
 struct wlr_ext_workspace_group_handle_v1 {
 	struct wlr_ext_workspace_manager_v1 *manager;
 	uint32_t caps; // ext_workspace_group_handle_v1_group_capabilities
 	struct {
-		struct wl_signal create_workspace; // const char *
+		struct wl_signal create_workspace; // wlr_ext_workspace_group_handle_v1_create_workspace_event
 		struct wl_signal destroy;
 	} events;
 
