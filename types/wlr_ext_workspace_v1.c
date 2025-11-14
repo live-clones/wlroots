@@ -303,9 +303,12 @@ static void manager_handle_commit(struct wl_client *client, struct wl_resource *
 	struct wlr_ext_workspace_v1_request *req, *tmp;
 	wl_list_for_each_safe(req, tmp, &manager->requests, link) {
 		switch (req->type) {
-		case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE:
+		case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE:;
+			struct wlr_ext_workspace_group_handle_v1_create_workspace_event event = {
+				.name = req->name,
+			};
 			wl_signal_emit_mutable(
-				&req->group->events.create_workspace, req->name);
+				&req->group->events.create_workspace, &event);
 			break;
 		case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE:
 			wl_signal_emit_mutable(
