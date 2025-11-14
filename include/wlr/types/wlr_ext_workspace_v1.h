@@ -10,19 +10,9 @@
 #define WLR_TYPES_WLR_EXT_WORKSPACE_V1_H
 
 #include <wayland-server-core.h>
+#include <wayland-protocols/ext-workspace-v1-enum.h>
 
 struct wlr_output;
-
-enum wlr_ext_workspace_group_handle_v1_cap {
-	WLR_EXT_WORKSPACE_GROUP_HANDLE_V1_CAP_CREATE_WORKSPACE = 1 << 0,
-};
-
-enum wlr_ext_workspace_handle_v1_cap {
-	WLR_EXT_WORKSPACE_HANDLE_V1_CAP_ACTIVATE = 1 << 0,
-	WLR_EXT_WORKSPACE_HANDLE_V1_CAP_DEACTIVATE = 1 << 1,
-	WLR_EXT_WORKSPACE_HANDLE_V1_CAP_REMOVE = 1 << 2,
-	WLR_EXT_WORKSPACE_HANDLE_V1_CAP_ASSIGN = 1 << 3,
-};
 
 struct wlr_ext_workspace_manager_v1 {
 	struct wl_global *global;
@@ -43,7 +33,7 @@ struct wlr_ext_workspace_manager_v1 {
 
 struct wlr_ext_workspace_group_handle_v1 {
 	struct wlr_ext_workspace_manager_v1 *manager;
-	uint32_t caps; // wlr_ext_workspace_group_handle_v1_cap
+	uint32_t caps; // ext_workspace_group_handle_v1_group_capabilities
 	struct {
 		struct wl_signal create_workspace; // const char *
 		struct wl_signal destroy;
@@ -63,7 +53,7 @@ struct wlr_ext_workspace_handle_v1 {
 	char *id;
 	char *name;
 	struct wl_array coordinates;
-	uint32_t caps; // wlr_ext_workspace_handle_v1_cap
+	uint32_t caps; // ext_workspace_handle_v1_workspace_capabilities
 	uint32_t state; // ext_workspace_handle_v1_state
 
 	struct {
