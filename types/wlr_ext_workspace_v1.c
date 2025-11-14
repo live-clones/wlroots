@@ -476,7 +476,7 @@ static void manager_bind(struct wl_client *client, void *data,
 		}
 	}
 
-	manager_schedule_done(manager);
+	ext_workspace_manager_v1_send_done(manager_res->resource);
 }
 
 static void manager_handle_display_destroy(struct wl_listener *listener, void *data) {
