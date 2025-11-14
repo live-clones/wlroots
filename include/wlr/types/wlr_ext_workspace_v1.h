@@ -64,7 +64,7 @@ struct wlr_ext_workspace_handle_v1 {
 		struct wl_signal destroy;
 	} events;
 
-	struct wl_list link; // wlr_ext_workspace_manager_v1.workspaces;
+	struct wl_list link; // wlr_ext_workspace_manager_v1.workspaces
 
 	struct {
 		struct wl_list clients;
