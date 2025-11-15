@@ -429,9 +429,6 @@ struct wlr_vk_render_pass {
 	bool two_pass; // rendering via intermediate blending buffer
 	struct wlr_color_transform *color_transform;
 
-	bool has_primaries;
-	struct wlr_color_primaries primaries;
-
 	struct wlr_drm_syncobj_timeline *signal_timeline;
 	uint64_t signal_point;
 
@@ -565,6 +562,8 @@ struct wlr_vk_color_transform {
 		VkDescriptorSet ds;
 		struct wlr_vk_descriptor_pool *ds_pool;
 	} lut_3d;
+	enum wlr_color_transfer_function transfer_function;
+	float color_matrix[9];
 };
 void vk_color_transform_destroy(struct wlr_addon *addon);
 
