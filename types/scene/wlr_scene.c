@@ -2321,7 +2321,10 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	// before scanout early return,
 	// update cursor if deferred
-	wlr_output_cursor_move_all_deferred(output);
+
+	struct timespec cursor_now;
+	clock_gettime(CLOCK_MONOTONIC, &cursor_now);
+	wlr_output_cursor_move_all_deferred(output, &cursor_now);
 
 	// We only want to try direct scanout if:
 	// - There is only one entry in the render list
