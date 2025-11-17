@@ -440,8 +440,10 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 	return true;
 }
 
-bool wlr_output_cursor_move(struct wlr_output_cursor *cursor,
+static bool output_cursor_move(struct wlr_output_cursor *cursor,
 		double x, double y) {
+	cursor->deferred = false;
+
 	// Scale coordinates for the output
 	x *= cursor->output->scale;
 	y *= cursor->output->scale;
@@ -470,6 +472,34 @@ bool wlr_output_cursor_move(struct wlr_output_cursor *cursor,
 	}
 
 	return output_move_hardware_cursor(cursor->output, (int)x, (int)y);
+}
+
+bool wlr_output_cursor_move(struct wlr_output_cursor *cursor,
+		double x, double y) {
+	// Scale coordinates for the output
+	x *= cursor->output->scale;
+	y *= cursor->output->scale;
+
+	if (cursor->x == x && cursor->y == y) {
+		return true;
+	}
+
+	if (cursor->output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) {
+		cursor->deferred_x = x;
+		cursor->deferred_y = y;
+		cursor->deferred = true;
+		return true;
+	}
+
+	return output_cursor_move(cursor, x, y);
+}
+
+void wlr_output_cursor_move_all_deferred(struct wlr_output *output) {
+	struct wlr_output_cursor *cursor;
+	wl_list_for_each(cursor, &output->cursors, link) {
+		if (cursor->deferred)
+			output_cursor_move(cursor, cursor->deferred_x, cursor->deferred_y);
+	}
 }
 
 struct wlr_output_cursor *wlr_output_cursor_create(struct wlr_output *output) {
