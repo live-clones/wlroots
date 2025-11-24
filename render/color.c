@@ -62,6 +62,16 @@ struct wlr_color_transform *wlr_color_transform_init_lut_3x1d(size_t dim,
 	return &tx->base;
 }
 
+struct wlr_color_transform *wlr_color_transform_init_matrix(const float matrix[static 9]) {
+	struct wlr_color_transform_matrix *tx = calloc(1, sizeof(*tx));
+	if (!tx) {
+		return NULL;
+	}
+	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_MATRIX);
+	memcpy(tx->matrix, matrix, sizeof(tx->matrix));
+	return &tx->base;
+}
+
 struct wlr_color_transform *wlr_color_transform_init_pipeline(
 		struct wlr_color_transform **transforms, size_t len) {
 	assert(len > 0);
@@ -92,6 +102,7 @@ struct wlr_color_transform *wlr_color_transform_init_pipeline(
 static void color_transform_destroy(struct wlr_color_transform *tr) {
 	switch (tr->type) {
 	case COLOR_TRANSFORM_INVERSE_EOTF:
+	case COLOR_TRANSFORM_MATRIX:
 		break;
 	case COLOR_TRANSFORM_LCMS2:
 		color_transform_lcms2_finish(color_transform_lcms2_from_base(tr));
@@ -226,6 +237,8 @@ static void color_transform_lut_3x1d_eval(struct wlr_color_transform_lut_3x1d *t
 	}
 }
 
+static void multiply_matrix_vector(float out[static 3], float m[static 9], const float v[static 3]);
+
 void wlr_color_transform_eval(struct wlr_color_transform *tr,
 		float out[static 3], const float in[static 3]) {
 	switch (tr->type) {
@@ -237,6 +250,10 @@ void wlr_color_transform_eval(struct wlr_color_transform *tr,
 		break;
 	case COLOR_TRANSFORM_LUT_3X1D:
 		color_transform_lut_3x1d_eval(color_transform_lut_3x1d_from_base(tr), out, in);
+		break;
+	case COLOR_TRANSFORM_MATRIX:;
+		struct wlr_color_transform_matrix *matrix = wl_container_of(tr, matrix, base);
+		multiply_matrix_vector(out, matrix->matrix, in);
 		break;
 	case COLOR_TRANSFORM_PIPELINE:;
 		struct wlr_color_transform_pipeline *pipeline =
@@ -264,7 +281,7 @@ void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
 	abort();
 }
 
-static void multiply_matrix_vector(float out[static 3], float m[static 9], float v[static 3]) {
+static void multiply_matrix_vector(float out[static 3], float m[static 9], const float v[static 3]) {
 	float result[3] = {
 		m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
 		m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
@@ -309,6 +326,18 @@ void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, flo
 		S[0] * r[2], S[1] * g[2], S[2] * b[2],
 	};
 	memcpy(matrix, result, sizeof(result));
+}
+
+void wlr_color_primaries_transform_absolute_colorimetric(
+		const struct wlr_color_primaries *source,
+		const struct wlr_color_primaries *destination, float matrix[static 9]) {
+	float source_to_xyz[9];
+	wlr_color_primaries_to_xyz(source, source_to_xyz);
+	float destination_to_xyz[9];
+	wlr_color_primaries_to_xyz(destination, destination_to_xyz);
+	float xyz_to_destination[9];
+	matrix_invert(xyz_to_destination, destination_to_xyz);
+	wlr_matrix_multiply(matrix, xyz_to_destination, source_to_xyz);
 }
 
 void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_function tf,
