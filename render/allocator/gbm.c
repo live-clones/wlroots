@@ -11,6 +11,7 @@
 
 #include "render/allocator/gbm.h"
 #include "render/drm_format_set.h"
+#include "util/env.h"
 
 static const struct wlr_buffer_impl buffer_impl;
 
@@ -88,6 +89,10 @@ static struct wlr_gbm_buffer *create_buffer(struct wlr_gbm_allocator *alloc,
 	if (bo == NULL) {
 		wlr_log_errno(WLR_ERROR, "gbm_bo_create failed");
 		return NULL;
+	}
+
+	if (!has_modifier && alloc->explicit_upgrade) {
+		fallback_modifier = gbm_bo_get_modifier(bo);
 	}
 
 	struct wlr_gbm_buffer *buffer = calloc(1, sizeof(*buffer));
@@ -174,6 +179,7 @@ struct wlr_allocator *wlr_gbm_allocator_create(int fd) {
 		return NULL;
 	}
 	wlr_allocator_init(&alloc->base, &allocator_impl, WLR_BUFFER_CAP_DMABUF);
+	alloc->explicit_upgrade = env_parse_bool("WLR_GBM_EXPLICIT_UPGRADE");
 
 	alloc->fd = fd;
 	wl_list_init(&alloc->buffers);
