@@ -8,6 +8,7 @@
 #include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_damage_ring.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -1624,6 +1625,72 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene *scene, struct wlr_color_ma
 
 	scene->color_manager_v1_destroy.notify = scene_handle_color_manager_v1_destroy;
 	wl_signal_add(&manager->events.destroy, &scene->color_manager_v1_destroy);
+}
+
+static void scene_surface_handle_fifo_v1_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene_surface *surface =
+		wl_container_of(listener, surface, fifo_v1_destroy);
+	wl_list_remove(&surface->fifo_v1_destroy.link);
+	surface->fifo = NULL;
+}
+
+static void scene_fifo_set_output(struct wlr_scene_node *node, struct wlr_fifo_v1 *fifo) {
+	if (node->type == WLR_SCENE_NODE_TREE) {
+		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
+		struct wlr_scene_node *child;
+		wl_list_for_each(child, &scene_tree->children, link) {
+			scene_fifo_set_output(child, fifo);
+		}
+	}
+	if (node->type != WLR_SCENE_NODE_BUFFER) {
+		return;
+	}
+
+	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+	struct wlr_scene_surface *scene_surface =
+		wlr_scene_surface_try_from_buffer(scene_buffer);
+	if (!scene_surface) {
+		return;
+	}
+
+	if (scene_surface->surface == fifo->surface) {
+		scene_surface->fifo = fifo;
+		scene_surface->fifo_v1_destroy.notify = scene_surface_handle_fifo_v1_destroy;
+		wl_signal_add(&fifo->events.destroy, &scene_surface->fifo_v1_destroy);
+		wlr_fifo_v1_set_output(fifo, scene_buffer->primary_output ?
+			scene_buffer->primary_output->output : NULL);
+	}
+}
+
+static void scene_handle_fifo_manager_v1_new_fifo(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene *scene =
+		wl_container_of(listener, scene, fifo_manager_v1_new_fifo);
+	struct wlr_fifo_manager_v1_new_fifo_event *event = data;
+
+	scene_fifo_set_output(&scene->tree.node, event->fifo);
+}
+
+static void scene_handle_fifo_manager_v1_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene *scene =
+		wl_container_of(listener, scene, fifo_manager_v1_destroy);
+	wl_list_remove(&scene->fifo_manager_v1_destroy.link);
+	wl_list_init(&scene->fifo_manager_v1_destroy.link);
+	wl_list_remove(&scene->fifo_manager_v1_new_fifo.link);
+	wl_list_init(&scene->fifo_manager_v1_new_fifo.link);
+	scene->fifo_manager_v1 = NULL;
+}
+
+void wlr_scene_set_fifo_manager_v1(struct wlr_scene *scene,
+	    struct wlr_fifo_manager_v1 *fifo_manager) {
+	assert(scene->fifo_manager_v1 == NULL);
+	scene->fifo_manager_v1 = fifo_manager;
+	scene->fifo_manager_v1_new_fifo.notify = scene_handle_fifo_manager_v1_new_fifo;
+	wl_signal_add(&fifo_manager->events.new_fifo, &scene->fifo_manager_v1_new_fifo);
+	scene->fifo_manager_v1_destroy.notify = scene_handle_fifo_manager_v1_destroy;
+	wl_signal_add(&fifo_manager->events.destroy, &scene->fifo_manager_v1_destroy);
 }
 
 static void scene_output_handle_destroy(struct wlr_addon *addon) {
