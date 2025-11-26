@@ -16,6 +16,14 @@
 #include <wlr/render/drm_format_set.h>
 #include <wlr/render/drm_syncobj.h>
 
+struct wlr_wl_parent_output {
+	struct wlr_wl_backend *backend;
+	struct wl_output *wl_output;
+	uint32_t global_name;
+	int32_t scale;
+	struct wl_list link;
+};
+
 struct wlr_wl_backend {
 	struct wlr_backend backend;
 
@@ -29,6 +37,9 @@ struct wlr_wl_backend {
 	size_t requested_outputs;
 	struct wl_listener event_loop_destroy;
 	char *activation_token;
+
+	struct wl_list parent_outputs; // wlr_wl_parent_output.link
+	int32_t max_parent_scale;
 
 	/* remote state */
 	struct wl_display *remote_display;
