@@ -5,6 +5,7 @@
 #include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -140,6 +141,9 @@ static void handle_scene_buffer_outputs_update(
 
 	// No reason to update the preferred configuration if we aren't sending leave/enter events.
 	if (suspend) {
+		if (surface->fifo) {
+			wlr_fifo_v1_set_output(surface->fifo, NULL);
+		}
 		return;
 	}
 
@@ -158,6 +162,9 @@ static void handle_scene_buffer_outputs_update(
 		get_surface_preferred_image_description(surface->surface, &img_desc);
 		wlr_color_manager_v1_set_surface_preferred_image_description(scene->color_manager_v1,
 			surface->surface, &img_desc);
+	}
+	if (surface->fifo) {
+		wlr_fifo_v1_set_output(surface->fifo, surface->buffer->primary_output->output);
 	}
 }
 
@@ -420,6 +427,8 @@ static void surface_addon_destroy(struct wlr_addon *addon) {
 	wl_list_remove(&surface->frame_done.link);
 	wl_list_remove(&surface->surface_destroy.link);
 	wl_list_remove(&surface->surface_commit.link);
+	if (surface->fifo_v1_destroy.notify)
+		wl_list_remove(&surface->fifo_v1_destroy.link);
 
 	free(surface);
 }
