@@ -22,6 +22,12 @@ int64_t get_current_time_msec(void) {
 	return timespec_to_msec(&now);
 }
 
+int64_t get_current_time_nsec(void) {
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return timespec_to_nsec(&now);
+}
+
 void timespec_sub(struct timespec *r, const struct timespec *a,
 		const struct timespec *b) {
 	r->tv_sec = a->tv_sec - b->tv_sec;
