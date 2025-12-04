@@ -187,6 +187,7 @@ struct wlr_output {
 	char *name;
 	char *description; // may be NULL
 	char *make, *model, *serial; // may be NULL
+	char *port; // may be NULL
 	int32_t phys_width, phys_height; // mm
 	const struct wlr_color_primaries *default_primaries; // may be NULL
 
