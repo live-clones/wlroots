@@ -88,6 +88,16 @@ struct wlr_color_transform_lut_3x1d *color_transform_lut_3x1d_from_base(
 	struct wlr_color_transform *tr);
 
 /**
+ * Create a simplified / normalized wlr_color_transform pipeline.
+ * `transforms` may contain NULL transforms, they will be interpreted as the
+ * identity transform, and removed.
+ * `*result` may be set to a tranform of a type different from
+ * `wlr_color_transform_pipeline`, or to NULL if all input transforms are NULL
+ */
+bool color_transform_compose(struct wlr_color_transform **result,
+	struct wlr_color_transform **transforms, size_t len);
+
+/**
  * Obtain primaries values from a well-known primaries name.
  */
 void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
