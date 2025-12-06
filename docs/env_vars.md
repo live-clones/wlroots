@@ -9,7 +9,7 @@ wlroots reads these environment variables
 * *WLR_XWAYLAND*: specifies the path to an Xwayland binary to be used (instead
   of following shell search semantics for "Xwayland")
 * *WLR_RENDERER*: forces the creation of a specified renderer (available
-  renderers: gles2, pixman, vulkan)
+  renderers: gles2, gles3, pixman, vulkan)
 * *WLR_RENDER_DRM_DEVICE*: specifies the DRM node to use for
   hardware-accelerated renderers.
 * *WLR_RENDER_NO_EXPLICIT_SYNC*: set to 1 to disable explicit synchronization
