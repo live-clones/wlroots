@@ -2037,6 +2037,12 @@ static void handle_page_flip(int fd, unsigned seq,
 		present_flags |= WLR_OUTPUT_PRESENT_ZERO_COPY;
 	}
 
+	if (conn->output.adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) {
+		present_flags |= WLR_OUTPUT_PRESENT_VARIABLE_RATE;
+	} else {
+		present_flags |= WLR_OUTPUT_PRESENT_FIXED_RATE;
+	}
+
 	struct wlr_output_event_present present_event = {
 		/* The DRM backend guarantees that the presentation event will be for
 		 * the last submitted frame. */
