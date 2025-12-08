@@ -136,7 +136,12 @@ static void output_frame_notify(struct wl_listener *listener, void *data) {
 
 		wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options){
 			.texture = sample->cat_texture,
-			.dst_box = box,
+			.dst_box = (struct wlr_fbox){
+				.x = box.x,
+				.y = box.y,
+				.width = box.width,
+				.height = box.height,
+			},
 		});
 	}
 
