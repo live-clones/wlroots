@@ -75,9 +75,9 @@ out:
 	return ok;
 }
 
-static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLint attrib) {
+static void render(const struct wlr_fbox *box, const pixman_region32_t *clip, GLint attrib) {
 	pixman_region32_t region;
-	pixman_region32_init_rect(&region, box->x, box->y, box->width, box->height);
+	pixman_region32_init_rect(&region, round(box->x), round(box->y), round(box->width), round(box->height));
 
 	if (clip) {
 		pixman_region32_intersect(&region, &region, clip);
@@ -124,7 +124,7 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 	pixman_region32_fini(&region);
 }
 
-static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box) {
+static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_fbox *box) {
 	float gl_matrix[9];
 	wlr_matrix_identity(gl_matrix);
 	wlr_matrix_translate(gl_matrix, box->x, box->y);
@@ -190,16 +190,16 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		abort();
 	}
 
-	struct wlr_box dst_box;
-	struct wlr_fbox src_fbox;
-	wlr_render_texture_options_get_src_box(options, &src_fbox);
+	struct wlr_fbox dst_box;
+	struct wlr_fbox src_box;
+	wlr_render_texture_options_get_src_box(options, &src_box);
 	wlr_render_texture_options_get_dst_box(options, &dst_box);
 	float alpha = wlr_render_texture_options_get_alpha(options);
 
-	src_fbox.x /= options->texture->width;
-	src_fbox.y /= options->texture->height;
-	src_fbox.width /= options->texture->width;
-	src_fbox.height /= options->texture->height;
+	src_box.x /= options->texture->width;
+	src_box.y /= options->texture->height;
+	src_box.width /= options->texture->width;
+	src_box.height /= options->texture->height;
 
 	push_gles2_debug(renderer);
 
@@ -245,7 +245,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	glUniform1i(shader->tex, 0);
 	glUniform1f(shader->alpha, alpha);
 	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
-	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
+	set_tex_matrix(shader->tex_proj, options->transform, &src_box);
 
 	render(&dst_box, options->clip, shader->pos_attrib);
 
@@ -259,7 +259,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
 
 	const struct wlr_render_color *color = &options->color;
-	struct wlr_box box;
+	struct wlr_fbox box;
 	wlr_render_rect_options_get_box(options, pass->buffer->buffer, &box);
 
 	push_gles2_debug(renderer);

@@ -76,10 +76,10 @@ struct wlr_render_timer_impl {
 void wlr_render_texture_options_get_src_box(const struct wlr_render_texture_options *options,
 	struct wlr_fbox *box);
 void wlr_render_texture_options_get_dst_box(const struct wlr_render_texture_options *options,
-	struct wlr_box *box);
+	struct wlr_fbox *box);
 float wlr_render_texture_options_get_alpha(const struct wlr_render_texture_options *options);
 void wlr_render_rect_options_get_box(const struct wlr_render_rect_options *options,
-	const struct wlr_buffer *buffer, struct wlr_box *box);
+	const struct wlr_buffer *buffer, struct wlr_fbox *box);
 
 void wlr_texture_read_pixels_options_get_src_box(
 	const struct wlr_texture_read_pixels_options *options,
