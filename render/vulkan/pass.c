@@ -686,14 +686,20 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			.width = clip_rects[i].x2 - clip_rects[i].x1,
 			.height = clip_rects[i].y2 - clip_rects[i].y1,
 		};
+		struct wlr_box rect_box = {
+			.x = round(options->box.x),
+			.y = round(options->box.y),
+			.width = round(options->box.width),
+			.height = round(options->box.height),
+		};
 		struct wlr_box intersection;
-		if (!wlr_box_intersection(&intersection, &options->box, &clip_box)) {
+		if (!wlr_box_intersection(&intersection, &rect_box, &clip_box)) {
 			continue;
 		}
 		render_pass_mark_box_updated(pass, &intersection);
 	}
 
-	struct wlr_box box;
+	struct wlr_fbox box;
 	wlr_render_rect_options_get_box(options, pass->render_buffer->wlr_buffer, &box);
 
 	switch (options->blend_mode) {
@@ -782,7 +788,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 
 	struct wlr_fbox src_box;
 	wlr_render_texture_options_get_src_box(options, &src_box);
-	struct wlr_box dst_box;
+	struct wlr_fbox dst_box;
 	wlr_render_texture_options_get_dst_box(options, &dst_box);
 	float alpha = wlr_render_texture_options_get_alpha(options);
 
@@ -926,8 +932,14 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 			.width = clip_rects[i].x2 - clip_rects[i].x1,
 			.height = clip_rects[i].y2 - clip_rects[i].y1,
 		};
+		struct wlr_box texture_box = {
+			.x = round(dst_box.x),
+			.y = round(dst_box.y),
+			.width = round(dst_box.width),
+			.height = round(dst_box.height),
+		};
 		struct wlr_box intersection;
-		if (!wlr_box_intersection(&intersection, &dst_box, &clip_box)) {
+		if (!wlr_box_intersection(&intersection, &texture_box, &clip_box)) {
 			continue;
 		}
 		render_pass_mark_box_updated(pass, &intersection);
