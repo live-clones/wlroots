@@ -637,6 +637,9 @@ static void destroy_render_buffer(struct wlr_vk_render_buffer *buffer) {
 			buffer->two_pass.blend_descriptor_set);
 	}
 
+	vkDestroyImage(dev, buffer->bridge.image, NULL);
+	vkFreeMemory(dev, buffer->bridge.memory, NULL);
+
 	vkDestroyImage(dev, buffer->image, NULL);
 	for (size_t i = 0u; i < buffer->mem_count; ++i) {
 		vkFreeMemory(dev, buffer->memories[i], NULL);
@@ -898,6 +901,65 @@ error:
 	return false;
 }
 
+static bool setup_bridge(struct wlr_vk_render_buffer *buffer, const struct wlr_vk_format_props *format) {
+	VkResult res;
+	VkDevice dev = buffer->renderer->dev->dev;
+
+	buffer->bridge.image = buffer->image;
+	buffer->image = 0;
+
+	buffer->has_bridge = true;
+
+	VkImageCreateInfo img_info = {
+		.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+		.imageType = VK_IMAGE_TYPE_2D,
+		.format = format->format.vk,
+		.mipLevels = 1,
+		.arrayLayers = 1,
+		.samples = VK_SAMPLE_COUNT_1_BIT,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+		.tiling = VK_IMAGE_TILING_OPTIMAL,
+		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		.extent = { buffer->wlr_buffer->width, buffer->wlr_buffer->height, 1 },
+		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+	};
+	res = vkCreateImage(dev, &img_info, NULL, &buffer->image);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkCreateImage", res);
+		return false;
+	}
+
+	VkMemoryRequirements mem_reqs;
+	vkGetImageMemoryRequirements(dev, buffer->image, &mem_reqs);
+
+	int mem_type = vulkan_find_mem_type(buffer->renderer->dev,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mem_reqs.memoryTypeBits);
+	if (mem_type < 0) {
+		wlr_log(WLR_ERROR, "failed to find suitable vulkan memory type");
+		return false;
+	}
+
+	VkMemoryAllocateInfo mem_alloc_info = {
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+	};
+	mem_alloc_info.allocationSize = mem_reqs.size;
+	mem_alloc_info.memoryTypeIndex = mem_type;
+
+	res = vkAllocateMemory(dev, &mem_alloc_info, NULL, &buffer->bridge.memory);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkAllocateMemory", res);
+		return false;
+	}
+	res = vkBindImageMemory(dev, buffer->image, buffer->bridge.memory, 0);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkBindImageMemory", res);
+		return false;
+	}
+
+	return true;
+}
+
 static struct wlr_vk_render_buffer *create_render_buffer(
 		struct wlr_vk_renderer *renderer, struct wlr_buffer *wlr_buffer) {
 	struct wlr_vk_render_buffer *buffer = calloc(1, sizeof(*buffer));
@@ -920,8 +982,10 @@ static struct wlr_vk_render_buffer *create_render_buffer(
 		(const char*) &dmabuf.format, dmabuf.width, dmabuf.height);
 
 	bool using_mutable_srgb = false;
+	bool render_needs_bridge = false;
 	buffer->image = vulkan_import_dmabuf(renderer, &dmabuf,
-		buffer->memories, &buffer->mem_count, true, &using_mutable_srgb);
+		buffer->memories, &buffer->mem_count, true,
+		&render_needs_bridge, &using_mutable_srgb);
 	if (!buffer->image) {
 		goto error;
 	}
@@ -932,6 +996,12 @@ static struct wlr_vk_render_buffer *create_render_buffer(
 		wlr_log(WLR_ERROR, "Unsupported pixel format %"PRIx32 " (%.4s)",
 			dmabuf.format, (const char*) &dmabuf.format);
 		goto error;
+	}
+
+	if (render_needs_bridge) {
+		if (!setup_bridge(buffer, fmt)) {
+			goto error;
+		}
 	}
 
 	if (using_mutable_srgb) {
