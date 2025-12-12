@@ -334,7 +334,7 @@ static void manager_handle_commit(struct wl_client *client, struct wl_resource *
 			break;
 		case WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN:
 			wl_signal_emit_mutable(
-				&req->workspace->events.assign, &req->group);
+				&req->workspace->events.assign, req->group);
 			break;
 		case WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE:
 			wl_signal_emit_mutable(
