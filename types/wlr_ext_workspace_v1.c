@@ -484,8 +484,8 @@ static void manager_bind(struct wl_client *client, void *data,
 	wl_list_for_each(workspace, &manager->workspaces, link) {
 		struct wlr_ext_workspace_v1_resource *workspace_res =
 			create_workspace_resource(workspace, manager_res);
-		if (!workspace) {
-			wl_client_post_no_memory(client);
+		if (!workspace_res) {
+			wl_resource_post_no_memory(manager_res->resource);
 			continue;
 		}
 		ext_workspace_manager_v1_send_workspace(
