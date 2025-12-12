@@ -7,27 +7,6 @@
 
 #define EXT_WORKSPACE_V1_VERSION 1
 
-enum wlr_ext_workspace_v1_request_type {
-	WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE,
-	WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE,
-	WLR_EXT_WORKSPACE_V1_REQUEST_DEACTIVATE,
-	WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN,
-	WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE,
-};
-
-struct wlr_ext_workspace_v1_request {
-	enum wlr_ext_workspace_v1_request_type type;
-
-	// CREATE_WORKSPACE
-	char *name;
-	// CREATE_WORKSPACE / ASSIGN
-	struct wlr_ext_workspace_group_handle_v1 *group;
-	// ACTIVATE / DEACTIVATE / ASSIGN / REMOVE
-	struct wlr_ext_workspace_handle_v1 *workspace;
-
-	struct wl_list link; // wlr_ext_workspace_manager_v1_resource.requests
-};
-
 struct wlr_ext_workspace_v1_group_output {
 	struct wlr_output *output;
 	struct wlr_ext_workspace_group_handle_v1 *group;
@@ -104,14 +83,14 @@ static void workspace_handle_activate(struct wl_client *client,
 		return;
 	}
 
-	struct wlr_ext_workspace_v1_request *req = calloc(1, sizeof(*req));
+	struct wlr_ext_workspace_v1_request_activate *req = calloc(1, sizeof(*req));
 	if (!req) {
 		wl_resource_post_no_memory(workspace_resource);
 		return;
 	}
-	req->type = WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE;
+	req->base.type = WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE;
 	req->workspace = workspace_res->workspace;
-	wl_list_insert(workspace_res->manager->requests.prev, &req->link);
+	wl_list_insert(workspace_res->manager->requests.prev, &req->base.link);
 }
 
 static void workspace_handle_deactivate(struct wl_client *client,
@@ -122,14 +101,14 @@ static void workspace_handle_deactivate(struct wl_client *client,
 		return;
 	}
 
-	struct wlr_ext_workspace_v1_request *req = calloc(1, sizeof(*req));
+	struct wlr_ext_workspace_v1_request_deactivate *req = calloc(1, sizeof(*req));
 	if (!req) {
 		wl_resource_post_no_memory(workspace_resource);
 		return;
 	}
-	req->type = WLR_EXT_WORKSPACE_V1_REQUEST_DEACTIVATE;
+	req->base.type = WLR_EXT_WORKSPACE_V1_REQUEST_DEACTIVATE;
 	req->workspace = workspace_res->workspace;
-	wl_list_insert(workspace_res->manager->requests.prev, &req->link);
+	wl_list_insert(workspace_res->manager->requests.prev, &req->base.link);
 }
 
 static void workspace_handle_assign(struct wl_client *client,
@@ -143,15 +122,15 @@ static void workspace_handle_assign(struct wl_client *client,
 		return;
 	}
 
-	struct wlr_ext_workspace_v1_request *req = calloc(1, sizeof(*req));
+	struct wlr_ext_workspace_v1_request_assign *req = calloc(1, sizeof(*req));
 	if (!req) {
 		wl_resource_post_no_memory(workspace_resource);
 		return;
 	}
-	req->type = WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN;
+	req->base.type = WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN;
 	req->group = group_res->group;
 	req->workspace = workspace_res->workspace;
-	wl_list_insert(workspace_res->manager->requests.prev, &req->link);
+	wl_list_insert(workspace_res->manager->requests.prev, &req->base.link);
 }
 
 static void workspace_handle_remove(struct wl_client *client,
@@ -162,14 +141,14 @@ static void workspace_handle_remove(struct wl_client *client,
 		return;
 	}
 
-	struct wlr_ext_workspace_v1_request *req = calloc(1, sizeof(*req));
+	struct wlr_ext_workspace_v1_request_remove *req = calloc(1, sizeof(*req));
 	if (!req) {
 		wl_resource_post_no_memory(workspace_resource);
 		return;
 	}
-	req->type = WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE;
+	req->base.type = WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE;
 	req->workspace = workspace_res->workspace;
-	wl_list_insert(workspace_res->manager->requests.prev, &req->link);
+	wl_list_insert(workspace_res->manager->requests.prev, &req->base.link);
 }
 
 static const struct ext_workspace_handle_v1_interface workspace_impl = {
@@ -188,7 +167,7 @@ static void group_handle_create_workspace(struct wl_client *client,
 		return;
 	}
 
-	struct wlr_ext_workspace_v1_request *req = calloc(1, sizeof(*req));
+	struct wlr_ext_workspace_v1_request_create_workspace *req = calloc(1, sizeof(*req));
 	if (!req) {
 		wl_resource_post_no_memory(group_resource);
 		return;
@@ -199,9 +178,9 @@ static void group_handle_create_workspace(struct wl_client *client,
 		wl_resource_post_no_memory(group_resource);
 		return;
 	}
-	req->type = WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE;
+	req->base.type = WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE;
 	req->group = group_res->group;
-	wl_list_insert(group_res->manager->requests.prev, &req->link);
+	wl_list_insert(group_res->manager->requests.prev, &req->base.link);
 }
 
 static void group_handle_destroy(struct wl_client *client,
@@ -301,10 +280,67 @@ static struct wlr_ext_workspace_group_v1_resource *create_group_resource(
 	return group_res;
 }
 
-static void destroy_request(struct wlr_ext_workspace_v1_request *req) {
-	wl_list_remove(&req->link);
-	free(req->name);
-	free(req);
+static void destroy_requests(struct wlr_ext_workspace_manager_v1_resource *manager_res) {
+	struct wlr_ext_workspace_v1_request *req, *tmp;
+	wl_list_for_each_safe(req, tmp, &manager_res->requests, link) {
+		if (req->type == WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE) {
+			free(((struct wlr_ext_workspace_v1_request_create_workspace *)req)->name);
+		}
+		wl_list_remove(&req->link);
+		free(req);
+	}
+}
+
+static void destroy_request_by(struct wlr_ext_workspace_manager_v1_resource *manager_res,
+		struct wlr_ext_workspace_group_handle_v1 *group,
+		struct wlr_ext_workspace_handle_v1 *workspace) {
+	struct wlr_ext_workspace_v1_request *req, *tmp;
+	wl_list_for_each_safe(req, tmp, &manager_res->requests, link) {
+		switch (req->type) {
+		case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE:;
+			struct wlr_ext_workspace_v1_request_create_workspace *create_req =
+				(struct wlr_ext_workspace_v1_request_create_workspace *)req;
+			if (create_req->group == group) {
+				free(create_req->name);
+				wl_list_remove(&create_req->base.link);
+				free(create_req);
+			}
+			break;
+		case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE:;
+			struct wlr_ext_workspace_v1_request_activate *activate_req =
+				(struct wlr_ext_workspace_v1_request_activate *)req;
+			if (activate_req->workspace == workspace) {
+				wl_list_remove(&activate_req->base.link);
+				free(activate_req);
+			}
+			break;
+		case WLR_EXT_WORKSPACE_V1_REQUEST_DEACTIVATE:;
+			struct wlr_ext_workspace_v1_request_deactivate *deactivate_req =
+				(struct wlr_ext_workspace_v1_request_deactivate *)req;
+			if (deactivate_req->workspace == workspace) {
+				wl_list_remove(&deactivate_req->base.link);
+				free(deactivate_req);
+			}
+			break;
+		case WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN:;
+			struct wlr_ext_workspace_v1_request_assign *assign_req =
+				(struct wlr_ext_workspace_v1_request_assign *)req;
+			if (assign_req->workspace == workspace ||
+					assign_req->group == group) {
+				wl_list_remove(&assign_req->base.link);
+				free(assign_req);
+			}
+			break;
+		case WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE:;
+			struct wlr_ext_workspace_v1_request_remove *remove_req =
+				(struct wlr_ext_workspace_v1_request_remove *)req;
+			if (remove_req->workspace == workspace) {
+				wl_list_remove(&remove_req->base.link);
+				free(remove_req);
+			}
+			break;
+		}
+	}
 }
 
 static void manager_handle_commit(struct wl_client *client, struct wl_resource *resource) {
@@ -314,35 +350,11 @@ static void manager_handle_commit(struct wl_client *client, struct wl_resource *
 		return;
 	}
 
-	struct wlr_ext_workspace_v1_request *req, *tmp;
-	wl_list_for_each_safe(req, tmp, &manager_res->requests, link) {
-		switch (req->type) {
-		case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE:;
-			struct wlr_ext_workspace_group_handle_v1_create_workspace_event event = {
-				.name = req->name,
-			};
-			wl_signal_emit_mutable(
-				&req->group->events.create_workspace, &event);
-			break;
-		case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE:
-			wl_signal_emit_mutable(
-				&req->workspace->events.activate, NULL);
-			break;
-		case WLR_EXT_WORKSPACE_V1_REQUEST_DEACTIVATE:
-			wl_signal_emit_mutable(
-				&req->workspace->events.deactivate, NULL);
-			break;
-		case WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN:
-			wl_signal_emit_mutable(
-				&req->workspace->events.assign, req->group);
-			break;
-		case WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE:
-			wl_signal_emit_mutable(
-				&req->workspace->events.remove, NULL);
-			break;
-		}
-		destroy_request(req);
-	}
+	struct wlr_ext_workspace_v1_commit_event commit_event = {
+		.requests = &manager_res->requests,
+	};
+	wl_signal_emit_mutable(&manager_res->manager->events.commit, &commit_event);
+	destroy_requests(manager_res);
 }
 
 static void handle_idle(void *data) {
@@ -391,10 +403,8 @@ static const struct ext_workspace_manager_v1_interface manager_impl = {
 };
 
 static void destroy_manager_resource(struct wlr_ext_workspace_manager_v1_resource *manager_res) {
-	struct wlr_ext_workspace_v1_request *req, *tmp;
-	wl_list_for_each_safe(req, tmp, &manager_res->requests, link) {
-		destroy_request(req);
-	}
+	destroy_requests(manager_res);
+
 	struct wlr_ext_workspace_v1_resource *workspace_res, *tmp2;
 	wl_list_for_each_safe(workspace_res, tmp2,
 			&manager_res->workspace_resources, manager_resource_link) {
@@ -512,6 +522,7 @@ static void manager_handle_display_destroy(struct wl_listener *listener, void *d
 		wl_container_of(listener, manager, display_destroy);
 
 	wl_signal_emit_mutable(&manager->events.destroy, NULL);
+	assert(wl_list_empty(&manager->events.commit.listener_list));
 	assert(wl_list_empty(&manager->events.destroy.listener_list));
 
 	struct wlr_ext_workspace_group_handle_v1 *group, *tmp;
@@ -563,6 +574,7 @@ struct wlr_ext_workspace_manager_v1 *wlr_ext_workspace_manager_v1_create(
 	wl_list_init(&manager->groups);
 	wl_list_init(&manager->workspaces);
 	wl_list_init(&manager->resources);
+	wl_signal_init(&manager->events.commit);
 	wl_signal_init(&manager->events.destroy);
 
 	return manager;
@@ -580,7 +592,6 @@ struct wlr_ext_workspace_group_handle_v1 *wlr_ext_workspace_group_handle_v1_crea
 
 	wl_list_init(&group->outputs);
 	wl_list_init(&group->resources);
-	wl_signal_init(&group->events.create_workspace);
 	wl_signal_init(&group->events.destroy);
 
 	wl_list_insert(manager->groups.prev, &group->link);
@@ -666,7 +677,6 @@ void wlr_ext_workspace_group_handle_v1_destroy(
 
 	wl_signal_emit_mutable(&group->events.destroy, NULL);
 
-	assert(wl_list_empty(&group->events.create_workspace.listener_list));
 	assert(wl_list_empty(&group->events.destroy.listener_list));
 
 	struct wlr_ext_workspace_handle_v1 *workspace;
@@ -685,12 +695,7 @@ void wlr_ext_workspace_group_handle_v1_destroy(
 
 	struct wlr_ext_workspace_manager_v1_resource *manager_res;
 	wl_list_for_each(manager_res, &group->manager->resources, link) {
-		struct wlr_ext_workspace_v1_request *req, *tmp2;
-		wl_list_for_each_safe(req, tmp2, &manager_res->requests, link) {
-			if (req->group == group) {
-				destroy_request(req);
-			}
-		}
+		destroy_request_by(manager_res, group, NULL);
 	}
 
 	struct wlr_ext_workspace_v1_group_output *group_output, *tmp3;
@@ -797,10 +802,6 @@ struct wlr_ext_workspace_handle_v1 *wlr_ext_workspace_handle_v1_create(
 
 	wl_list_init(&workspace->resources);
 	wl_array_init(&workspace->coordinates);
-	wl_signal_init(&workspace->events.activate);
-	wl_signal_init(&workspace->events.deactivate);
-	wl_signal_init(&workspace->events.remove);
-	wl_signal_init(&workspace->events.assign);
 	wl_signal_init(&workspace->events.destroy);
 
 	wl_list_insert(&manager->workspaces, &workspace->link);
@@ -829,10 +830,6 @@ void wlr_ext_workspace_handle_v1_destroy(struct wlr_ext_workspace_handle_v1 *wor
 
 	wl_signal_emit_mutable(&workspace->events.destroy, NULL);
 
-	assert(wl_list_empty(&workspace->events.activate.listener_list));
-	assert(wl_list_empty(&workspace->events.deactivate.listener_list));
-	assert(wl_list_empty(&workspace->events.remove.listener_list));
-	assert(wl_list_empty(&workspace->events.assign.listener_list));
 	assert(wl_list_empty(&workspace->events.destroy.listener_list));
 
 	if (workspace->group) {
@@ -847,12 +844,7 @@ void wlr_ext_workspace_handle_v1_destroy(struct wlr_ext_workspace_handle_v1 *wor
 
 	struct wlr_ext_workspace_manager_v1_resource *manager_res;
 	wl_list_for_each(manager_res, &workspace->manager->resources, link) {
-		struct wlr_ext_workspace_v1_request *req, *tmp2;
-		wl_list_for_each_safe(req, tmp2, &manager_res->requests, link) {
-			if (req->workspace == workspace) {
-				destroy_request(req);
-			}
-		}
+		destroy_request_by(manager_res, NULL, workspace);
 	}
 
 	manager_schedule_done(workspace->manager);

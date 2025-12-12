@@ -14,12 +14,57 @@
 
 struct wlr_output;
 
+enum wlr_ext_workspace_v1_request_type {
+	WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE,
+	WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE,
+	WLR_EXT_WORKSPACE_V1_REQUEST_DEACTIVATE,
+	WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN,
+	WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE,
+};
+
+struct wlr_ext_workspace_v1_request {
+	enum wlr_ext_workspace_v1_request_type type;
+	struct wl_list link; // wlr_ext_workspace_manager_v1_resource.requests
+};
+
+struct wlr_ext_workspace_v1_request_create_workspace {
+	struct wlr_ext_workspace_v1_request base;
+	char *name;
+	struct wlr_ext_workspace_group_handle_v1 *group;
+};
+
+struct wlr_ext_workspace_v1_request_activate {
+	struct wlr_ext_workspace_v1_request base;
+	struct wlr_ext_workspace_handle_v1 *workspace;
+};
+
+struct wlr_ext_workspace_v1_request_deactivate {
+	struct wlr_ext_workspace_v1_request base;
+	struct wlr_ext_workspace_handle_v1 *workspace;
+};
+
+struct wlr_ext_workspace_v1_request_assign {
+	struct wlr_ext_workspace_v1_request base;
+	struct wlr_ext_workspace_handle_v1 *workspace;
+	struct wlr_ext_workspace_group_handle_v1 *group;
+};
+
+struct wlr_ext_workspace_v1_request_remove {
+	struct wlr_ext_workspace_v1_request base;
+	struct wlr_ext_workspace_handle_v1 *workspace;
+};
+
+struct wlr_ext_workspace_v1_commit_event {
+	struct wl_list *requests; // wlr_ext_workspace_v1_request.link
+};
+
 struct wlr_ext_workspace_manager_v1 {
 	struct wl_global *global;
 	struct wl_list groups; // wlr_ext_workspace_group_handle_v1.link
 	struct wl_list workspaces; // wlr_ext_workspace_handle_v1.link
 
 	struct {
+		struct wl_signal commit; // wlr_ext_workspace_v1_commit_event
 		struct wl_signal destroy;
 	} events;
 
@@ -41,7 +86,6 @@ struct wlr_ext_workspace_group_handle_v1 {
 	struct wlr_ext_workspace_manager_v1 *manager;
 	uint32_t caps; // ext_workspace_group_handle_v1_group_capabilities
 	struct {
-		struct wl_signal create_workspace; // wlr_ext_workspace_group_handle_v1_create_workspace_event
 		struct wl_signal destroy;
 	} events;
 
@@ -65,10 +109,6 @@ struct wlr_ext_workspace_handle_v1 {
 	uint32_t state; // ext_workspace_handle_v1_state
 
 	struct {
-		struct wl_signal activate;
-		struct wl_signal deactivate;
-		struct wl_signal remove;
-		struct wl_signal assign; // wlr_ext_workspace_group_handle_v1
 		struct wl_signal destroy;
 	} events;
 
