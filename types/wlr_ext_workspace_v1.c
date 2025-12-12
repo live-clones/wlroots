@@ -193,6 +193,12 @@ static void group_handle_create_workspace(struct wl_client *client,
 		wl_resource_post_no_memory(group_resource);
 		return;
 	}
+	req->name = strdup(name);
+	if (!req->name) {
+		free(req);
+		wl_resource_post_no_memory(group_resource);
+		return;
+	}
 	req->type = WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE;
 	req->group = group_res->group;
 	wl_list_insert(group_res->manager->requests.prev, &req->link);
