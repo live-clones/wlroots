@@ -872,7 +872,7 @@ void wlr_ext_workspace_handle_v1_set_group(
 	}
 
 	if (workspace->group) {
-		workspace_send_group(workspace, group, false);
+		workspace_send_group(workspace, workspace->group, false);
 	}
 	workspace->group = group;
 	if (group) {
