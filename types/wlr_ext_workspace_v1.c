@@ -43,6 +43,8 @@ struct wlr_ext_workspace_manager_v1_resource {
 	struct wl_resource *resource;
 	struct wlr_ext_workspace_manager_v1 *manager;
 	struct wl_list requests; // wlr_ext_workspace_v1_request.link
+	struct wl_list workspace_resources; // wlr_ext_workspace_v1_resource.link
+	struct wl_list group_resources; // wlr_ext_workspace_group_v1_resource.link
 	struct wl_list link; // wlr_ext_workspace_manager_v1.resources
 };
 
@@ -51,6 +53,7 @@ struct wlr_ext_workspace_group_v1_resource {
 	struct wlr_ext_workspace_group_handle_v1 *group;
 	struct wlr_ext_workspace_manager_v1_resource *manager;
 	struct wl_list link; // wlr_ext_workspace_group_v1.resources
+	struct wl_list manager_resource_link; // wlr_ext_workspace_manager_v1_resource.group_resources
 };
 
 struct wlr_ext_workspace_v1_resource {
@@ -58,6 +61,7 @@ struct wlr_ext_workspace_v1_resource {
 	struct wlr_ext_workspace_handle_v1 *workspace;
 	struct wlr_ext_workspace_manager_v1_resource *manager;
 	struct wl_list link; // wlr_ext_workspace_v1.resources
+	struct wl_list manager_resource_link; // wlr_ext_workspace_manager_v1_resource.workspace_resources
 };
 
 static const struct ext_workspace_group_handle_v1_interface group_impl;
@@ -207,6 +211,7 @@ static const struct ext_workspace_group_handle_v1_interface group_impl = {
 static void destroy_workspace_resource(
 		struct wlr_ext_workspace_v1_resource *workspace_res) {
 	wl_list_remove(&workspace_res->link);
+	wl_list_remove(&workspace_res->manager_resource_link);
 	wl_resource_set_user_data(workspace_res->resource, NULL);
 	free(workspace_res);
 }
@@ -242,12 +247,14 @@ static struct wlr_ext_workspace_v1_resource *create_workspace_resource(
 	workspace_res->workspace = workspace;
 	workspace_res->manager = manager_res;
 	wl_list_insert(&workspace->resources, &workspace_res->link);
+	wl_list_insert(&manager_res->workspace_resources, &workspace_res->manager_resource_link);
 
 	return workspace_res;
 }
 
 static void destroy_group_resource(struct wlr_ext_workspace_group_v1_resource *group_res) {
 	wl_list_remove(&group_res->link);
+	wl_list_remove(&group_res->manager_resource_link);
 	wl_resource_set_user_data(group_res->resource, NULL);
 	free(group_res);
 }
@@ -283,6 +290,7 @@ static struct wlr_ext_workspace_group_v1_resource *create_group_resource(
 	group_res->group = group;
 	group_res->manager = manager_res;
 	wl_list_insert(&group->resources, &group_res->link);
+	wl_list_insert(&manager_res->group_resources, &group_res->manager_resource_link);
 
 	return group_res;
 }
@@ -381,6 +389,17 @@ static void destroy_manager_resource(struct wlr_ext_workspace_manager_v1_resourc
 	wl_list_for_each_safe(req, tmp, &manager_res->requests, link) {
 		destroy_request(req);
 	}
+	struct wlr_ext_workspace_v1_resource *workspace_res, *tmp2;
+	wl_list_for_each_safe(workspace_res, tmp2,
+			&manager_res->workspace_resources, manager_resource_link) {
+		destroy_workspace_resource(workspace_res);
+	}
+	struct wlr_ext_workspace_group_v1_resource *group_res, *tmp3;
+	wl_list_for_each_safe(group_res, tmp3,
+			&manager_res->group_resources, manager_resource_link) {
+		destroy_group_resource(group_res);
+	}
+
 	wl_list_remove(&manager_res->link);
 	wl_resource_set_user_data(manager_res->resource, NULL);
 	free(manager_res);
@@ -428,6 +447,8 @@ static void manager_bind(struct wl_client *client, void *data,
 
 	manager_res->manager = manager;
 	wl_list_init(&manager_res->requests);
+	wl_list_init(&manager_res->workspace_resources);
+	wl_list_init(&manager_res->group_resources);
 
 	manager_res->resource = wl_resource_create(client,
 			&ext_workspace_manager_v1_interface, version, id);
