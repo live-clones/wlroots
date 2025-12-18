@@ -19,7 +19,7 @@ xdg-shell-protocol.h:
 tinywl.o: tinywl.c xdg-shell-protocol.h
 	$(CC) -c $< -g -Werror $(CFLAGS) -I. -DWLR_USE_UNSTABLE -o $@
 tinywl: tinywl.o
-	$(CC) $^ $> -g -Werror $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
+	$(CC) $^ -g -Werror $(CFLAGS) $(LDFLAGS) $(LIBS) -o $@
 
 clean:
 	rm -f tinywl tinywl.o xdg-shell-protocol.h
