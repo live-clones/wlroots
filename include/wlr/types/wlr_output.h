@@ -303,6 +303,10 @@ enum wlr_output_present_flag {
 	WLR_OUTPUT_PRESENT_HW_COMPLETION = 0x4,
 	// The presentation of this update was done zero-copy.
 	WLR_OUTPUT_PRESENT_ZERO_COPY = 0x8,
+	// The display hardware is operating at a fixed refresh rate.
+	WLR_OUTPUT_PRESENT_FIXED_RATE = 0x10,
+	// The display hardware is operating at a variable refresh rate.
+	WLR_OUTPUT_PRESENT_VARIABLE_RATE = 0x20,
 };
 
 struct wlr_output_event_present {
