@@ -122,10 +122,17 @@ void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
 			continue;
 		}
 
+		struct wlr_fbox dst_box = (struct wlr_fbox){
+			.x = box.x,
+			.y = box.y,
+			.width = box.width,
+			.height = box.height,
+		};
+
 		wlr_render_pass_add_texture(render_pass, &(struct wlr_render_texture_options) {
 			.texture = texture,
 			.src_box = cursor->src_box,
-			.dst_box = box,
+			.dst_box = dst_box,
 			.clip = &cursor_damage,
 			.transform = output->transform,
 		});
@@ -249,11 +256,11 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 		return NULL;
 	}
 
-	struct wlr_box dst_box = {
+	struct wlr_fbox dst_box = {
 		.width = cursor->width,
 		.height = cursor->height,
 	};
-	wlr_box_transform(&dst_box, &dst_box, wlr_output_transform_invert(output->transform),
+	wlr_fbox_transform(&dst_box, &dst_box, wlr_output_transform_invert(output->transform),
 		buffer->width, buffer->height);
 
 	struct wlr_buffer_pass_options options = {

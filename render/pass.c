@@ -46,9 +46,9 @@ void wlr_render_texture_options_get_src_box(const struct wlr_render_texture_opti
 }
 
 void wlr_render_texture_options_get_dst_box(const struct wlr_render_texture_options *options,
-		struct wlr_box *box) {
+		struct wlr_fbox *box) {
 	*box = options->dst_box;
-	if (wlr_box_empty(box)) {
+	if (wlr_fbox_empty(box)) {
 		box->width = options->texture->width;
 		box->height = options->texture->height;
 	}
@@ -62,9 +62,9 @@ float wlr_render_texture_options_get_alpha(const struct wlr_render_texture_optio
 }
 
 void wlr_render_rect_options_get_box(const struct wlr_render_rect_options *options,
-		const struct wlr_buffer *buffer, struct wlr_box *box) {
-	if (wlr_box_empty(&options->box)) {
-		*box = (struct wlr_box){
+		const struct wlr_buffer *buffer, struct wlr_fbox *box) {
+	if (wlr_fbox_empty(&options->box)) {
+		*box = (struct wlr_fbox){
 			.width = buffer->width,
 			.height = buffer->height,
 		};

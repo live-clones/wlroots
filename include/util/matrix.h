@@ -4,6 +4,7 @@
 #include <wayland-server-protocol.h>
 
 struct wlr_box;
+struct wlr_fbox;
 
 /** Writes the identity matrix into mat */
 void wlr_matrix_identity(float mat[static 9]);
@@ -27,7 +28,7 @@ void wlr_matrix_transform(float mat[static 9],
  *  specified wlr_box onto a given orthographic projection with a given
  *  rotation. The result is written to mat, which can be applied to each
  *  coordinate of the box to get a new coordinate from [-1,1]. */
-void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
+void wlr_matrix_project_box(float mat[static 9], const struct wlr_fbox *box,
 	enum wl_output_transform transform, const float projection[static 9]);
 
 /**
