@@ -504,7 +504,7 @@ static bool is_dmabuf_disjoint(const struct wlr_dmabuf_attributes *attribs) {
 VkImage vulkan_import_dmabuf(struct wlr_vk_renderer *renderer,
 		const struct wlr_dmabuf_attributes *attribs,
 		VkDeviceMemory mems[static WLR_DMABUF_MAX_PLANES], uint32_t *n_mems,
-		bool for_render, bool *using_mutable_srgb) {
+		bool for_render, bool *render_needs_bridge, bool *using_mutable_srgb) {
 	VkResult res;
 	VkDevice dev = renderer->dev->dev;
 	*n_mems = 0u;
@@ -568,7 +568,7 @@ VkImage vulkan_import_dmabuf(struct wlr_vk_renderer *renderer,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 		.extent = (VkExtent3D) { attribs->width, attribs->height, 1 },
-		.usage = for_render ? vulkan_render_usage : vulkan_dma_tex_usage,
+		.usage = for_render ? (mod->render_needs_bridge ? vulkan_render_bridged_usage : vulkan_render_usage) : vulkan_dma_tex_usage,
 	};
 	if (disjoint) {
 		img_info.flags = VK_IMAGE_CREATE_DISJOINT_BIT;
@@ -719,6 +719,7 @@ VkImage vulkan_import_dmabuf(struct wlr_vk_renderer *renderer,
 	}
 
 	*using_mutable_srgb = mod->has_mutable_srgb;
+	*render_needs_bridge = mod->render_needs_bridge;
 	return image;
 
 error_image:
@@ -751,8 +752,10 @@ static struct wlr_vk_texture *vulkan_texture_from_dmabuf(
 	}
 
 	bool using_mutable_srgb = false;
+	bool render_needs_bridge = false;
 	texture->image = vulkan_import_dmabuf(renderer, attribs,
-		texture->memories, &texture->mem_count, false, &using_mutable_srgb);
+		texture->memories, &texture->mem_count, false,
+		&render_needs_bridge, &using_mutable_srgb);
 	if (!texture->image) {
 		goto error;
 	}
