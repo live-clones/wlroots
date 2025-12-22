@@ -141,6 +141,8 @@ static void handle_scene_buffer_output_sample(
 	} else {
 		wlr_presentation_surface_textured_on_output(surface->surface, output);
 	}
+
+	wlr_surface_textured_on_output(surface->surface, output);
 }
 
 static void handle_scene_buffer_frame_done(

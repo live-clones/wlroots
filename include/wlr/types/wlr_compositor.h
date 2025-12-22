@@ -118,14 +118,47 @@ struct wlr_surface_role {
 	void (*destroy)(struct wlr_surface *surface);
 };
 
+struct wlr_surface_output_event_present {
+	struct wlr_surface_output_commit *commit;
+	struct timespec when;
+};
+
+struct wlr_surface_output_commit {
+	struct wlr_surface_output *surface_output;
+
+	uint32_t surface_seq;
+	uint32_t output_seq;
+	bool committed_on_surface;
+	bool textured_on_output;
+	bool committed_on_output;
+	bool presented_on_output;
+
+	struct wl_list link; // wlr_surface_output.commits
+
+	struct {
+		struct wl_listener output_present;
+	} WLR_PRIVATE;
+};
+
 struct wlr_surface_output {
 	struct wlr_surface *surface;
 	struct wlr_output *output;
 
 	struct wl_list link; // wlr_surface.current_outputs
 
+	struct wlr_surface_output_commit current_commit;
+	struct wl_list commits; // wlr_surface_output_commit.link
+	struct {
+		/**
+		 * Signals that a surface commit has been presented or discarded on the output.
+		 */
+		struct wl_signal present;
+	} events;
+
 	struct {
 		struct wl_listener bind;
+		struct wl_listener output_commit;
+		struct wl_listener surface_commit;
 		struct wl_listener destroy;
 	} WLR_PRIVATE;
 };
@@ -398,6 +431,12 @@ void wlr_surface_send_enter(struct wlr_surface *surface,
  */
 void wlr_surface_send_leave(struct wlr_surface *surface,
 		struct wlr_output *output);
+
+/**
+ * Mark the current surface's buffer as textured on the given output.
+ */
+void wlr_surface_textured_on_output(struct wlr_surface *surface,
+	struct wlr_output *output);
 
 /**
  * Complete the queued frame callbacks for this surface.
