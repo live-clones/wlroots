@@ -730,6 +730,12 @@ static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	wl_signal_emit_mutable(&surface->events.destroy, surface);
 	wlr_addon_set_finish(&surface->addons);
 
+	struct wlr_surface_output *surface_output, *surface_output_tmp;
+	wl_list_for_each_safe(surface_output, surface_output_tmp,
+			&surface->current_outputs, link) {
+		surface_output_destroy(surface_output);
+	}
+
 	assert(wl_list_empty(&surface->events.client_commit.listener_list));
 	assert(wl_list_empty(&surface->events.commit.listener_list));
 	assert(wl_list_empty(&surface->events.map.listener_list));
@@ -755,12 +761,6 @@ static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	pixman_region32_fini(&surface->input_region);
 	if (surface->buffer != NULL) {
 		wlr_buffer_unlock(&surface->buffer->base);
-	}
-
-	struct wlr_surface_output *surface_output, *surface_output_tmp;
-	wl_list_for_each_safe(surface_output, surface_output_tmp,
-			&surface->current_outputs, link) {
-		surface_output_destroy(surface_output);
 	}
 
 	free(surface);
