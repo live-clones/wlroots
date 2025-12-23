@@ -2570,7 +2570,7 @@ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
 	wlr_log(WLR_INFO, "The vulkan renderer is only experimental and "
 		"not expected to be ready for daily use");
 	wlr_log(WLR_INFO, "Run with VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation "
-		"to enable the validation layer");
+		"and a log level of WLR_DEBUG to enable the validation layer");
 
 	struct wlr_vk_instance *ini = vulkan_instance_create(default_debug);
 	if (!ini) {
