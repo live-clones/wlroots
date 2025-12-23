@@ -32,6 +32,7 @@ struct wlr_export_dmabuf_frame_v1 {
 	struct wl_list link; // wlr_export_dmabuf_manager_v1.frames
 
 	struct wlr_output *output;
+	struct wlr_buffer *buffer;
 
 	bool cursor_locked;
 

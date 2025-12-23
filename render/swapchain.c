@@ -120,3 +120,12 @@ bool wlr_swapchain_has_buffer(struct wlr_swapchain *swapchain,
 	}
 	return false;
 }
+
+int wlr_swapchain_count_free_slots(const struct wlr_swapchain *swapchain)
+{
+	int count = 0;
+	for (size_t i = 0; i < WLR_SWAPCHAIN_CAP; i++) {
+		count += !swapchain->slots[i].acquired;
+	}
+	return count;
+}

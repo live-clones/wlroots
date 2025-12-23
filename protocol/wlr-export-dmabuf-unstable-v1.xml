@@ -36,7 +36,7 @@
     interface version number is reset.
   </description>
 
-  <interface name="zwlr_export_dmabuf_manager_v1" version="1">
+  <interface name="zwlr_export_dmabuf_manager_v1" version="2">
     <description summary="manager to inform clients and begin capturing">
       This object is a manager with which to start capturing from sources.
     </description>
@@ -59,7 +59,7 @@
     </request>
   </interface>
 
-  <interface name="zwlr_export_dmabuf_frame_v1" version="1">
+  <interface name="zwlr_export_dmabuf_frame_v1" version="2">
     <description summary="a DMA-BUF frame">
       This object represents a single DMA-BUF frame.
 
@@ -194,6 +194,10 @@
       <description summary="delete this object, used or not">
         Unreferences the frame. This request must be called as soon as its no
         longer used.
+
+        Starting from version 2, this indicates that the client has finished
+        processing the frame. The client must not access the underlying buffer
+        after destroying the zwlr_export_dmabuf_frame_v1 object.
 
         It can be called at any time by the client. The client will still have
         to close any FDs it has been given.
