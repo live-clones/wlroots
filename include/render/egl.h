@@ -47,6 +47,7 @@ struct wlr_egl {
 	bool has_modifiers;
 	struct wlr_drm_format_set dmabuf_texture_formats;
 	struct wlr_drm_format_set dmabuf_render_formats;
+	enum egl_version version;
 };
 
 struct wlr_egl_context {
@@ -61,7 +62,7 @@ struct wlr_egl_context {
  *
  * Will attempt to load all possibly required API functions.
  */
-struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd);
+struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd, enum egl_version version);
 
 /**
  * Frees all related EGL resources, makes the context not-current and

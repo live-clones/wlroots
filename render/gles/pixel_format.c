@@ -1,14 +1,22 @@
 #include <drm_fourcc.h>
+#include <wlr/config.h>
+
+#if WLR_HAS_GLES2_RENDERER
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
-#include "render/gles2.h"
+#else
+#include <GLES3/gl3.h>
+#include <GLES3/gl3ext.h>
+#endif
+
+#include "render/gles.h"
 #include "render/pixel_format.h"
 
 /*
  * The DRM formats are little endian while the GL formats are big endian,
  * so DRM_FORMAT_ARGB8888 is actually compatible with GL_BGRA_EXT.
  */
-static const struct wlr_gles2_pixel_format formats[] = {
+static const struct wlr_gles_pixel_format formats[] = {
 	{
 		.drm_format = DRM_FORMAT_ARGB8888,
 		.gl_format = GL_BGRA_EXT,
@@ -101,8 +109,8 @@ static const struct wlr_gles2_pixel_format formats[] = {
  * Return true if supported for texturing, even if other operations like
  * reading aren't supported.
  */
-bool is_gles2_pixel_format_supported(const struct wlr_gles2_renderer *renderer,
-		const struct wlr_gles2_pixel_format *format) {
+bool is_gles_pixel_format_supported(const struct wlr_gles_renderer *renderer,
+		const struct wlr_gles_pixel_format *format) {
 	if (format->gl_type == GL_UNSIGNED_INT_2_10_10_10_REV_EXT
 			&& !renderer->exts.EXT_texture_type_2_10_10_10_REV) {
 		return false;
@@ -124,7 +132,7 @@ bool is_gles2_pixel_format_supported(const struct wlr_gles2_renderer *renderer,
 	return true;
 }
 
-const struct wlr_gles2_pixel_format *get_gles2_format_from_drm(uint32_t fmt) {
+const struct wlr_gles_pixel_format *get_gles_format_from_drm(uint32_t fmt) {
 	for (size_t i = 0; i < sizeof(formats) / sizeof(*formats); ++i) {
 		if (formats[i].drm_format == fmt) {
 			return &formats[i];
@@ -133,7 +141,7 @@ const struct wlr_gles2_pixel_format *get_gles2_format_from_drm(uint32_t fmt) {
 	return NULL;
 }
 
-const struct wlr_gles2_pixel_format *get_gles2_format_from_gl(
+const struct wlr_gles_pixel_format *get_gles_format_from_gl(
 		GLint gl_format, GLint gl_type, bool alpha) {
 	for (size_t i = 0; i < sizeof(formats) / sizeof(*formats); ++i) {
 		if (formats[i].gl_format != gl_format ||
@@ -150,10 +158,10 @@ const struct wlr_gles2_pixel_format *get_gles2_format_from_gl(
 	return NULL;
 }
 
-void get_gles2_shm_formats(const struct wlr_gles2_renderer *renderer,
+void get_gles_shm_formats(const struct wlr_gles_renderer *renderer,
 		struct wlr_drm_format_set *out) {
 	for (size_t i = 0; i < sizeof(formats) / sizeof(formats[0]); i++) {
-		if (!is_gles2_pixel_format_supported(renderer, &formats[i])) {
+		if (!is_gles_pixel_format_supported(renderer, &formats[i])) {
 			continue;
 		}
 		wlr_drm_format_set_add(out, formats[i].drm_format, DRM_FORMAT_MOD_INVALID);
