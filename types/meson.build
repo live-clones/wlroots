@@ -97,6 +97,7 @@ wlr_files += files(
 	'wlr_virtual_pointer_v1.c',
 	'wlr_xcursor_manager.c',
 	'wlr_xdg_activation_v1.c',
+	'wlr_xdg_cutouts_v1.c',
 	'wlr_xdg_decoration_v1.c',
 	'wlr_xdg_dialog_v1.c',
 	'wlr_xdg_foreign_v1.c',
