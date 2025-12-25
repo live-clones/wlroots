@@ -522,6 +522,7 @@ ssize_t wlr_session_find_gpus(struct wlr_session *session,
 
 	struct udev_list_entry *entry;
 	size_t i = 0;
+	bool first_is_usb = false;
 
 	udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(en)) {
 		if (i == ret_len) {
@@ -543,6 +544,7 @@ ssize_t wlr_session_find_gpus(struct wlr_session *session,
 			continue;
 		}
 
+		bool is_usb = false;
 		bool is_primary = false;
 		const char *boot_display = udev_device_get_sysattr_value(dev, "boot_display");
 		if (boot_display && strcmp(boot_display, "1") == 0) {
@@ -557,6 +559,11 @@ ssize_t wlr_session_find_gpus(struct wlr_session *session,
 				if (id && strcmp(id, "1") == 0) {
 					is_primary = true;
 				}
+			} else {
+				// Detect USB-backed DRM devices
+				struct udev_device *usb_dev =
+					udev_device_get_parent_with_subsystem_devtype(dev, "usb", NULL);
+				is_usb = usb_dev != NULL;
 			}
 		}
 
@@ -566,12 +573,18 @@ ssize_t wlr_session_find_gpus(struct wlr_session *session,
 		if (!wlr_dev) {
 			continue;
 		}
+		if (i == 0) {
+			first_is_usb = is_usb;
+		}
 
 		ret[i] = wlr_dev;
-		if (is_primary) {
+		// Prefer non-USB GPU if enumeration starts with a USB device
+		if (is_primary || (first_is_usb && !is_usb)) {
 			struct wlr_device *tmp = ret[0];
 			ret[0] = ret[i];
 			ret[i] = tmp;
+
+			first_is_usb = false;
 		}
 
 		++i;
