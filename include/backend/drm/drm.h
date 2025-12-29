@@ -15,6 +15,8 @@
 #include "backend/drm/properties.h"
 #include "backend/drm/renderer.h"
 
+struct wlr_drm_crtc_color_transform;
+
 struct wlr_drm_viewport {
 	struct wlr_fbox src_box;
 	struct wlr_box dst_box;
@@ -74,6 +76,7 @@ struct wlr_drm_crtc {
 	bool own_mode_id;
 	uint32_t mode_id;
 	uint32_t gamma_lut;
+	uint32_t ctm;
 
 	// Legacy only
 	int legacy_gamma_size;
@@ -152,9 +155,12 @@ struct wlr_drm_connector_state {
 	struct wlr_drm_syncobj_timeline *wait_timeline;
 	uint64_t wait_point;
 
+	struct wlr_drm_crtc_color_transform *crtc_color_transform;
+
 	// used by atomic
 	uint32_t mode_id;
 	uint32_t gamma_lut;
+	uint32_t ctm;
 	uint32_t fb_damage_clips;
 	int primary_in_fence_fd, out_fence_fd;
 	bool vrr_enabled;
