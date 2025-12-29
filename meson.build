@@ -72,6 +72,7 @@ features = {
 	'libinput-backend': false,
 	'xwayland': false,
 	'gles2-renderer': false,
+	'gles3-renderer': false,
 	'vulkan-renderer': false,
 	'gbm-allocator': false,
 	'udmabuf-allocator': false,

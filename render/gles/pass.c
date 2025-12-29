@@ -6,26 +6,26 @@
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/util/transform.h>
 #include "render/egl.h"
-#include "render/gles2.h"
+#include "render/gles.h"
 #include "util/matrix.h"
 
 #define MAX_QUADS 86 // 4kb
 
 static const struct wlr_render_pass_impl render_pass_impl;
 
-static struct wlr_gles2_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
+static struct wlr_gles_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
 	assert(wlr_pass->impl == &render_pass_impl);
-	struct wlr_gles2_render_pass *pass = wl_container_of(wlr_pass, pass, base);
+	struct wlr_gles_render_pass *pass = wl_container_of(wlr_pass, pass, base);
 	return pass;
 }
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
-	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
-	struct wlr_gles2_render_timer *timer = pass->timer;
+	struct wlr_gles_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_gles_renderer *renderer = pass->buffer->renderer;
+	struct wlr_gles_render_timer *timer = pass->timer;
 	bool ok = false;
 
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
 
 	if (timer) {
 		// clear disjoint flag
@@ -65,7 +65,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 out:
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 	wlr_egl_restore_context(&pass->prev_ctx);
 
 	wlr_drm_syncobj_timeline_unref(pass->signal_timeline);
@@ -166,11 +166,11 @@ static void setup_blending(enum wlr_render_blend_mode mode) {
 
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
-	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
-	struct wlr_gles2_texture *texture = gles2_get_texture(options->texture);
+	struct wlr_gles_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_gles_renderer *renderer = pass->buffer->renderer;
+	struct wlr_gles_texture *texture = gles_get_texture(options->texture);
 
-	struct wlr_gles2_tex_shader *shader = NULL;
+	struct wlr_gles_tex_shader *shader = NULL;
 
 	switch (texture->target) {
 	case GL_TEXTURE_2D:
@@ -201,7 +201,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	src_fbox.width /= options->texture->width;
 	src_fbox.height /= options->texture->height;
 
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
 
 	if (options->wait_timeline != NULL) {
 		int sync_file_fd =
@@ -250,19 +250,19 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	render(&dst_box, options->clip, shader->pos_attrib);
 
 	glBindTexture(texture->target, 0);
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 }
 
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
-	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
+	struct wlr_gles_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_gles_renderer *renderer = pass->buffer->renderer;
 
 	const struct wlr_render_color *color = &options->color;
 	struct wlr_box box;
 	wlr_render_rect_options_get_box(options, pass->buffer->buffer, &box);
 
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
 	setup_blending(color->a == 1.0 ? WLR_RENDER_BLEND_MODE_NONE : options->blend_mode);
 
 	glUseProgram(renderer->shaders.quad.program);
@@ -272,7 +272,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 	render(&box, options->clip, renderer->shaders.quad.pos_attrib);
 
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 }
 
 static const struct wlr_render_pass_impl render_pass_impl = {
@@ -294,10 +294,10 @@ static const char *reset_status_str(GLenum status) {
 	}
 }
 
-struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *buffer,
-		struct wlr_egl_context *prev_ctx, struct wlr_gles2_render_timer *timer,
+struct wlr_gles_render_pass *begin_gles_buffer_pass(struct wlr_gles_buffer *buffer,
+		struct wlr_egl_context *prev_ctx, struct wlr_gles_render_timer *timer,
 		struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point) {
-	struct wlr_gles2_renderer *renderer = buffer->renderer;
+	struct wlr_gles_renderer *renderer = buffer->renderer;
 	struct wlr_buffer *wlr_buffer = buffer->buffer;
 
 	if (renderer->procs.glGetGraphicsResetStatusKHR) {
@@ -309,12 +309,12 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 		}
 	}
 
-	GLint fbo = gles2_buffer_get_fbo(buffer);
+	GLint fbo = gles_buffer_get_fbo(buffer);
 	if (!fbo) {
 		return NULL;
 	}
 
-	struct wlr_gles2_render_pass *pass = calloc(1, sizeof(*pass));
+	struct wlr_gles_render_pass *pass = calloc(1, sizeof(*pass));
 	if (pass == NULL) {
 		return NULL;
 	}
@@ -332,13 +332,13 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 	matrix_projection(pass->projection_matrix, wlr_buffer->width, wlr_buffer->height,
 		WL_OUTPUT_TRANSFORM_FLIPPED_180);
 
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
 	glViewport(0, 0, wlr_buffer->width, wlr_buffer->height);
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_SCISSOR_TEST);
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 
 	return pass;
 }

@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <wayland-server-protocol.h>
 #include <wayland-util.h>
+#include <wlr/config.h>
 #include <wlr/render/egl.h>
 #include <wlr/render/interface.h>
 #include <wlr/render/wlr_renderer.h>
@@ -16,54 +17,64 @@
 #include <wlr/util/log.h>
 #include <xf86drm.h>
 #include "render/egl.h"
-#include "render/gles2.h"
+#include "render/gles.h"
 #include "render/pixel_format.h"
 #include "util/time.h"
 
-#include "common_vert_src.h"
-#include "quad_frag_src.h"
-#include "tex_rgba_frag_src.h"
-#include "tex_rgbx_frag_src.h"
-#include "tex_external_frag_src.h"
+#if WLR_HAS_GLES2_RENDERER
+#include "gles2_common_vert_src.h"
+#include "gles2_quad_frag_src.h"
+#include "gles2_tex_rgba_frag_src.h"
+#include "gles2_tex_rgbx_frag_src.h"
+#include "gles2_tex_external_frag_src.h"
+#endif
+
+#if WLR_HAS_GLES3_RENDERER
+#include "gles3_common_vert_src.h"
+#include "gles3_quad_frag_src.h"
+#include "gles3_tex_rgba_frag_src.h"
+#include "gles3_tex_rgbx_frag_src.h"
+#include "gles3_tex_external_frag_src.h"
+#endif
 
 static const struct wlr_renderer_impl renderer_impl;
 static const struct wlr_render_timer_impl render_timer_impl;
 
-bool wlr_renderer_is_gles2(struct wlr_renderer *wlr_renderer) {
+bool wlr_renderer_is_gles(struct wlr_renderer *wlr_renderer) {
 	return wlr_renderer->impl == &renderer_impl;
 }
 
-struct wlr_gles2_renderer *gles2_get_renderer(
+struct wlr_gles_renderer *gles_get_renderer(
 		struct wlr_renderer *wlr_renderer) {
-	assert(wlr_renderer_is_gles2(wlr_renderer));
-	struct wlr_gles2_renderer *renderer = wl_container_of(wlr_renderer, renderer, wlr_renderer);
+	assert(wlr_renderer_is_gles(wlr_renderer));
+	struct wlr_gles_renderer *renderer = wl_container_of(wlr_renderer, renderer, wlr_renderer);
 	return renderer;
 }
 
-bool wlr_render_timer_is_gles2(struct wlr_render_timer *timer) {
+bool wlr_render_timer_is_gles(struct wlr_render_timer *timer) {
 	return timer->impl == &render_timer_impl;
 }
 
-struct wlr_gles2_render_timer *gles2_get_render_timer(struct wlr_render_timer *wlr_timer) {
-	assert(wlr_render_timer_is_gles2(wlr_timer));
-	struct wlr_gles2_render_timer *timer = wl_container_of(wlr_timer, timer, base);
+struct wlr_gles_render_timer *gles_get_render_timer(struct wlr_render_timer *wlr_timer) {
+	assert(wlr_render_timer_is_gles(wlr_timer));
+	struct wlr_gles_render_timer *timer = wl_container_of(wlr_timer, timer, base);
 	return timer;
 }
 
-static void destroy_buffer(struct wlr_gles2_buffer *buffer) {
+static void destroy_buffer(struct wlr_gles_buffer *buffer) {
 	wl_list_remove(&buffer->link);
 	wlr_addon_finish(&buffer->addon);
 
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(buffer->renderer->egl, &prev_ctx);
 
-	push_gles2_debug(buffer->renderer);
+	push_gles_debug(buffer->renderer);
 
 	glDeleteFramebuffers(1, &buffer->fbo);
 	glDeleteRenderbuffers(1, &buffer->rbo);
 	glDeleteTextures(1, &buffer->tex);
 
-	pop_gles2_debug(buffer->renderer);
+	pop_gles_debug(buffer->renderer);
 
 	wlr_egl_destroy_image(buffer->renderer->egl, buffer->image);
 
@@ -73,17 +84,17 @@ static void destroy_buffer(struct wlr_gles2_buffer *buffer) {
 }
 
 static void handle_buffer_destroy(struct wlr_addon *addon) {
-	struct wlr_gles2_buffer *buffer =
+	struct wlr_gles_buffer *buffer =
 		wl_container_of(addon, buffer, addon);
 	destroy_buffer(buffer);
 }
 
 static const struct wlr_addon_interface buffer_addon_impl = {
-	.name = "wlr_gles2_buffer",
+	.name = "wlr_gles_buffer",
 	.destroy = handle_buffer_destroy,
 };
 
-GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer) {
+GLuint gles_buffer_get_fbo(struct wlr_gles_buffer *buffer) {
 	if (buffer->external_only) {
 		wlr_log(WLR_ERROR, "DMA-BUF format is external-only");
 		return 0;
@@ -93,7 +104,7 @@ GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer) {
 		return buffer->fbo;
 	}
 
-	push_gles2_debug(buffer->renderer);
+	push_gles_debug(buffer->renderer);
 
 	if (!buffer->rbo) {
 		glGenRenderbuffers(1, &buffer->rbo);
@@ -116,21 +127,21 @@ GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer) {
 		buffer->fbo = 0;
 	}
 
-	pop_gles2_debug(buffer->renderer);
+	pop_gles_debug(buffer->renderer);
 
 	return buffer->fbo;
 }
 
-struct wlr_gles2_buffer *gles2_buffer_get_or_create(struct wlr_gles2_renderer *renderer,
+struct wlr_gles_buffer *gles_buffer_get_or_create(struct wlr_gles_renderer *renderer,
 		struct wlr_buffer *wlr_buffer) {
 	struct wlr_addon *addon =
 		wlr_addon_find(&wlr_buffer->addons, renderer, &buffer_addon_impl);
 	if (addon) {
-		struct wlr_gles2_buffer *buffer = wl_container_of(addon, buffer, addon);
+		struct wlr_gles_buffer *buffer = wl_container_of(addon, buffer, addon);
 		return buffer;
 	}
 
-	struct wlr_gles2_buffer *buffer = calloc(1, sizeof(*buffer));
+	struct wlr_gles_buffer *buffer = calloc(1, sizeof(*buffer));
 	if (buffer == NULL) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
 		return NULL;
@@ -164,9 +175,9 @@ error_buffer:
 	return NULL;
 }
 
-static const struct wlr_drm_format_set *gles2_get_texture_formats(
+static const struct wlr_drm_format_set *gles_get_texture_formats(
 		struct wlr_renderer *wlr_renderer, uint32_t buffer_caps) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles_renderer *renderer = gles_get_renderer(wlr_renderer);
 	if (buffer_caps & WLR_BUFFER_CAP_DMABUF) {
 		return wlr_egl_get_dmabuf_texture_formats(renderer->egl);
 	} else if (buffer_caps & WLR_BUFFER_CAP_DATA_PTR) {
@@ -176,15 +187,15 @@ static const struct wlr_drm_format_set *gles2_get_texture_formats(
 	}
 }
 
-static const struct wlr_drm_format_set *gles2_get_render_formats(
+static const struct wlr_drm_format_set *gles_get_render_formats(
 		struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles_renderer *renderer = gles_get_renderer(wlr_renderer);
 	return wlr_egl_get_dmabuf_render_formats(renderer->egl);
 }
 
-static int gles2_get_drm_fd(struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer =
-		gles2_get_renderer(wlr_renderer);
+static int gles_get_drm_fd(struct wlr_renderer *wlr_renderer) {
+	struct wlr_gles_renderer *renderer =
+		gles_get_renderer(wlr_renderer);
 
 	if (renderer->drm_fd < 0) {
 		renderer->drm_fd = wlr_egl_dup_drm_fd(renderer->egl);
@@ -193,33 +204,33 @@ static int gles2_get_drm_fd(struct wlr_renderer *wlr_renderer) {
 	return renderer->drm_fd;
 }
 
-struct wlr_egl *wlr_gles2_renderer_get_egl(struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer =
-		gles2_get_renderer(wlr_renderer);
+struct wlr_egl *wlr_gles_renderer_get_egl(struct wlr_renderer *wlr_renderer) {
+	struct wlr_gles_renderer *renderer =
+		gles_get_renderer(wlr_renderer);
 	return renderer->egl;
 }
 
-static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+static void gles_destroy(struct wlr_renderer *wlr_renderer) {
+	struct wlr_gles_renderer *renderer = gles_get_renderer(wlr_renderer);
 
 	wlr_egl_make_current(renderer->egl, NULL);
 
-	struct wlr_gles2_texture *tex, *tex_tmp;
+	struct wlr_gles_texture *tex, *tex_tmp;
 	wl_list_for_each_safe(tex, tex_tmp, &renderer->textures, link) {
-		gles2_texture_destroy(tex);
+		gles_texture_destroy(tex);
 	}
 
-	struct wlr_gles2_buffer *buffer, *buffer_tmp;
+	struct wlr_gles_buffer *buffer, *buffer_tmp;
 	wl_list_for_each_safe(buffer, buffer_tmp, &renderer->buffers, link) {
 		destroy_buffer(buffer);
 	}
 
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
 	glDeleteProgram(renderer->shaders.quad.program);
 	glDeleteProgram(renderer->shaders.tex_rgba.program);
 	glDeleteProgram(renderer->shaders.tex_rgbx.program);
 	glDeleteProgram(renderer->shaders.tex_ext.program);
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 
 	if (renderer->exts.KHR_debug) {
 		glDisable(GL_DEBUG_OUTPUT_KHR);
@@ -238,27 +249,27 @@ static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
 	free(renderer);
 }
 
-static struct wlr_render_pass *gles2_begin_buffer_pass(struct wlr_renderer *wlr_renderer,
+static struct wlr_render_pass *gles_begin_buffer_pass(struct wlr_renderer *wlr_renderer,
 		struct wlr_buffer *wlr_buffer, const struct wlr_buffer_pass_options *options) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles_renderer *renderer = gles_get_renderer(wlr_renderer);
 
 	struct wlr_egl_context prev_ctx = {0};
 	if (!wlr_egl_make_current(renderer->egl, &prev_ctx)) {
 		return NULL;
 	}
 
-	struct wlr_gles2_render_timer *timer = NULL;
+	struct wlr_gles_render_timer *timer = NULL;
 	if (options->timer) {
-		timer = gles2_get_render_timer(options->timer);
+		timer = gles_get_render_timer(options->timer);
 		clock_gettime(CLOCK_MONOTONIC, &timer->cpu_start);
 	}
 
-	struct wlr_gles2_buffer *buffer = gles2_buffer_get_or_create(renderer, wlr_buffer);
+	struct wlr_gles_buffer *buffer = gles_buffer_get_or_create(renderer, wlr_buffer);
 	if (!buffer) {
 		return NULL;
 	}
 
-	struct wlr_gles2_render_pass *pass = begin_gles2_buffer_pass(buffer,
+	struct wlr_gles_render_pass *pass = begin_gles_buffer_pass(buffer,
 		&prev_ctx, timer, options->signal_timeline, options->signal_point);
 	if (!pass) {
 		return NULL;
@@ -266,9 +277,9 @@ static struct wlr_render_pass *gles2_begin_buffer_pass(struct wlr_renderer *wlr_
 	return &pass->base;
 }
 
-GLuint wlr_gles2_renderer_get_buffer_fbo(struct wlr_renderer *wlr_renderer,
+GLuint wlr_gles_renderer_get_buffer_fbo(struct wlr_renderer *wlr_renderer,
 		struct wlr_buffer *wlr_buffer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles_renderer *renderer = gles_get_renderer(wlr_renderer);
 	GLuint fbo = 0;
 
 	struct wlr_egl_context prev_ctx = {0};
@@ -276,23 +287,23 @@ GLuint wlr_gles2_renderer_get_buffer_fbo(struct wlr_renderer *wlr_renderer,
 		return 0;
 	}
 
-	struct wlr_gles2_buffer *buffer = gles2_buffer_get_or_create(renderer, wlr_buffer);
+	struct wlr_gles_buffer *buffer = gles_buffer_get_or_create(renderer, wlr_buffer);
 	if (buffer) {
-		fbo = gles2_buffer_get_fbo(buffer);
+		fbo = gles_buffer_get_fbo(buffer);
 	}
 
 	wlr_egl_restore_context(&prev_ctx);
 	return fbo;
 }
 
-static struct wlr_render_timer *gles2_render_timer_create(struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+static struct wlr_render_timer *gles_render_timer_create(struct wlr_renderer *wlr_renderer) {
+	struct wlr_gles_renderer *renderer = gles_get_renderer(wlr_renderer);
 	if (!renderer->exts.EXT_disjoint_timer_query) {
 		wlr_log(WLR_ERROR, "can't create timer, EXT_disjoint_timer_query not available");
 		return NULL;
 	}
 
-	struct wlr_gles2_render_timer *timer = calloc(1, sizeof(*timer));
+	struct wlr_gles_render_timer *timer = calloc(1, sizeof(*timer));
 	if (!timer) {
 		return NULL;
 	}
@@ -307,9 +318,9 @@ static struct wlr_render_timer *gles2_render_timer_create(struct wlr_renderer *w
 	return &timer->base;
 }
 
-static int gles2_get_render_time(struct wlr_render_timer *wlr_timer) {
-	struct wlr_gles2_render_timer *timer = gles2_get_render_timer(wlr_timer);
-	struct wlr_gles2_renderer *renderer = timer->renderer;
+static int gles_get_render_time(struct wlr_render_timer *wlr_timer) {
+	struct wlr_gles_render_timer *timer = gles_get_render_timer(wlr_timer);
+	struct wlr_gles_renderer *renderer = timer->renderer;
 
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(renderer->egl, &prev_ctx);
@@ -341,9 +352,9 @@ static int gles2_get_render_time(struct wlr_render_timer *wlr_timer) {
 	return gl_render_end - timer->gl_cpu_end + cpu_nsec_total;
 }
 
-static void gles2_render_timer_destroy(struct wlr_render_timer *wlr_timer) {
-	struct wlr_gles2_render_timer *timer = wl_container_of(wlr_timer, timer, base);
-	struct wlr_gles2_renderer *renderer = timer->renderer;
+static void gles_render_timer_destroy(struct wlr_render_timer *wlr_timer) {
+	struct wlr_gles_render_timer *timer = wl_container_of(wlr_timer, timer, base);
+	struct wlr_gles_renderer *renderer = timer->renderer;
 
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(renderer->egl, &prev_ctx);
@@ -353,21 +364,21 @@ static void gles2_render_timer_destroy(struct wlr_render_timer *wlr_timer) {
 }
 
 static const struct wlr_renderer_impl renderer_impl = {
-	.destroy = gles2_destroy,
-	.get_texture_formats = gles2_get_texture_formats,
-	.get_render_formats = gles2_get_render_formats,
-	.get_drm_fd = gles2_get_drm_fd,
-	.texture_from_buffer = gles2_texture_from_buffer,
-	.begin_buffer_pass = gles2_begin_buffer_pass,
-	.render_timer_create = gles2_render_timer_create,
+	.destroy = gles_destroy,
+	.get_texture_formats = gles_get_texture_formats,
+	.get_render_formats = gles_get_render_formats,
+	.get_drm_fd = gles_get_drm_fd,
+	.texture_from_buffer = gles_texture_from_buffer,
+	.begin_buffer_pass = gles_begin_buffer_pass,
+	.render_timer_create = gles_render_timer_create,
 };
 
 static const struct wlr_render_timer_impl render_timer_impl = {
-	.get_duration_ns = gles2_get_render_time,
-	.destroy = gles2_render_timer_destroy,
+	.get_duration_ns = gles_get_render_time,
+	.destroy = gles_render_timer_destroy,
 };
 
-void push_gles2_debug_(struct wlr_gles2_renderer *renderer,
+void push_gles_debug_(struct wlr_gles_renderer *renderer,
 		const char *file, const char *func) {
 	if (!renderer->procs.glPushDebugGroupKHR) {
 		return;
@@ -379,13 +390,13 @@ void push_gles2_debug_(struct wlr_gles2_renderer *renderer,
 	renderer->procs.glPushDebugGroupKHR(GL_DEBUG_SOURCE_APPLICATION_KHR, 1, -1, str);
 }
 
-void pop_gles2_debug(struct wlr_gles2_renderer *renderer) {
+void pop_gles_debug(struct wlr_gles_renderer *renderer) {
 	if (renderer->procs.glPopDebugGroupKHR) {
 		renderer->procs.glPopDebugGroupKHR();
 	}
 }
 
-static enum wlr_log_importance gles2_log_importance_to_wlr(GLenum type) {
+static enum wlr_log_importance gles_log_importance_to_wlr(GLenum type) {
 	switch (type) {
 	case GL_DEBUG_TYPE_ERROR_KHR:               return WLR_ERROR;
 	case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR_KHR: return WLR_DEBUG;
@@ -400,14 +411,14 @@ static enum wlr_log_importance gles2_log_importance_to_wlr(GLenum type) {
 	}
 }
 
-static void gles2_log(GLenum src, GLenum type, GLuint id, GLenum severity,
+static void gles_log(GLenum src, GLenum type, GLuint id, GLenum severity,
 		GLsizei len, const GLchar *msg, const void *user) {
-	_wlr_log(gles2_log_importance_to_wlr(type), "[GLES2] %s", msg);
+	_wlr_log(gles_log_importance_to_wlr(type), "[GLES] %s", msg);
 }
 
-static GLuint compile_shader(struct wlr_gles2_renderer *renderer,
+static GLuint compile_shader(struct wlr_gles_renderer *renderer,
 		GLenum type, const GLchar *src) {
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
 
 	GLuint shader = glCreateShader(type);
 	glShaderSource(shader, 1, &src, NULL);
@@ -421,13 +432,13 @@ static GLuint compile_shader(struct wlr_gles2_renderer *renderer,
 		shader = 0;
 	}
 
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 	return shader;
 }
 
-static GLuint link_program(struct wlr_gles2_renderer *renderer,
+static GLuint link_program(struct wlr_gles_renderer *renderer,
 		const GLchar *vert_src, const GLchar *frag_src) {
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
 
 	GLuint vert = compile_shader(renderer, GL_VERTEX_SHADER, vert_src);
 	if (!vert) {
@@ -458,11 +469,11 @@ static GLuint link_program(struct wlr_gles2_renderer *renderer,
 		goto error;
 	}
 
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 	return prog;
 
 error:
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 	return 0;
 }
 
@@ -493,16 +504,17 @@ static void load_gl_proc(void *proc_ptr, const char *name) {
 	*(void **)proc_ptr = proc;
 }
 
-struct wlr_renderer *wlr_gles2_renderer_create_with_drm_fd(int drm_fd) {
-	struct wlr_egl *egl = wlr_egl_create_with_drm_fd(drm_fd);
+struct wlr_renderer *wlr_gles_renderer_create_with_drm_fd(int drm_fd,
+		enum egl_version version) {
+	struct wlr_egl *egl = wlr_egl_create_with_drm_fd(drm_fd, version);
 	if (egl == NULL) {
 		wlr_log(WLR_ERROR, "Could not initialize EGL");
 		return NULL;
 	}
 
-	struct wlr_renderer *renderer = wlr_gles2_renderer_create(egl);
+	struct wlr_renderer *renderer = wlr_gles_renderer_create(egl);
 	if (!renderer) {
-		wlr_log(WLR_ERROR, "Failed to create GLES2 renderer");
+		wlr_log(WLR_ERROR, "Failed to create GLES renderer");
 		wlr_egl_destroy(egl);
 		return NULL;
 	}
@@ -510,7 +522,7 @@ struct wlr_renderer *wlr_gles2_renderer_create_with_drm_fd(int drm_fd) {
 	return renderer;
 }
 
-struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
+struct wlr_renderer *wlr_gles_renderer_create(struct wlr_egl *egl) {
 	if (!wlr_egl_make_current(egl, NULL)) {
 		return NULL;
 	}
@@ -521,7 +533,7 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 		return NULL;
 	}
 
-	struct wlr_gles2_renderer *renderer = calloc(1, sizeof(*renderer));
+	struct wlr_gles_renderer *renderer = calloc(1, sizeof(*renderer));
 	if (renderer == NULL) {
 		return NULL;
 	}
@@ -535,11 +547,11 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	renderer->exts_str = exts_str;
 	renderer->drm_fd = -1;
 
-	wlr_log(WLR_INFO, "Creating GLES2 renderer");
+	wlr_log(WLR_INFO, "Creating GLES renderer");
 	wlr_log(WLR_INFO, "Using %s", glGetString(GL_VERSION));
 	wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
-	wlr_log(WLR_INFO, "Supported GLES2 extensions: %s", exts_str);
+	wlr_log(WLR_INFO, "Supported GLES extensions: %s", exts_str);
 
 	if (!renderer->egl->exts.EXT_image_dma_buf_import) {
 		wlr_log(WLR_ERROR, "EGL_EXT_image_dma_buf_import not supported");
@@ -547,7 +559,7 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 		return NULL;
 	}
 	if (!check_gl_ext(exts_str, "GL_EXT_texture_format_BGRA8888")) {
-		wlr_log(WLR_ERROR, "BGRA8888 format not supported by GLES2");
+		wlr_log(WLR_ERROR, "BGRA8888 format not supported by GLES");
 		free(renderer);
 		return NULL;
 	}
@@ -621,7 +633,7 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	if (renderer->exts.KHR_debug) {
 		glEnable(GL_DEBUG_OUTPUT_KHR);
 		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_KHR);
-		renderer->procs.glDebugMessageCallbackKHR(gles2_log, NULL);
+		renderer->procs.glDebugMessageCallbackKHR(gles_log, NULL);
 
 		// Silence unwanted message types
 		renderer->procs.glDebugMessageControlKHR(GL_DONT_CARE,
@@ -630,7 +642,31 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 			GL_DEBUG_TYPE_PUSH_GROUP_KHR, GL_DONT_CARE, 0, NULL, GL_FALSE);
 	}
 
-	push_gles2_debug(renderer);
+	push_gles_debug(renderer);
+
+	const char* common_vert_src;
+	const char* quad_frag_src;
+	const char* tex_rgba_frag_src;
+	const char* tex_rgbx_frag_src;
+	const char* tex_external_frag_src;
+
+	if (egl->version == GLES2) {
+#if WLR_HAS_GLES2_RENDERER
+		common_vert_src = gles2_common_vert_src;
+		quad_frag_src = gles2_quad_frag_src;
+		tex_rgba_frag_src = gles2_tex_rgba_frag_src;
+		tex_rgbx_frag_src = gles2_tex_rgbx_frag_src;
+		tex_external_frag_src = gles2_tex_external_frag_src;
+#endif
+	} else {
+#if WLR_HAS_GLES3_RENDERER
+		common_vert_src = gles3_common_vert_src;
+		quad_frag_src = gles3_quad_frag_src;
+		tex_rgba_frag_src = gles3_tex_rgba_frag_src;
+		tex_rgbx_frag_src = gles3_tex_rgbx_frag_src;
+		tex_external_frag_src = gles3_tex_external_frag_src;
+#endif
+	}
 
 	GLuint prog;
 	renderer->shaders.quad.program = prog =
@@ -677,11 +713,11 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 		renderer->shaders.tex_ext.pos_attrib = glGetAttribLocation(prog, "pos");
 	}
 
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 
 	wlr_egl_unset_current(renderer->egl);
 
-	get_gles2_shm_formats(renderer, &renderer->shm_texture_formats);
+	get_gles_shm_formats(renderer, &renderer->shm_texture_formats);
 
 	int drm_fd = wlr_renderer_get_drm_fd(&renderer->wlr_renderer);
 	uint64_t cap_syncobj_timeline;
@@ -698,7 +734,7 @@ error:
 	glDeleteProgram(renderer->shaders.tex_rgbx.program);
 	glDeleteProgram(renderer->shaders.tex_ext.program);
 
-	pop_gles2_debug(renderer);
+	pop_gles_debug(renderer);
 
 	if (renderer->exts.KHR_debug) {
 		glDisable(GL_DEBUG_OUTPUT_KHR);
@@ -711,8 +747,8 @@ error:
 	return NULL;
 }
 
-bool wlr_gles2_renderer_check_ext(struct wlr_renderer *wlr_renderer,
+bool wlr_gles_renderer_check_ext(struct wlr_renderer *wlr_renderer,
 		const char *ext) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles_renderer *renderer = gles_get_renderer(wlr_renderer);
 	return check_gl_ext(renderer->exts_str, ext);
 }
