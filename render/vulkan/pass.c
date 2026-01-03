@@ -319,6 +319,84 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 
 	vkCmdEndRenderPass(render_cb->vk);
 
+	if (render_buffer->has_bridge) {
+		VkImageLayout bridge_old_layout = VK_IMAGE_LAYOUT_GENERAL;
+		if (!render_buffer->bridge.transitioned) {
+			bridge_old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
+			render_buffer->bridge.transitioned = true;
+		}
+
+		VkImageMemoryBarrier image_barrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
+				| VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
+			.oldLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image = render_buffer->image,
+			.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.subresourceRange.layerCount = 1,
+			.subresourceRange.levelCount = 1,
+		};
+		vkCmdPipelineBarrier(render_cb->vk, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &image_barrier);
+
+		VkImageMemoryBarrier bridge_barrier = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+			.srcAccessMask = 0,
+			.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+			.oldLayout = bridge_old_layout,
+			.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_FOREIGN_EXT,
+			.dstQueueFamilyIndex = renderer->dev->queue_family,
+			.image = render_buffer->bridge.image,
+			.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.subresourceRange.layerCount = 1,
+			.subresourceRange.levelCount = 1,
+		};
+		vkCmdPipelineBarrier(render_cb->vk, 0, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0, NULL, 1, &bridge_barrier);
+
+		int region_rects_len;
+		const pixman_region32_t *regions = rect_union_evaluate(&pass->updated_region);
+		const pixman_box32_t *clip_rects = pixman_region32_rectangles(regions, &region_rects_len);
+
+		VkImageCopy *vkRegions = calloc(region_rects_len, sizeof(VkImageCopy));
+		if (vkRegions == NULL) {
+			wlr_log_errno(WLR_ERROR, "Allocation failed");
+			goto error;
+		}
+
+		VkImageSubresourceLayers image_subresource_layers = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.mipLevel = 0,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+		for(int i = 0; i < region_rects_len; i++) {
+			vkRegions[i] = (VkImageCopy){
+				.srcSubresource = image_subresource_layers,
+				.srcOffset.x = clip_rects[i].x1,
+				.srcOffset.y = clip_rects[i].y1,
+				.srcOffset.z = 0,
+				.dstSubresource = image_subresource_layers,
+				.dstOffset.x = clip_rects[i].x1,
+				.dstOffset.y = clip_rects[i].y1,
+				.dstOffset.z = 0,
+				.extent.width = clip_rects[i].x2 - clip_rects[i].x1,
+				.extent.height = clip_rects[i].y2 - clip_rects[i].y1,
+				.extent.depth = 1,
+			};
+		}
+
+		vkCmdCopyImage(render_cb->vk,
+			render_buffer->image, VK_IMAGE_LAYOUT_GENERAL,
+			render_buffer->bridge.image, VK_IMAGE_LAYOUT_GENERAL,
+			region_rects_len, vkRegions);
+
+		free(vkRegions);
+	}
+
 	size_t pass_textures_len = pass->textures.size / sizeof(struct wlr_vk_render_pass_texture);
 	size_t render_wait_cap = pass_textures_len * WLR_DMABUF_MAX_PLANES;
 	render_wait = calloc(render_wait_cap, sizeof(*render_wait));
@@ -483,11 +561,12 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
 		.srcQueueFamilyIndex = renderer->dev->queue_family,
 		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_FOREIGN_EXT,
-		.image = render_buffer->image,
+		.image = render_buffer->has_bridge ? render_buffer->bridge.image : render_buffer->image,
 		.oldLayout = VK_IMAGE_LAYOUT_GENERAL,
 		.newLayout = VK_IMAGE_LAYOUT_GENERAL,
-		.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
-			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+		.srcAccessMask = render_buffer->has_bridge
+			? VK_ACCESS_TRANSFER_WRITE_BIT
+			: VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		.dstAccessMask = 0, // ignored anyways
 		.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 		.subresourceRange.layerCount = 1,
@@ -500,7 +579,12 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		0, 0, NULL, 0, NULL, barrier_count, acquire_barriers);
 
-	vkCmdPipelineBarrier(render_cb->vk, VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT,
+	VkPipelineStageFlags release_barrier_src_stage = VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+	if (render_buffer->has_bridge) {
+		release_barrier_src_stage |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+	}
+
+	vkCmdPipelineBarrier(render_cb->vk, release_barrier_src_stage,
 		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL,
 		barrier_count, release_barriers);
 
