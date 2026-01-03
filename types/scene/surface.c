@@ -5,6 +5,7 @@
 #include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -106,6 +107,13 @@ static void handle_scene_buffer_outputs_update(
 		wlr_color_manager_v1_set_surface_preferred_image_description(scene->color_manager_v1,
 			surface->surface, &img_desc);
 	}
+
+	struct wlr_fifo_v1 *fifo;
+	wl_list_for_each(fifo, &scene->fifo_surfaces, link) {
+		if (fifo->surface == surface->surface && surface->buffer->active_outputs) {
+			wlr_fifo_v1_set_output(fifo, surface->buffer->primary_output->output);
+		}
+	}
 }
 
 static void handle_scene_buffer_output_enter(
@@ -141,6 +149,8 @@ static void handle_scene_buffer_output_sample(
 	} else {
 		wlr_presentation_surface_textured_on_output(surface->surface, output);
 	}
+
+	wlr_surface_textured_on_output(surface->surface, output);
 }
 
 static void handle_scene_buffer_frame_done(

@@ -730,6 +730,12 @@ static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	wl_signal_emit_mutable(&surface->events.destroy, surface);
 	wlr_addon_set_finish(&surface->addons);
 
+	struct wlr_surface_output *surface_output, *surface_output_tmp;
+	wl_list_for_each_safe(surface_output, surface_output_tmp,
+			&surface->current_outputs, link) {
+		surface_output_destroy(surface_output);
+	}
+
 	assert(wl_list_empty(&surface->events.client_commit.listener_list));
 	assert(wl_list_empty(&surface->events.commit.listener_list));
 	assert(wl_list_empty(&surface->events.map.listener_list));
@@ -755,12 +761,6 @@ static void surface_handle_resource_destroy(struct wl_resource *resource) {
 	pixman_region32_fini(&surface->input_region);
 	if (surface->buffer != NULL) {
 		wlr_buffer_unlock(&surface->buffer->base);
-	}
-
-	struct wlr_surface_output *surface_output, *surface_output_tmp;
-	wl_list_for_each_safe(surface_output, surface_output_tmp,
-			&surface->current_outputs, link) {
-		surface_output_destroy(surface_output);
 	}
 
 	free(surface);
@@ -1051,8 +1051,17 @@ struct wlr_surface *wlr_surface_surface_at(struct wlr_surface *surface,
 
 static void surface_output_destroy(struct wlr_surface_output *surface_output) {
 	wl_list_remove(&surface_output->bind.link);
+	wl_list_remove(&surface_output->output_commit.link);
+	wl_list_remove(&surface_output->surface_commit.link);
 	wl_list_remove(&surface_output->destroy.link);
 	wl_list_remove(&surface_output->link);
+
+	struct wlr_surface_output_commit *commit, *tmp;
+	wl_list_for_each_safe(commit, tmp, &surface_output->commits, link) {
+		wl_list_remove(&commit->link);
+		wl_list_remove(&commit->output_present.link);
+		free(commit);
+	}
 
 	free(surface_output);
 }
@@ -1067,6 +1076,87 @@ static void surface_handle_output_bind(struct wl_listener *listener,
 	if (client == wl_resource_get_client(evt->resource)) {
 		wl_surface_send_enter(surface_output->surface->resource, evt->resource);
 	}
+}
+
+static void commit_handle_output_present(struct wl_listener *listener,
+		void *data) {
+	struct wlr_surface_output_commit *commit =
+		wl_container_of(listener, commit, output_present);
+	struct wlr_surface_output *surface_output = commit->surface_output;
+
+	struct wlr_output_event_present *output_event = data;
+	assert(commit->output_seq >= output_event->commit_seq);
+
+	if (commit->output_seq > output_event->commit_seq) {
+		return;
+	}
+
+	struct wlr_surface_output_event_present surface_output_event_present = {0};
+	surface_output_event_present.commit = commit;
+	surface_output_event_present.when = output_event->when;
+	commit->presented_on_output = output_event->presented;
+	wl_signal_emit_mutable(&surface_output->events.present, &surface_output_event_present);
+
+	wl_list_remove(&commit->link);
+	wl_list_remove(&commit->output_present.link);
+	free(commit);
+}
+
+static void surface_handle_output_commit(struct wl_listener *listener,
+		void *data) {
+	struct wlr_surface_output *surface_output =
+		wl_container_of(listener, surface_output, output_commit);
+	if (!surface_output->current_commit.textured_on_output) {
+		return;
+	}
+
+	struct wlr_surface_output_commit *commit = calloc(1, sizeof(*commit));
+	*commit = surface_output->current_commit;
+	commit->committed_on_output = true;
+	commit->output_present.notify = commit_handle_output_present;
+	wl_signal_add(&surface_output->output->events.present, &commit->output_present);
+	wl_list_insert(&surface_output->commits, &commit->link);
+
+	// reset current commit
+	surface_output->current_commit = (struct wlr_surface_output_commit){0};
+}
+
+void wlr_surface_textured_on_output(struct wlr_surface *surface,
+		struct wlr_output *output) {
+	struct wlr_surface_output *surface_output;
+	wl_list_for_each(surface_output, &surface->current_outputs, link) {
+		if (surface_output->output == output) {
+			break;
+		}
+	}
+	assert(surface_output->output == output);
+
+	if (!surface_output->current_commit.committed_on_surface) {
+		return;
+	}
+
+	surface_output->current_commit.textured_on_output = true;
+	surface_output->current_commit.output_seq = surface_output->output->commit_seq+1;
+}
+
+static void surface_handle_surface_commit(struct wl_listener *listener,
+		void *data) {
+	struct wlr_surface_output *surface_output =
+		wl_container_of(listener, surface_output, surface_commit);
+	if (wl_list_empty(&surface_output->events.present.listener_list)) {
+		return;
+	}
+
+	struct wlr_surface_output_commit *current_commit = &surface_output->current_commit;
+	// if a surface commit is replaced by another one before it is latched onto the output,
+	// it won't be presented.
+	if (current_commit->committed_on_surface) {
+		struct wlr_surface_output_event_present event_present = { .commit = current_commit };
+		wl_signal_emit_mutable(&surface_output->events.present, &event_present);
+	}
+	current_commit->surface_output = surface_output;
+	current_commit->committed_on_surface = true;
+	current_commit->surface_seq = surface_output->surface->current.seq;
 }
 
 static void surface_handle_output_destroy(struct wl_listener *listener,
@@ -1093,10 +1183,17 @@ void wlr_surface_send_enter(struct wlr_surface *surface,
 		return;
 	}
 	surface_output->bind.notify = surface_handle_output_bind;
+	surface_output->output_commit.notify = surface_handle_output_commit;
+	surface_output->surface_commit.notify = surface_handle_surface_commit;
 	surface_output->destroy.notify = surface_handle_output_destroy;
 
 	wl_signal_add(&output->events.bind, &surface_output->bind);
+	wl_signal_add(&output->events.commit, &surface_output->output_commit);
 	wl_signal_add(&output->events.destroy, &surface_output->destroy);
+	wl_signal_add(&surface->events.commit, &surface_output->surface_commit);
+
+	wl_signal_init(&surface_output->events.present);
+	wl_list_init(&surface_output->commits);
 
 	surface_output->surface = surface;
 	surface_output->output = output;
