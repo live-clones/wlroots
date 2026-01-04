@@ -696,12 +696,16 @@ static void scene_node_update(struct wlr_scene_node *node,
 			restack_xwayland_surface_below(node);
 		}
 #endif
-		if (damage) {
-			scene_update_region(scene, damage);
-			scene_damage_outputs(scene, damage);
-			pixman_region32_fini(damage);
+
+		pixman_region32_t visible;
+		if (!damage) {
+			pixman_region32_init(&visible);
+			damage = &visible;
 		}
 
+		scene_update_region(scene, damage);
+		scene_damage_outputs(scene, damage);
+		pixman_region32_fini(damage);
 		return;
 	}
 
