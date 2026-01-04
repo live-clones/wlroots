@@ -629,20 +629,23 @@ static void scene_node_bounds(struct wlr_scene_node *node,
 }
 
 static void scene_node_update_region(struct wlr_scene_node *node,
-		int lx, int ly, struct scene_update_data *data) {
-	if (!node->enabled) {
-		return;
-	}
-
+		int lx, int ly, bool enabled, struct scene_update_data *data) {
 	lx += node->x;
 	ly += node->y;
+	enabled = enabled && node->enabled;
 
 	if (node->type == WLR_SCENE_NODE_TREE) {
 		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
 		struct wlr_scene_node *child;
 		wl_list_for_each_reverse(child, &scene_tree->children, link) {
-			scene_node_update_region(child, lx, ly, data);
+			scene_node_update_region(child, lx, ly, enabled, data);
 		}
+		return;
+	}
+
+	if (!enabled) {
+		pixman_region32_clear(&node->visible);
+		update_node_update_outputs(node, data->outputs, NULL, NULL);
 		return;
 	}
 
@@ -696,7 +699,7 @@ static void scene_update_region(struct wlr_scene *scene,
 	};
 
 	// update node visibility and output enter/leave events
-	scene_node_update_region(&scene->tree.node, 0, 0, &data);
+	scene_node_update_region(&scene->tree.node, 0, 0, true, &data);
 
 	pixman_region32_fini(&visible);
 }
