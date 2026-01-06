@@ -25,33 +25,25 @@ enum wlr_ext_workspace_v1_request_type {
 struct wlr_ext_workspace_v1_request {
 	enum wlr_ext_workspace_v1_request_type type;
 	struct wl_list link; // wlr_ext_workspace_manager_v1_resource.requests
-};
-
-struct wlr_ext_workspace_v1_request_create_workspace {
-	struct wlr_ext_workspace_v1_request base;
-	char *name;
-	struct wlr_ext_workspace_group_handle_v1 *group;
-};
-
-struct wlr_ext_workspace_v1_request_activate {
-	struct wlr_ext_workspace_v1_request base;
-	struct wlr_ext_workspace_handle_v1 *workspace;
-};
-
-struct wlr_ext_workspace_v1_request_deactivate {
-	struct wlr_ext_workspace_v1_request base;
-	struct wlr_ext_workspace_handle_v1 *workspace;
-};
-
-struct wlr_ext_workspace_v1_request_assign {
-	struct wlr_ext_workspace_v1_request base;
-	struct wlr_ext_workspace_handle_v1 *workspace;
-	struct wlr_ext_workspace_group_handle_v1 *group;
-};
-
-struct wlr_ext_workspace_v1_request_remove {
-	struct wlr_ext_workspace_v1_request base;
-	struct wlr_ext_workspace_handle_v1 *workspace;
+	union {
+		struct {
+			char *name;
+			struct wlr_ext_workspace_group_handle_v1 *group;
+		} create_workspace;
+		struct {
+			struct wlr_ext_workspace_handle_v1 *workspace;
+		} activate;
+		struct {
+			struct wlr_ext_workspace_handle_v1 *workspace;
+		} deactivate;
+		struct {
+			struct wlr_ext_workspace_handle_v1 *workspace;
+			struct wlr_ext_workspace_group_handle_v1 *group;
+		} assign;
+		struct {
+			struct wlr_ext_workspace_handle_v1 *workspace;
+		} remove;
+	} u;
 };
 
 struct wlr_ext_workspace_v1_commit_event {
