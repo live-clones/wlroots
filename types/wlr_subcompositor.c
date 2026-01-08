@@ -118,6 +118,7 @@ static void subsurface_handle_place_above(struct wl_client *client,
 		node = &sibling->pending.link;
 	}
 
+	subsurface->parent->pending.committed |= WLR_SURFACE_STATE_SUBSURFACES;
 	wl_list_remove(&subsurface->pending.link);
 	wl_list_insert(node, &subsurface->pending.link);
 }
@@ -148,6 +149,7 @@ static void subsurface_handle_place_below(struct wl_client *client,
 		node = &sibling->pending.link;
 	}
 
+	subsurface->parent->pending.committed |= WLR_SURFACE_STATE_SUBSURFACES;
 	wl_list_remove(&subsurface->pending.link);
 	wl_list_insert(node->prev, &subsurface->pending.link);
 }
@@ -380,6 +382,7 @@ static void subcompositor_handle_get_subsurface(struct wl_client *client,
 	wl_signal_add(&parent->events.destroy, &subsurface->parent_destroy);
 	subsurface->parent_destroy.notify = subsurface_handle_parent_destroy;
 
+	subsurface->parent->pending.committed |= WLR_SURFACE_STATE_SUBSURFACES;
 	wl_list_remove(&subsurface->pending.link);
 	wl_list_insert(parent->pending.subsurfaces_above.prev,
 		&subsurface->pending.link);
