@@ -11,6 +11,7 @@
 #include <xf86drm.h>
 #include "config.h"
 #include "linux-drm-syncobj-v1-protocol.h"
+#include "util/trace.h"
 
 #define LINUX_DRM_SYNCOBJ_V1_VERSION 1
 
@@ -214,6 +215,9 @@ static void surface_commit_handle_surface_destroy(struct wl_listener *listener,
 // Block the surface commit until the fence materializes
 static bool lock_surface_commit(struct wlr_linux_drm_syncobj_surface_v1 *surface,
 		struct wlr_drm_syncobj_timeline *timeline, uint64_t point) {
+	wlr_trace("linux_drm_syncobj_v1_commit (handle=%"PRIu32" point=%"PRIu64")",
+		timeline->handle, point);
+
 	uint32_t flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE;
 
 	bool already_materialized = false;
@@ -474,6 +478,9 @@ struct release_signaller {
 
 static void release_signaller_handle_buffer_release(struct wl_listener *listener, void *data) {
 	struct release_signaller *signaller = wl_container_of(listener, signaller, buffer_release);
+
+	wlr_trace("linux_drm_syncobj_v1_release (handle=%"PRIu32" point=%"PRIu64")",
+		signaller->timeline->handle, signaller->point);
 
 	if (drmSyncobjTimelineSignal(signaller->timeline->drm_fd, &signaller->timeline->handle,
 			&signaller->point, 1) != 0) {
