@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <assert.h>
+#include <math.h>
 #include <pixman.h>
+#include <stdbool.h>
 #include <time.h>
 #include <unistd.h>
 #include <wlr/render/drm_syncobj.h>
@@ -77,7 +79,12 @@ out:
 
 static void render(const struct wlr_fbox *box, const pixman_region32_t *clip, GLint attrib) {
 	pixman_region32_t region;
-	pixman_region32_init_rect(&region, round(box->x), round(box->y), round(box->width), round(box->height));
+	// Expand region to include edge fragments for AA
+	pixman_region32_init_rect(&region,
+		floor(box->x),
+		floor(box->y),
+		ceil(box->x + box->width) - floor(box->x),
+		ceil(box->y + box->height) - floor(box->y));
 
 	if (clip) {
 		pixman_region32_intersect(&region, &region, clip);
@@ -247,6 +254,12 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
 	set_tex_matrix(shader->tex_proj, options->transform, &src_box);
 
+	glUniform4f(shader->dst_bounds,
+		(float)dst_box.x,
+		(float)dst_box.y,
+		(float)(dst_box.x + dst_box.width),
+		(float)(dst_box.y + dst_box.height));
+
 	render(&dst_box, options->clip, shader->pos_attrib);
 
 	glBindTexture(texture->target, 0);
@@ -269,6 +282,12 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 	set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
 	glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
+
+	glUniform4f(renderer->shaders.quad.dst_bounds,
+		(float)box.x,
+		(float)box.y,
+		(float)(box.x + box.width),
+		(float)(box.y + box.height));
 
 	render(&box, options->clip, renderer->shaders.quad.pos_attrib);
 

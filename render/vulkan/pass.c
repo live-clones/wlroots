@@ -1,5 +1,7 @@
 #include <assert.h>
 #include <drm_fourcc.h>
+#include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
@@ -704,9 +706,17 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 	switch (options->blend_mode) {
 	case WLR_RENDER_BLEND_MODE_PREMULTIPLIED:;
+		// Expand the rendered region to include edge pixels for AA
+		struct wlr_fbox render_box = {
+			.x = floor(box.x),
+			.y = floor(box.y),
+			.width = ceil(box.x + box.width) - floor(box.x),
+			.height = ceil(box.y + box.height) - floor(box.y),
+		};
+
 		float proj[9], matrix[9];
 		wlr_matrix_identity(proj);
-		wlr_matrix_project_box(matrix, &box, WL_OUTPUT_TRANSFORM_NORMAL, proj);
+		wlr_matrix_project_box(matrix, &render_box, WL_OUTPUT_TRANSFORM_NORMAL, proj);
 		wlr_matrix_multiply(matrix, pass->projection, matrix);
 
 		struct wlr_vk_pipeline *pipe = setup_get_or_create_pipeline(
@@ -726,12 +736,22 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		};
 		encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
+		struct wlr_vk_frag_quad_pcr_data frag_pcr_data = {
+			.color = { linear_color[0], linear_color[1], linear_color[2], linear_color[3] },
+			.dst_bounds = {
+				(float)box.x,
+				(float)box.y,
+				(float)(box.x + box.width),
+				(float)(box.y + box.height),
+			},
+		};
+
 		bind_pipeline(pass, pipe->vk);
 		vkCmdPushConstants(cb, pipe->layout->vk,
 			VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vert_pcr_data), &vert_pcr_data);
 		vkCmdPushConstants(cb, pipe->layout->vk,
-			VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data), sizeof(float) * 4,
-			linear_color);
+			VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data),
+			sizeof(frag_pcr_data), &frag_pcr_data);
 
 		for (int i = 0; i < clip_rects_len; i++) {
 			VkRect2D rect;
@@ -792,20 +812,39 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	wlr_render_texture_options_get_dst_box(options, &dst_box);
 	float alpha = wlr_render_texture_options_get_alpha(options);
 
+	// Expand the rendered region to include edge pixels for AA
+	struct wlr_fbox render_box = {
+		.x = floor(dst_box.x),
+		.y = floor(dst_box.y),
+		.width = ceil(dst_box.x + dst_box.width) - floor(dst_box.x),
+		.height = ceil(dst_box.y + dst_box.height) - floor(dst_box.y),
+	};
+
 	float proj[9], matrix[9];
 	wlr_matrix_identity(proj);
-	wlr_matrix_project_box(matrix, &dst_box, options->transform, proj);
+	wlr_matrix_project_box(matrix, &render_box, options->transform, proj);
 	wlr_matrix_multiply(matrix, pass->projection, matrix);
 
+	// Base UV coordinates for sampling src_box from texture
+	float uv_off_x = src_box.x / options->texture->width;
+	float uv_off_y = src_box.y / options->texture->height;
+	float uv_size_x = src_box.width / options->texture->width;
+	float uv_size_y = src_box.height / options->texture->height;
+
+	// Adjust UV offset and size to compensate for expanded render region
+	float x_expand = (render_box.x - dst_box.x) / dst_box.width;
+	float y_expand = (render_box.y - dst_box.y) / dst_box.height;
+	float x_scale = render_box.width / dst_box.width;
+	float y_scale = render_box.height / dst_box.height;
+
+	uv_off_x += x_expand * uv_size_x;
+	uv_off_y += y_expand * uv_size_y;
+	uv_size_x *= x_scale;
+	uv_size_y *= y_scale;
+
 	struct wlr_vk_vert_pcr_data vert_pcr_data = {
-		.uv_off = {
-			src_box.x / options->texture->width,
-			src_box.y / options->texture->height,
-		},
-		.uv_size = {
-			src_box.width / options->texture->width,
-			src_box.height / options->texture->height,
-		},
+		.uv_off = { uv_off_x, uv_off_y },
+		.uv_size = { uv_size_x, uv_size_y },
 	};
 	encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
@@ -901,6 +940,12 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	struct wlr_vk_frag_texture_pcr_data frag_pcr_data = {
 		.alpha = alpha,
 		.luminance_multiplier = luminance_multiplier,
+		.dst_bounds = {
+			(float)dst_box.x,
+			(float)dst_box.y,
+			(float)(dst_box.x + dst_box.width),
+			(float)(dst_box.y + dst_box.height),
+		},
 	};
 	encode_color_matrix(color_matrix, frag_pcr_data.matrix);
 

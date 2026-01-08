@@ -368,6 +368,13 @@ struct wlr_vk_frag_texture_pcr_data {
 	float matrix[4][4]; // only a 3x3 subset is used
 	float alpha;
 	float luminance_multiplier;
+	float _pad[2]; // padding for vec4 alignment
+	float dst_bounds[4]; // x, y, x+width, y+height
+};
+
+struct wlr_vk_frag_quad_pcr_data {
+	float color[4];
+	float dst_bounds[4]; // x, y, x+width, y+height
 };
 
 struct wlr_vk_frag_output_pcr_data {
