@@ -22,6 +22,8 @@ enum wlr_ext_workspace_v1_request_type {
 	WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE,
 };
 
+// Workspaces or groups in the request are cleared after they are destroyed,
+// even inside the commit handler.
 struct wlr_ext_workspace_v1_request {
 	enum wlr_ext_workspace_v1_request_type type;
 	struct wl_list link; // wlr_ext_workspace_manager_v1_resource.requests

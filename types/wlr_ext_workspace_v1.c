@@ -291,42 +291,38 @@ static void destroy_requests(struct wlr_ext_workspace_manager_v1_resource *manag
 	}
 }
 
-static void destroy_request_by(struct wlr_ext_workspace_manager_v1_resource *manager_res,
+static void clear_requests_by(struct wlr_ext_workspace_manager_v1_resource *manager_res,
 		struct wlr_ext_workspace_group_handle_v1 *group,
 		struct wlr_ext_workspace_handle_v1 *workspace) {
 	struct wlr_ext_workspace_v1_request *req, *tmp;
 	wl_list_for_each_safe(req, tmp, &manager_res->requests, link) {
 		switch (req->type) {
 		case WLR_EXT_WORKSPACE_V1_REQUEST_CREATE_WORKSPACE:;
-			if (req->u.create_workspace.group == group) {
-				free(req->u.create_workspace.name);
-				wl_list_remove(&req->link);
-				free(req);
+			if (group && req->u.create_workspace.group == group) {
+				req->u.create_workspace.group = NULL;
 			}
 			break;
 		case WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE:;
-			if (req->u.activate.workspace == workspace) {
-				wl_list_remove(&req->link);
-				free(req);
+			if (workspace && req->u.activate.workspace == workspace) {
+				req->u.activate.workspace = NULL;
 			}
 			break;
 		case WLR_EXT_WORKSPACE_V1_REQUEST_DEACTIVATE:;
-			if (req->u.deactivate.workspace == workspace) {
-				wl_list_remove(&req->link);
-				free(req);
+			if (workspace && req->u.deactivate.workspace == workspace) {
+				req->u.deactivate.workspace = NULL;
 			}
 			break;
 		case WLR_EXT_WORKSPACE_V1_REQUEST_ASSIGN:;
-			if (req->u.assign.workspace == workspace ||
-					req->u.assign.group == group) {
-				wl_list_remove(&req->link);
-				free(req);
+			if (workspace && req->u.assign.workspace == workspace) {
+				req->u.assign.workspace = NULL;
+			}
+			if (group && req->u.assign.group == group) {
+				req->u.assign.group = NULL;
 			}
 			break;
 		case WLR_EXT_WORKSPACE_V1_REQUEST_REMOVE:;
-			if (req->u.remove.workspace == workspace) {
-				wl_list_remove(&req->link);
-				free(req);
+			if (workspace && req->u.remove.workspace == workspace) {
+				req->u.remove.workspace = NULL;
 			}
 			break;
 		}
@@ -685,7 +681,7 @@ void wlr_ext_workspace_group_handle_v1_destroy(
 
 	struct wlr_ext_workspace_manager_v1_resource *manager_res;
 	wl_list_for_each(manager_res, &group->manager->resources, link) {
-		destroy_request_by(manager_res, group, NULL);
+		clear_requests_by(manager_res, group, NULL);
 	}
 
 	struct wlr_ext_workspace_v1_group_output *group_output, *tmp3;
@@ -834,7 +830,7 @@ void wlr_ext_workspace_handle_v1_destroy(struct wlr_ext_workspace_handle_v1 *wor
 
 	struct wlr_ext_workspace_manager_v1_resource *manager_res;
 	wl_list_for_each(manager_res, &workspace->manager->resources, link) {
-		destroy_request_by(manager_res, NULL, workspace);
+		clear_requests_by(manager_res, NULL, workspace);
 	}
 
 	manager_schedule_done(workspace->manager);
