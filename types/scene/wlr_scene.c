@@ -569,25 +569,6 @@ static void restack_xwayland_surface(struct wlr_scene_node *node,
 
 	data->restack_above = xwayland_surface;
 }
-
-static void restack_xwayland_surface_below(struct wlr_scene_node *node) {
-	if (node->type == WLR_SCENE_NODE_TREE) {
-		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
-		struct wlr_scene_node *child;
-		wl_list_for_each(child, &scene_tree->children, link) {
-			restack_xwayland_surface_below(child);
-		}
-		return;
-	}
-
-	struct wlr_xwayland_surface *xwayland_surface =
-		scene_node_try_get_managed_xwayland_surface(node);
-	if (!xwayland_surface) {
-		return;
-	}
-
-	wlr_xwayland_surface_restack(xwayland_surface, NULL, XCB_STACK_MODE_BELOW);
-}
 #endif
 
 static bool scene_node_update_iterator(struct wlr_scene_node *node,
@@ -685,18 +666,62 @@ static void scene_update_region(struct wlr_scene *scene,
 	pixman_region32_fini(&visible);
 }
 
+static void scene_node_cleanup_when_disabled(struct wlr_scene_node *node,
+		bool xwayland_restack, struct wl_list *outputs) {
+	if (node->type == WLR_SCENE_NODE_TREE) {
+		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
+		struct wlr_scene_node *child;
+		wl_list_for_each(child, &scene_tree->children, link) {
+			if (!child->enabled) {
+				continue;
+			}
+
+			scene_node_cleanup_when_disabled(child, xwayland_restack, outputs);
+		}
+		return;
+	}
+
+	pixman_region32_clear(&node->visible);
+	update_node_update_outputs(node, outputs, NULL, NULL);
+
+#if WLR_HAS_XWAYLAND
+	if (xwayland_restack) {
+		struct wlr_xwayland_surface *xwayland_surface =
+			scene_node_try_get_managed_xwayland_surface(node);
+		if (!xwayland_surface) {
+			return;
+		}
+
+		wlr_xwayland_surface_restack(xwayland_surface, NULL, XCB_STACK_MODE_BELOW);
+	}
+#endif
+}
+
+/**
+ * Updates the nodes visibility, xwayland restacking, send leave/enter events
+ * and damages the screen. The damage region is used to not only damage the
+ * screen, but to direct the update logic to only update certain parts of the
+ * screen and not the whole thing. If a NULL damage is given, the damage is
+ * assumed to be the previous nodes visibility.
+ *
+ * Currently, the only usage for an explicit damage is for update scenarios where
+ * the scene node might be enabled/disabled. If the scene node is disabled, the
+ * update logic will ignore the node. This is normally desirable as most update
+ * scenarios like updating the color or whatever. However, it's not what we want
+ * when disabling the node. Note that reparenting the node could lead to the node
+ * being reparented to a disabled super tree.
+ */
 static void scene_node_update(struct wlr_scene_node *node,
 		pixman_region32_t *damage) {
 	struct wlr_scene *scene = scene_node_get_root(node);
 
 	int x, y;
 	if (!wlr_scene_node_coords(node, &x, &y)) {
-#if WLR_HAS_XWAYLAND
-		if (scene->restack_xwayland_surfaces) {
-			restack_xwayland_surface_below(node);
-		}
-#endif
+		// We assume explicit damage on a disabled tree means the node was just
+		// disabled.
 		if (damage) {
+			scene_node_cleanup_when_disabled(node, scene->restack_xwayland_surfaces, &scene->outputs);
+
 			scene_update_region(scene, damage);
 			scene_damage_outputs(scene, damage);
 			pixman_region32_fini(damage);
