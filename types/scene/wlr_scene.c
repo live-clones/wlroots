@@ -1351,10 +1351,6 @@ bool wlr_scene_node_coords(struct wlr_scene_node *node,
 static void scene_node_for_each_scene_buffer(struct wlr_scene_node *node,
 		int lx, int ly, wlr_scene_buffer_iterator_func_t user_iterator,
 		void *user_data) {
-	if (!node->enabled) {
-		return;
-	}
-
 	lx += node->x;
 	ly += node->y;
 
