@@ -48,6 +48,8 @@ noreturn static void exec_xwayland(struct wlr_xwayland_server *server,
 	argv[i++] = server->display_name;
 	argv[i++] = "-rootless";
 	argv[i++] = "-core";
+	argv[i++] = "-extension";
+	argv[i++] = "XTEST";
 
 	argv[i++] = "-terminate";
 #if HAVE_XWAYLAND_TERMINATE_DELAY
