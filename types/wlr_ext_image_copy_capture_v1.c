@@ -425,8 +425,7 @@ static void session_handle_source_frame(struct wl_listener *listener, void *data
 	pixman_region32_union(&session->damage, &session->damage, event->damage);
 
 	struct wlr_ext_image_copy_capture_frame_v1 *frame = session->frame;
-	if (frame != NULL && frame->capturing &&
-			!pixman_region32_empty(&session->damage)) {
+	if (frame != NULL && frame->capturing) {
 		pixman_region32_union(&frame->buffer_damage,
 			&frame->buffer_damage, &session->damage);
 
