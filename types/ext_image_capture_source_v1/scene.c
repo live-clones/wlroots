@@ -281,7 +281,11 @@ static void source_handle_output_frame(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	if (!wlr_scene_output_needs_frame(source->scene_output)) {
+	if (pixman_region32_empty(&source->scene_output->pending_commit_damage)) {
+		// We do not need to render but frame callbacks still need to be sent
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		wlr_scene_output_send_frame_done(source->scene_output, &now);
 		return;
 	}
 
