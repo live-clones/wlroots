@@ -6,9 +6,20 @@
 #include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_data_receiver.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 #include "types/wlr_data_device.h"
+
+// Empty destroy function for simple data receiver implementation
+static void handle_data_receiver_simple_destroy(struct wlr_data_receiver *receiver) {
+	// No-op: receiver is embedded in another structure and will be freed with it
+}
+
+// Simple data receiver implementation with no callbacks
+static const struct wlr_data_receiver_impl wlr_data_receiver_simple_impl = {
+	.destroy = handle_data_receiver_simple_destroy,
+};
 
 static const struct wl_data_offer_interface data_offer_impl;
 
@@ -88,7 +99,7 @@ static void data_offer_handle_accept(struct wl_client *client,
 		return;
 	}
 
-	wlr_data_source_accept(offer->source, serial, mime_type);
+	wlr_data_source_accept(offer->source, serial, mime_type, &offer->receiver);
 }
 
 static void data_offer_handle_receive(struct wl_client *client,
@@ -99,7 +110,11 @@ static void data_offer_handle_receive(struct wl_client *client,
 		return;
 	}
 
-	wlr_data_source_send(offer->source, mime_type, fd);
+	// Set receiver fd for this transfer
+	offer->receiver.fd = fd;
+	assert(client == offer->receiver.client);
+
+	wlr_data_source_send(offer->source, mime_type, &offer->receiver);
 }
 
 static void data_offer_source_dnd_finish(struct wlr_data_offer *offer) {
@@ -208,6 +223,8 @@ void data_offer_destroy(struct wlr_data_offer *offer) {
 		}
 	}
 
+	wlr_data_receiver_destroy(&offer->receiver);
+
 	// Make the resource inert
 	wl_resource_set_user_data(offer->resource, NULL);
 
@@ -260,6 +277,10 @@ struct wlr_data_offer *data_offer_create(struct wl_resource *device_resource,
 	}
 	wl_resource_set_implementation(offer->resource, &data_offer_impl, offer,
 		data_offer_handle_resource_destroy);
+
+	wlr_data_receiver_init(&offer->receiver, &wlr_data_receiver_simple_impl);
+	offer->receiver.client = client;
+	wl_client_get_credentials(client, &offer->receiver.pid, NULL, NULL);
 
 	switch (type) {
 	case WLR_DATA_OFFER_SELECTION:
