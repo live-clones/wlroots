@@ -51,7 +51,7 @@ static void xwm_dnd_send_event(struct wlr_xwm *xwm, xcb_atom_t type,
 
 	xwm_send_event_with_size(xwm->xcb_conn,
 		0, // propagate
-		dest->window_id,
+		dest->proxy_window ? dest->proxy_window : dest->window_id,
 		XCB_EVENT_MASK_NO_EVENT,
 		&event,
 		sizeof(event));
@@ -245,6 +245,39 @@ static void drop_focus_handle_destroy(struct wl_listener *listener, void *data) 
 	xwm->drop_focus = NULL;
 }
 
+static bool property_reply_is_valid(xcb_get_property_reply_t *reply) {
+    return reply && reply->type == XCB_ATOM_WINDOW && reply->format == 32 &&
+           xcb_get_property_value_length(reply) == sizeof(xcb_window_t);
+}
+
+static xcb_window_t get_proxy_window(struct wlr_xwm *xwm, xcb_window_t window) {
+    xcb_window_t target_window = window;
+    xcb_get_property_cookie_t proxy_cookie =
+        xcb_get_property(xwm->xcb_conn, 0, window, xwm->atoms[DND_PROXY], XCB_ATOM_WINDOW, 0, 1);
+    xcb_get_property_reply_t *proxy_reply =
+        xcb_get_property_reply(xwm->xcb_conn, proxy_cookie, NULL);
+
+    if (property_reply_is_valid(proxy_reply)) {
+        xcb_window_t proxy_window = *(xcb_window_t *)xcb_get_property_value(proxy_reply);
+
+        xcb_get_property_cookie_t proxy_verify_cookie = xcb_get_property(
+            xwm->xcb_conn, 0, proxy_window, xwm->atoms[DND_PROXY], XCB_ATOM_WINDOW, 0, 1);
+        xcb_get_property_reply_t *proxy_verify_reply =
+            xcb_get_property_reply(xwm->xcb_conn, proxy_verify_cookie, NULL);
+
+        if (property_reply_is_valid(proxy_verify_reply)) {
+            xcb_window_t verifyWindow = *(xcb_window_t *)xcb_get_property_value(proxy_verify_reply);
+            if (verifyWindow == proxy_window) {
+                target_window = proxy_window;
+            }
+        }
+        free(proxy_verify_reply);
+    }
+
+    free(proxy_reply);
+    return target_window;
+}
+
 static void xwm_set_drag_focus(struct wlr_xwm *xwm, struct wlr_xwayland_surface *focus) {
 	if (focus == xwm->drag_focus) {
 		return;
@@ -264,6 +297,10 @@ static void xwm_set_drag_focus(struct wlr_xwm *xwm, struct wlr_xwayland_surface 
 	if (xwm->drag_focus != NULL) {
 		xwm->drag_focus_destroy.notify = drag_focus_handle_destroy;
 		wl_signal_add(&xwm->drag_focus->events.destroy, &xwm->drag_focus_destroy);
+
+		if (!xwm->drag_focus->proxy_window) {
+			xwm->drag_focus->proxy_window = get_proxy_window(xwm, focus->window_id);
+		}
 
 		xwm_dnd_send_enter(xwm);
 	}

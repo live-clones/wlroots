@@ -174,6 +174,9 @@ struct wlr_xwayland_surface {
 	 */
 	xcb_ewmh_wm_strut_partial_t *strut_partial;
 
+	/* XdndProxy window */
+	xcb_window_t proxy_window;
+
 	bool pinging;
 	struct wl_event_source *ping_timer;
 
