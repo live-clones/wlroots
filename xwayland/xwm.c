@@ -1174,27 +1174,7 @@ static xcb_get_property_cookie_t get_property(struct wlr_xwm *xwm,
 	return xcb_get_property(xwm->xcb_conn, 0, window_id, atom, XCB_ATOM_ANY, 0, len);
 }
 
-static void xwayland_surface_associate(struct wlr_xwm *xwm,
-		struct wlr_xwayland_surface *xsurface, struct wlr_surface *surface) {
-	assert(xsurface->surface == NULL);
-
-	wl_list_remove(&xsurface->unpaired_link);
-	wl_list_init(&xsurface->unpaired_link);
-	xsurface->surface_id = 0;
-
-	xsurface->surface = surface;
-	wlr_addon_init(&xsurface->surface_addon, &surface->addons, NULL, &surface_addon_impl);
-
-	xsurface->surface_commit.notify = xwayland_surface_handle_commit;
-	wl_signal_add(&surface->events.commit, &xsurface->surface_commit);
-
-	xsurface->surface_map.notify = xwayland_surface_handle_map;
-	wl_signal_add(&surface->events.map, &xsurface->surface_map);
-
-	xsurface->surface_unmap.notify = xwayland_surface_handle_unmap;
-	wl_signal_add(&surface->events.unmap, &xsurface->surface_unmap);
-
-	// read all surface properties
+static void read_all_surface_properties(struct wlr_xwm *xwm, struct wlr_xwayland_surface *xsurface) {
 	const xcb_atom_t props[] = {
 		XCB_ATOM_WM_CLASS,
 		XCB_ATOM_WM_NAME,
@@ -1226,6 +1206,29 @@ static void xwayland_surface_associate(struct wlr_xwm *xwm,
 		read_surface_property(xwm, xsurface, props[i], reply);
 		free(reply);
 	}
+}
+
+static void xwayland_surface_associate(struct wlr_xwm *xwm,
+		struct wlr_xwayland_surface *xsurface, struct wlr_surface *surface) {
+	assert(xsurface->surface == NULL);
+
+	wl_list_remove(&xsurface->unpaired_link);
+	wl_list_init(&xsurface->unpaired_link);
+	xsurface->surface_id = 0;
+
+	xsurface->surface = surface;
+	wlr_addon_init(&xsurface->surface_addon, &surface->addons, NULL, &surface_addon_impl);
+
+	xsurface->surface_commit.notify = xwayland_surface_handle_commit;
+	wl_signal_add(&surface->events.commit, &xsurface->surface_commit);
+
+	xsurface->surface_map.notify = xwayland_surface_handle_map;
+	wl_signal_add(&surface->events.map, &xsurface->surface_map);
+
+	xsurface->surface_unmap.notify = xwayland_surface_handle_unmap;
+	wl_signal_add(&surface->events.unmap, &xsurface->surface_unmap);
+
+	read_all_surface_properties(xwm, xsurface);
 
 	wl_signal_emit_mutable(&xsurface->events.associate, NULL);
 }
@@ -1401,6 +1404,7 @@ static void xwm_handle_map_request(struct wlr_xwm *xwm,
 		return;
 	}
 
+	read_all_surface_properties(xwm, xsurface);
 	wl_signal_emit_mutable(&xsurface->events.map_request, NULL);
 	xcb_map_window(xwm->xcb_conn, ev->window);
 }
