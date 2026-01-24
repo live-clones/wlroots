@@ -1,7 +1,9 @@
 #include <assert.h>
+#include <drm_fourcc.h>
 #include <stdlib.h>
 
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/util/addon.h>
@@ -234,8 +236,114 @@ static void color_repr_manager_handle_destroy(struct wl_client *client,
 	wl_resource_destroy(resource);
 }
 
+bool drm_format_is_ycbcr(uint32_t format);
+bool drm_format_is_ycbcr(uint32_t format) {
+	switch(format) {
+	case DRM_FORMAT_AYUV |
+		DRM_FORMAT_NV12 |
+		DRM_FORMAT_NV15 |
+		DRM_FORMAT_NV16 |
+		DRM_FORMAT_NV20 |
+		DRM_FORMAT_NV21 |
+		DRM_FORMAT_NV24 |
+		DRM_FORMAT_NV30 |
+		DRM_FORMAT_NV42 |
+		DRM_FORMAT_NV61 |
+		DRM_FORMAT_P010 |
+		DRM_FORMAT_P012 |
+		DRM_FORMAT_P016 |
+		DRM_FORMAT_P030 |
+		DRM_FORMAT_P210 |
+		DRM_FORMAT_Q401 |
+		DRM_FORMAT_Q410 |
+		DRM_FORMAT_S010 |
+		DRM_FORMAT_S012 |
+		DRM_FORMAT_S016 |
+		DRM_FORMAT_S210 |
+		DRM_FORMAT_S212 |
+		DRM_FORMAT_S216 |
+		DRM_FORMAT_S410 |
+		DRM_FORMAT_S412 |
+		DRM_FORMAT_S416 |
+		DRM_FORMAT_UYVY |
+		DRM_FORMAT_VUY101010 |
+		DRM_FORMAT_VUY888 |
+		DRM_FORMAT_VYUY |
+		DRM_FORMAT_X0L0 |
+		DRM_FORMAT_X0L2 |
+		DRM_FORMAT_XVYU12_16161616 |
+		DRM_FORMAT_XVYU16161616 |
+		DRM_FORMAT_XVYU2101010 |
+		DRM_FORMAT_XYUV8888 |
+		DRM_FORMAT_Y0L0 |
+		DRM_FORMAT_Y0L2 |
+		DRM_FORMAT_Y210 |
+		DRM_FORMAT_Y212 |
+		DRM_FORMAT_Y216 |
+		DRM_FORMAT_Y410 |
+		DRM_FORMAT_Y412 |
+		DRM_FORMAT_Y416 |
+		DRM_FORMAT_YUV410 |
+		DRM_FORMAT_YUV411 |
+		DRM_FORMAT_YUV420 |
+		DRM_FORMAT_YUV420_10BIT |
+		DRM_FORMAT_YUV420_8BIT |
+		DRM_FORMAT_YUV422 |
+		DRM_FORMAT_YUV444 |
+		DRM_FORMAT_YUYV |
+		DRM_FORMAT_YVU410 |
+		DRM_FORMAT_YVU411 |
+		DRM_FORMAT_YVU420 |
+		DRM_FORMAT_YVU422 |
+		DRM_FORMAT_YVU444 |
+		DRM_FORMAT_YVYU:
+		return true;
+	}
+	return false;
+}
+
+static void surface_synced_commit(struct wlr_surface_synced *synced) {
+	struct wlr_color_representation_v1 *color_repr = wl_container_of(synced, color_repr, synced);
+
+	struct wlr_dmabuf_attributes dmabuf;
+
+	if (!color_repr->surface->buffer ||
+		!wlr_buffer_get_dmabuf(&color_repr->surface->buffer->base, &dmabuf)) {
+		return;
+	}
+
+	uint32_t *encoding = &color_repr->current.coefficients;
+	uint32_t *range = &color_repr->current.range;
+	bool is_unset = *encoding == 0 && *range == 0;
+	bool is_identity_full = *encoding == WP_COLOR_REPRESENTATION_SURFACE_V1_COEFFICIENTS_IDENTITY && *range == WP_COLOR_REPRESENTATION_SURFACE_V1_RANGE_FULL;
+
+	bool is_ycbcr = drm_format_is_ycbcr(dmabuf.format);
+	if (is_ycbcr) {
+		if (is_unset) {
+			*encoding = WP_COLOR_REPRESENTATION_SURFACE_V1_COEFFICIENTS_BT601;
+			*range = WP_COLOR_REPRESENTATION_SURFACE_V1_RANGE_LIMITED;
+		} else if(is_identity_full) {
+			wl_resource_post_error(color_repr->resource,
+				WP_COLOR_REPRESENTATION_SURFACE_V1_ERROR_PIXEL_FORMAT,
+				"unexpected encoding/range for yuv");
+		}
+	} else /* rgb */ {
+		if(is_identity_full) {
+			*encoding = 0;
+			*range = 0;
+			is_unset = true;
+		}
+		if (!is_unset) {
+			wl_resource_post_error(color_repr->resource,
+				WP_COLOR_REPRESENTATION_SURFACE_V1_ERROR_PIXEL_FORMAT,
+				"unexpected encoding/range for rgb");
+		}
+	}
+}
+
 static const struct wlr_surface_synced_impl surface_synced_impl = {
 	.state_size = sizeof(struct wlr_color_representation_v1_surface_state),
+	.commit = surface_synced_commit
 };
 
 static struct wlr_color_representation_v1 *color_repr_from_surface(
@@ -280,6 +388,7 @@ static void color_repr_manager_handle_get_surface(struct wl_client *client,
 	}
 
 	color_repr->manager = manager_from_resource(manager_resource);
+	color_repr->surface = surface;
 
 	if (!wlr_surface_synced_init(&color_repr->synced, surface,
 			&surface_synced_impl, &color_repr->pending, &color_repr->current)) {
@@ -431,6 +540,10 @@ struct wlr_color_representation_manager_v1 *wlr_color_representation_manager_v1_
 
 	struct wlr_color_representation_v1_coeffs_and_range coeffs_and_ranges[COEFFICIENTS_LEN * RANGES_LEN];
 	size_t coeffs_and_ranges_len = 0;
+	coeffs_and_ranges[coeffs_and_ranges_len++] = (struct wlr_color_representation_v1_coeffs_and_range){
+		.coeffs = WP_COLOR_REPRESENTATION_SURFACE_V1_COEFFICIENTS_IDENTITY,
+		.range = WP_COLOR_REPRESENTATION_SURFACE_V1_RANGE_FULL,
+	};
 	for (size_t i = 0; i < COEFFICIENTS_LEN; i++) {
 		enum wp_color_representation_surface_v1_coefficients coeffs = coefficients[i];
 		enum wlr_color_encoding enc = wlr_color_representation_v1_color_encoding_to_wlr(coeffs);
