@@ -20,6 +20,7 @@
 #include "types/wlr_scene.h"
 #include "util/array.h"
 #include "util/env.h"
+#include "util/matrix.h"
 #include "util/time.h"
 
 #include <wlr/config.h>
@@ -1440,6 +1441,63 @@ static float get_luminance_multiplier(const struct wlr_color_luminances *src_lum
 	return (dst_lum->reference / src_lum->reference) * (src_lum->max / dst_lum->max);
 }
 
+static struct wlr_color_transform *scene_texture_to_blend_space(
+		struct wlr_scene_buffer *source, enum wlr_color_named_primaries dest_primaries,
+		struct wlr_color_luminances *dest_luminance) {
+	struct wlr_color_transform *color_matrix = NULL;
+	struct wlr_color_transform *eotf = NULL;
+	struct wlr_color_transform *combined = NULL;
+
+	enum wlr_color_transfer_function source_tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+	if (source->transfer_function != 0) {
+		source_tf = source->transfer_function;
+	}
+	eotf = wlr_color_transform_init_linear_to_eotf(source_tf);
+	if (eotf == NULL) {
+		goto cleanup_transforms;
+	}
+
+	struct wlr_color_luminances source_lum;
+	wlr_color_transfer_function_get_default_luminance(source_tf, &source_lum);
+	float luminance_multiplier = get_luminance_multiplier(&source_lum, dest_luminance);
+
+	float matrix[9];
+
+	enum wlr_color_named_primaries source_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
+	if (source->primaries != 0) {
+		source_primaries = source->primaries;
+	}
+	if (source_primaries != dest_primaries) {
+		struct wlr_color_primaries primaries;
+		wlr_color_primaries_from_named(&primaries, source_primaries);
+		struct wlr_color_primaries primaries_blend;
+		wlr_color_primaries_from_named(&primaries_blend, dest_primaries);
+		wlr_color_primaries_transform_absolute_colorimetric(&primaries, &primaries_blend, matrix);
+	} else {
+		wlr_matrix_identity(matrix);
+	}
+
+	for (int i = 0; i < 9; ++i) {
+		matrix[i] *= luminance_multiplier;
+	}
+	color_matrix = wlr_color_transform_init_matrix(matrix);
+	if (color_matrix == NULL) {
+		goto cleanup_transforms;
+	}
+
+	struct wlr_color_transform *transforms[] = {
+		eotf,
+		color_matrix,
+	};
+	const size_t transforms_len = sizeof(transforms) / sizeof(transforms[0]);
+	color_transform_compose(&combined, transforms, transforms_len);
+
+cleanup_transforms:
+	wlr_color_transform_unref(eotf);
+	wlr_color_transform_unref(color_matrix);
+	return combined;
+}
+
 static void scene_entry_render(struct render_list_entry *entry, const struct render_data *data) {
 	struct wlr_scene_node *node = entry->node;
 
@@ -1518,17 +1576,14 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			wlr_output_transform_invert(scene_buffer->transform);
 		transform = wlr_output_transform_compose(transform, data->transform);
 
-		struct wlr_color_primaries primaries = {0};
-		if (scene_buffer->primaries != 0) {
-			wlr_color_primaries_from_named(&primaries, scene_buffer->primaries);
-		}
+		struct wlr_color_transform *source_to_blend = NULL;
+		if (data->output->output->renderer->features.input_color_transform) {
+			struct wlr_color_luminances srgb_lum;
+			wlr_color_transfer_function_get_default_luminance(WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
 
-		struct wlr_color_luminances src_lum, srgb_lum;
-		wlr_color_transfer_function_get_default_luminance(
-			scene_buffer->transfer_function, &src_lum);
-		wlr_color_transfer_function_get_default_luminance(
-			WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
-		float luminance_multiplier = get_luminance_multiplier(&src_lum, &srgb_lum);
+			source_to_blend = scene_texture_to_blend_space(
+				scene_buffer, WLR_COLOR_NAMED_PRIMARIES_SRGB, &srgb_lum);
+		}
 
 		wlr_render_pass_add_texture(data->render_pass, &(struct wlr_render_texture_options) {
 			.texture = texture,
@@ -1541,14 +1596,14 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			.blend_mode = !data->output->scene->calculate_visibility ||
 					!pixman_region32_empty(&opaque) ?
 				WLR_RENDER_BLEND_MODE_PREMULTIPLIED : WLR_RENDER_BLEND_MODE_NONE,
-			.transfer_function = scene_buffer->transfer_function,
-			.primaries = scene_buffer->primaries != 0 ? &primaries : NULL,
+			.color_transform = source_to_blend,
 			.color_encoding = scene_buffer->color_encoding,
 			.color_range = scene_buffer->color_range,
-			.luminance_multiplier = &luminance_multiplier,
 			.wait_timeline = scene_buffer->wait_timeline,
 			.wait_point = scene_buffer->wait_point,
 		});
+
+		wlr_color_transform_unref(source_to_blend);
 
 		struct wlr_scene_output_sample_event sample_event = {
 			.output = data->output,

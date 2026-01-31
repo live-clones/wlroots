@@ -146,7 +146,7 @@ static VkSemaphore render_pass_wait_sync_file(struct wlr_vk_render_pass *pass,
 	return *sem_ptr;
 }
 
-static bool unwrap_color_transform(struct wlr_color_transform *transform,
+static bool unwrap_output_color_transform(struct wlr_color_transform *transform,
 		float matrix[static 9], enum wlr_color_transfer_function *tf) {
 	if (transform == NULL) {
 		wlr_matrix_identity(matrix);
@@ -182,6 +182,47 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 	case COLOR_TRANSFORM_LCMS2:
 	case COLOR_TRANSFORM_LUT_3X1D:
 	case COLOR_TRANSFORM_EOTF:
+		return false;
+	}
+	return false;
+}
+
+static bool unwrap_texture_color_transform(struct wlr_color_transform *transform,
+		float matrix[static 9], enum wlr_color_transfer_function *tf) {
+	if (transform == NULL) {
+		wlr_matrix_identity(matrix);
+		*tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		return true;
+	}
+	struct wlr_color_transform_eotf *eotf;
+	struct wlr_color_transform_matrix *as_matrix;
+	struct wlr_color_transform_pipeline *pipeline;
+	switch (transform->type) {
+	case COLOR_TRANSFORM_EOTF:
+		eotf = wlr_color_transform_eotf_from_base(transform);
+		wlr_matrix_identity(matrix);
+		*tf = eotf->tf;
+		return true;
+	case COLOR_TRANSFORM_MATRIX:
+		as_matrix = wl_container_of(transform, as_matrix, base);
+		memcpy(matrix, as_matrix->matrix, sizeof(float[9]));
+		*tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+		return true;
+	case COLOR_TRANSFORM_PIPELINE:
+		pipeline = wl_container_of(transform, pipeline, base);
+		if (pipeline->len != 2
+				|| pipeline->transforms[0]->type != COLOR_TRANSFORM_EOTF
+				|| pipeline->transforms[1]->type != COLOR_TRANSFORM_MATRIX) {
+			return false;
+		}
+		eotf = wlr_color_transform_eotf_from_base(pipeline->transforms[0]);
+		*tf = eotf->tf;
+		as_matrix = wl_container_of(pipeline->transforms[1], as_matrix, base);
+		memcpy(matrix, as_matrix->matrix, sizeof(float[9]));
+		return true;
+	case COLOR_TRANSFORM_INVERSE_EOTF:
+	case COLOR_TRANSFORM_LCMS2:
+	case COLOR_TRANSFORM_LUT_3X1D:
 		return false;
 	}
 	return false;
@@ -792,9 +833,12 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	};
 	encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
-	enum wlr_color_transfer_function tf = options->transfer_function;
-	if (tf == 0) {
+	enum wlr_color_transfer_function tf;
+	float color_matrix[9];
+	if (!unwrap_texture_color_transform(options->color_transform, color_matrix, &tf))
+	{
 		tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		wlr_matrix_identity(color_matrix);
 	}
 
 	bool srgb_image_view = false;
@@ -861,25 +905,8 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		return;
 	}
 
-	float color_matrix[9];
-	if (options->primaries != NULL) {
-		struct wlr_color_primaries srgb;
-		wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
-
-		wlr_color_primaries_transform_absolute_colorimetric(options->primaries,
-			&srgb, color_matrix);
-	} else {
-		wlr_matrix_identity(color_matrix);
-	}
-
-	float luminance_multiplier = 1;
-	if (options->luminance_multiplier != NULL) {
-		luminance_multiplier = *options->luminance_multiplier;
-	}
-
 	struct wlr_vk_frag_texture_pcr_data frag_pcr_data = {
 		.alpha = alpha,
-		.luminance_multiplier = luminance_multiplier,
 	};
 	encode_color_matrix(color_matrix, frag_pcr_data.matrix);
 
@@ -1150,7 +1177,7 @@ static struct wlr_vk_color_transform *vk_color_transform_create(
 		return NULL;
 	}
 
-	bool need_lut = !unwrap_color_transform(transform, vk_transform->color_matrix,
+	bool need_lut = !unwrap_output_color_transform(transform, vk_transform->color_matrix,
 		&vk_transform->inverse_eotf);
 
 	if (need_lut) {
