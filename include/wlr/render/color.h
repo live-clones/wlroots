@@ -128,6 +128,13 @@ struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
 	const void *data, size_t size);
 
 /**
+ * Initialize a color transformation to apply EOTF decoding. Returns
+ * NULL on failure.
+ */
+struct wlr_color_transform *wlr_color_transform_init_eotf_to_linear(
+	enum wlr_color_transfer_function tf);
+
+/**
  * Initialize a color transformation to apply EOTF⁻¹ encoding. Returns
  * NULL on failure.
  */
