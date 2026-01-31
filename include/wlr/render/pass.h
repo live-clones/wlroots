@@ -101,16 +101,12 @@ struct wlr_render_texture_options {
 	enum wlr_scale_filter_mode filter_mode;
 	/* Blend mode */
 	enum wlr_render_blend_mode blend_mode;
-	/* Transfer function the source texture is encoded with */
-	enum wlr_color_transfer_function transfer_function;
-	/* Primaries describing the color volume of the source texture */
-	const struct wlr_color_primaries *primaries;
+	/* Applied to convert from source texture to blend space */
+	struct wlr_color_transform *color_transform;
 	/* Color encoding of the source texture for YCbCr conversion to RGB */
 	enum wlr_color_encoding color_encoding;
 	/* Color range of the source texture */
 	enum wlr_color_range color_range;
-	/* Default: 1.0 */
-	const float *luminance_multiplier;
 
 	/* Wait for a timeline synchronization point before texturing.
 	 *
