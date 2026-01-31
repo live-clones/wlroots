@@ -158,6 +158,7 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 		return true;
 	case WLR_COLOR_TRANSFORM_LCMS2:
 	case WLR_COLOR_TRANSFORM_LUT_3X1D:
+	case WLR_COLOR_TRANSFORM_EOTF:
 		return false;
 	}
 	return false;
