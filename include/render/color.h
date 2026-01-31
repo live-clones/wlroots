@@ -11,6 +11,7 @@ enum wlr_color_transform_type {
 	COLOR_TRANSFORM_LUT_3X1D,
 	COLOR_TRANSFORM_MATRIX,
 	COLOR_TRANSFORM_PIPELINE,
+	COLOR_TRANSFORM_EOTF,
 };
 
 struct wlr_color_transform {
@@ -18,6 +19,12 @@ struct wlr_color_transform {
 	struct wlr_addon_set addons; // per-renderer helper state
 
 	enum wlr_color_transform_type type;
+};
+
+struct wlr_color_transform_eotf {
+	struct wlr_color_transform base;
+
+	enum wlr_color_transfer_function tf;
 };
 
 struct wlr_color_transform_inverse_eotf {
@@ -71,6 +78,13 @@ void color_transform_lcms2_finish(struct wlr_color_transform_lcms2 *tr);
  */
 void color_transform_lcms2_eval(struct wlr_color_transform_lcms2 *tr,
 	float out[static 3], const float in[static 3]);
+
+/**
+ * Gets a wlr_color_transform_eotf from a generic wlr_color_transform.
+ * Asserts that the base type is COLOR_TRANSFORM_EOTF
+ */
+struct wlr_color_transform_eotf *wlr_color_transform_eotf_from_base(
+	struct wlr_color_transform *tr);
 
 /**
  * Gets a wlr_color_transform_inverse_eotf from a generic wlr_color_transform.
