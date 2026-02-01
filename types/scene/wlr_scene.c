@@ -333,6 +333,8 @@ struct render_data {
 
 	struct wlr_render_pass *render_pass;
 	pixman_region32_t damage;
+
+	struct wlr_color_transform *default_color_transform;
 };
 
 static void logical_to_buffer_coords(pixman_region32_t *region, const struct render_data *data,
@@ -1498,6 +1500,28 @@ cleanup_transforms:
 	return combined;
 }
 
+static struct wlr_render_color scene_color_transform_premultiplied(
+		struct wlr_color_transform *transform, float r, float g, float b, float a) {
+	float transform_in[] = {
+		(a == 0) ? 0 : r / a,
+		(a == 0) ? 0 : g / a,
+		(a == 0) ? 0 : b / a,
+	};
+	float transform_out[] = {0, 0, 0};
+	if (transform != NULL) {
+		wlr_color_transform_eval(transform, transform_out, transform_in);
+	} else {
+		memcpy(transform_out, transform_in, sizeof(transform_in));
+	}
+	struct wlr_render_color res = {
+		.r = transform_out[0] * a,
+		.g = transform_out[1] * a,
+		.b = transform_out[2] * a,
+		.a = a,
+	};
+	return res;
+}
+
 static void scene_entry_render(struct render_list_entry *entry, const struct render_data *data) {
 	struct wlr_scene_node *node = entry->node;
 
@@ -1537,12 +1561,11 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 
 		wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
 			.box = dst_box,
-			.color = {
-				.r = scene_rect->color[0],
-				.g = scene_rect->color[1],
-				.b = scene_rect->color[2],
-				.a = scene_rect->color[3],
-			},
+			.color = scene_color_transform_premultiplied(data->default_color_transform,
+				scene_rect->color[0],
+				scene_rect->color[1],
+				scene_rect->color[2],
+				scene_rect->color[3]),
 			.clip = &render_region,
 		});
 		break;
@@ -1553,13 +1576,12 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			// Render the buffer as a rect, this is likely to be more efficient
 			wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
 				.box = dst_box,
-				.color = {
-					.r = (float)scene_buffer->single_pixel_buffer_color[0] / (float)UINT32_MAX,
-					.g = (float)scene_buffer->single_pixel_buffer_color[1] / (float)UINT32_MAX,
-					.b = (float)scene_buffer->single_pixel_buffer_color[2] / (float)UINT32_MAX,
-					.a = (float)scene_buffer->single_pixel_buffer_color[3] /
-						(float)UINT32_MAX * scene_buffer->opacity,
-				},
+				.color = scene_color_transform_premultiplied(data->default_color_transform,
+					(float)scene_buffer->single_pixel_buffer_color[0] / (float)UINT32_MAX,
+					(float)scene_buffer->single_pixel_buffer_color[1] / (float)UINT32_MAX,
+					(float)scene_buffer->single_pixel_buffer_color[2] / (float)UINT32_MAX,
+					(float)scene_buffer->single_pixel_buffer_color[3] /
+						(float)UINT32_MAX * scene_buffer->opacity),
 				.clip = &render_region,
 			});
 			break;
@@ -1614,7 +1636,8 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 		if (entry->highlight_transparent_region) {
 			wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
 				.box = dst_box,
-				.color = { .r = 0, .g = 0.3, .b = 0, .a = 0.3 },
+				.color = scene_color_transform_premultiplied(data->default_color_transform,
+					0, 0.3, 0, 0.3),
 				.clip = &opaque,
 			});
 		}
@@ -2530,17 +2553,23 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		timer->pre_render_duration = timespec_to_nsec(&duration);
 	}
 
-	if ((render_gamma_lut
-			&& scene_output->gamma_lut_color_transform != scene_output->prev_gamma_lut_color_transform)
-			|| scene_output->prev_supplied_color_transform != options->color_transform
-			|| (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION)) {
-		const struct wlr_output_image_description *output_description =
-			output_pending_image_description(output, state);
-		if (!scene_output_combine_color_transforms(scene_output, options->color_transform,
-				output_description, render_gamma_lut)) {
-			wlr_buffer_unlock(buffer);
-			return false;
+	if (output->renderer->features.output_color_transform) {
+		if ((render_gamma_lut
+				&& scene_output->gamma_lut_color_transform != scene_output->prev_gamma_lut_color_transform)
+				|| scene_output->prev_supplied_color_transform != options->color_transform
+				|| (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION)
+				|| scene_output->combined_color_transform == NULL) {
+			const struct wlr_output_image_description *output_description =
+				output_pending_image_description(output, state);
+			if (!scene_output_combine_color_transforms(scene_output, options->color_transform,
+					output_description, render_gamma_lut)) {
+				wlr_buffer_unlock(buffer);
+				return false;
+			}
 		}
+
+		render_data.default_color_transform = wlr_color_transform_init_linear_to_eotf(
+			WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
 	}
 
 	scene_output->in_point++;
@@ -2553,6 +2582,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	});
 	if (render_pass == NULL) {
 		wlr_buffer_unlock(buffer);
+		wlr_color_transform_unref(render_data.default_color_transform);
 		return false;
 	}
 
@@ -2637,7 +2667,8 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 			wlr_render_pass_add_rect(render_pass, &(struct wlr_render_rect_options){
 				.box = { .width = buffer->width, .height = buffer->height },
-				.color = { .r = alpha * 0.5, .g = 0, .b = 0, .a = alpha * 0.5 },
+				.color = scene_color_transform_premultiplied(render_data.default_color_transform,
+					alpha * 0.5, 0, 0, alpha * 0.5),
 				.clip = &damage->region,
 			});
 		}
@@ -2648,6 +2679,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	if (!wlr_render_pass_submit(render_pass)) {
 		wlr_buffer_unlock(buffer);
+		wlr_color_transform_unref(render_data.default_color_transform);
 
 		// if we failed to render the buffer, it will have undefined contents
 		// Trash the damage ring
@@ -2657,6 +2689,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	wlr_output_state_set_buffer(state, buffer);
 	wlr_buffer_unlock(buffer);
+	wlr_color_transform_unref(render_data.default_color_transform);
 
 	if (scene_output->in_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(state, scene_output->in_timeline,

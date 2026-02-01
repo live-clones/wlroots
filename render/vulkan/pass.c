@@ -56,14 +56,6 @@ static void convert_pixman_box_to_vk_rect(const pixman_box32_t *box, VkRect2D *r
 	};
 }
 
-static float color_to_linear(float non_linear) {
-	return pow(non_linear, 2.2);
-}
-
-static float color_to_linear_premult(float non_linear, float alpha) {
-	return (alpha == 0) ? 0 : color_to_linear(non_linear / alpha) * alpha;
-}
-
 static void encode_proj_matrix(const float mat3[9], float mat4[4][4]) {
 	float result[4][4] = {
 		{ mat3[0], mat3[1], 0, mat3[2] },
@@ -150,7 +142,7 @@ static bool unwrap_output_color_transform(struct wlr_color_transform *transform,
 		float matrix[static 9], enum wlr_color_transfer_function *tf) {
 	if (transform == NULL) {
 		wlr_matrix_identity(matrix);
-		*tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		*tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 		return true;
 	}
 	struct wlr_color_transform_inverse_eotf *eotf;
@@ -191,7 +183,7 @@ static bool unwrap_texture_color_transform(struct wlr_color_transform *transform
 		float matrix[static 9], enum wlr_color_transfer_function *tf) {
 	if (transform == NULL) {
 		wlr_matrix_identity(matrix);
-		*tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		*tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 		return true;
 	}
 	struct wlr_color_transform_eotf *eotf;
@@ -268,7 +260,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		encode_proj_matrix(final_matrix, vert_pcr_data.mat4);
 
 		float matrix[9];
-		enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 		bool need_lut = false;
 		size_t dim = 1;
 		struct wlr_vk_color_transform *transform = NULL;
@@ -691,16 +683,11 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
 	VkCommandBuffer cb = pass->command_buffer->vk;
 
-	// Input color values are given in sRGB space, shader expects
-	// them in linear space. The shader does all computation in linear
-	// space and expects in inputs in linear space since it outputs
-	// colors in linear space as well (and vulkan then automatically
-	// does the conversion for out sRGB render targets).
 	float linear_color[] = {
-		color_to_linear_premult(options->color.r, options->color.a),
-		color_to_linear_premult(options->color.g, options->color.a),
-		color_to_linear_premult(options->color.b, options->color.a),
-		options->color.a, // no conversion for alpha
+		options->color.r,
+		options->color.g,
+		options->color.b,
+		options->color.a,
 	};
 
 	pixman_region32_t clip;
@@ -837,7 +824,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	float color_matrix[9];
 	if (!unwrap_texture_color_transform(options->color_transform, color_matrix, &tf))
 	{
-		tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 		wlr_matrix_identity(color_matrix);
 	}
 
@@ -1221,7 +1208,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		}
 	} else {
 		// This is the default when unspecified
-		inv_eotf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		inv_eotf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 	}
 
 	bool using_linear_pathway = inv_eotf == WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
