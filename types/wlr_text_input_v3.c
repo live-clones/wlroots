@@ -230,9 +230,14 @@ static void text_input_handle_seat_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_text_input_v3 *text_input = wl_container_of(listener, text_input,
 		seat_destroy);
+	if (text_input == NULL) {
+		return;
+	}
 	struct wl_resource *resource = text_input->resource;
 	wlr_text_input_destroy(text_input);
-	wl_resource_set_user_data(resource, NULL);
+	if (resource != NULL) {
+		wl_resource_set_user_data(resource, NULL);
+	}
 }
 
 static void text_input_handle_focused_surface_destroy(
