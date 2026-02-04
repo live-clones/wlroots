@@ -70,6 +70,10 @@ struct wlr_layer_surface_v1_state {
 
 	uint32_t configure_serial;
 	uint32_t actual_width, actual_height;
+
+	struct {
+		bool initial_commit;
+	} WLR_PRIVATE;
 };
 
 struct wlr_layer_surface_v1_configure {
@@ -118,6 +122,8 @@ struct wlr_layer_surface_v1 {
 
 	struct {
 		struct wlr_surface_synced synced;
+
+		bool client_mapped;
 	} WLR_PRIVATE;
 };
 
