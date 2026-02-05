@@ -2,6 +2,8 @@
 
 layout(set = 0, binding = 0) uniform sampler2D tex;
 
+layout(set = 1, binding = 0) uniform sampler3D lut_3d;
+
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 out_color;
 
@@ -9,6 +11,8 @@ layout(location = 0) out vec4 out_color;
 layout(push_constant, row_major) uniform UBO {
 	layout(offset = 80) mat4 matrix;
 	float alpha;
+	float lut_3d_offset;
+	float lut_3d_scale;
 } data;
 
 layout (constant_id = 0) const int TEXTURE_TRANSFORM = 0;
@@ -19,6 +23,7 @@ layout (constant_id = 0) const int TEXTURE_TRANSFORM = 0;
 #define TEXTURE_TRANSFORM_ST2084_PQ 2
 #define TEXTURE_TRANSFORM_GAMMA22 3
 #define TEXTURE_TRANSFORM_BT1886 4
+#define TEXTURE_TRANSFORM_LUT_3D 5
 
 float srgb_channel_to_linear(float x) {
 	return mix(x / 12.92,
@@ -79,6 +84,10 @@ void main() {
 		rgb = pow(rgb, vec3(2.2));
 	} else if (TEXTURE_TRANSFORM == TEXTURE_TRANSFORM_BT1886) {
 		rgb = bt1886_color_to_linear(rgb);
+	}	else if (TEXTURE_TRANSFORM == TEXTURE_TRANSFORM_LUT_3D) {
+		// Apply 3D LUT
+		vec3 pos = data.lut_3d_offset + rgb * data.lut_3d_scale;
+		rgb = texture(lut_3d, pos).rgb;
 	}
 
 	rgb = mat3(data.matrix) * rgb;
