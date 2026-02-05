@@ -168,6 +168,7 @@ enum wlr_vk_texture_transform {
 	WLR_VK_TEXTURE_TRANSFORM_ST2084_PQ = 2,
 	WLR_VK_TEXTURE_TRANSFORM_GAMMA22 = 3,
 	WLR_VK_TEXTURE_TRANSFORM_BT1886 = 4,
+	WLR_VK_TEXTURE_TRANSFORM_LUT_3D = 5,
 };
 
 enum wlr_vk_shader_source {
@@ -284,8 +285,8 @@ struct wlr_vk_command_buffer {
 	uint64_t timeline_point;
 	// Textures to destroy after the command buffer completes
 	struct wl_list destroy_textures; // wlr_vk_texture.destroy_link
-	// Color transform to unref after the command buffer completes
-	struct wlr_color_transform *color_transform;
+	// Color transforms to unref after the command buffer completes
+	struct wl_array color_transforms; // struct wlr_color_transform*
 
 	// For DMA-BUF implicit sync interop, may be NULL
 	VkSemaphore binary_semaphore;
@@ -313,11 +314,12 @@ struct wlr_vk_renderer {
 	// for blend->output subpass
 	VkPipelineLayout output_pipe_layout;
 	VkDescriptorSetLayout output_ds_srgb_layout;
-	VkDescriptorSetLayout output_ds_lut3d_layout;
-	VkSampler output_sampler_lut3d;
+
+	VkDescriptorSetLayout ds_lut3d_layout;
+	VkSampler sampler_lut3d;
 	// descriptor set indicating dummy 1x1x1 image, for use in the lut3d slot
-	VkDescriptorSet output_ds_lut3d_dummy;
-	struct wlr_vk_descriptor_pool *output_ds_lut3d_dummy_pool;
+	VkDescriptorSet ds_lut3d_dummy;
+	struct wlr_vk_descriptor_pool *ds_lut3d_dummy_pool;
 
 	size_t last_output_pool_size;
 	struct wl_list output_descriptor_pools; // wlr_vk_descriptor_pool.link
@@ -372,6 +374,8 @@ struct wlr_vk_vert_pcr_data {
 struct wlr_vk_frag_texture_pcr_data {
 	float matrix[4][4]; // only a 3x3 subset is used
 	float alpha;
+	float lut_3d_offset;
+	float lut_3d_scale;
 };
 
 struct wlr_vk_frag_output_pcr_data {
@@ -492,6 +496,8 @@ bool vulkan_wait_command_buffer(struct wlr_vk_command_buffer *cb,
 	struct wlr_vk_renderer *renderer);
 VkSemaphore vulkan_command_buffer_wait_sync_file(struct wlr_vk_renderer *renderer,
 	struct wlr_vk_command_buffer *render_cb, size_t sem_index, int sync_file_fd);
+bool vulkan_command_buffer_ref_color_transform(struct wlr_vk_command_buffer *cb,
+	struct wlr_color_transform *color_transform);
 
 bool vulkan_sync_render_pass_release(struct wlr_vk_renderer *renderer,
 	struct wlr_vk_render_pass *pass);
@@ -601,7 +607,7 @@ struct wlr_vk_color_transform {
 	} lut_3d;
 
 	float color_matrix[9];
-	enum wlr_color_transfer_function inverse_eotf;
+	enum wlr_color_transfer_function eotf;
 };
 void vk_color_transform_destroy(struct wlr_addon *addon);
 
