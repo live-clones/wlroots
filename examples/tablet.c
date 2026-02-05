@@ -123,7 +123,7 @@ static void output_frame_notify(struct wl_listener *listener, void *data) {
 	});
 
 	if (sample->proximity) {
-		struct wlr_box box = {
+		struct wlr_fbox box = {
 			.x = (sample->x * pad_width) - 8 * (sample->pressure + 1) + left,
 			.y = (sample->y * pad_height) - 8 * (sample->pressure + 1) + top,
 			.width = 16 * (sample->pressure + 1),

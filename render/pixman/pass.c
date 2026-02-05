@@ -59,7 +59,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		.height = roundf(src_fbox.height),
 	};
 
-	struct wlr_box dst_box;
+	struct wlr_fbox dst_box;
 	wlr_render_texture_options_get_dst_box(options, &dst_box);
 
 	pixman_image_t *mask = NULL;
@@ -125,8 +125,8 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		// it depends on the whether the rotation swapped width and height, which is why
 		// we use src_box_transformed instead of src_box.
 		pixman_transform_scale(&transform, NULL,
-			pixman_double_to_fixed(src_box_transformed.width / (double)dst_box.width),
-			pixman_double_to_fixed(src_box_transformed.height / (double)dst_box.height));
+			pixman_double_to_fixed(src_box_transformed.width / dst_box.width),
+			pixman_double_to_fixed(src_box_transformed.height / dst_box.height));
 
 		// pixman rotates about the origin which again leaves everything outside of the
 		// viewport.  Translate the result so that its new top-left corner is back at the
@@ -174,8 +174,8 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		pixman_image_composite32(op, texture->image, mask, buffer->image,
 			0, 0, // source x,y
 			0, 0, // mask x,y
-			dst_box.x, dst_box.y, // dest x,y
-			dst_box.width, dst_box.height // composite width,height
+			round(dst_box.x), round(dst_box.y), // dest x,y
+			round(dst_box.width), round(dst_box.height) // composite width,height
 		);
 
 		pixman_image_set_transform(texture->image, NULL);
@@ -183,7 +183,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		// No transforms or crop needed, just a straight blit from the source
 		pixman_image_set_transform(texture->image, NULL);
 		pixman_image_composite32(op, texture->image, mask, buffer->image,
-			src_box.x, src_box.y, 0, 0, dst_box.x, dst_box.y,
+			src_box.x, src_box.y, 0, 0, round(dst_box.x), round(dst_box.y),
 			src_box.width, src_box.height);
 	}
 
@@ -202,7 +202,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
 	struct wlr_pixman_render_pass *pass = get_render_pass(wlr_pass);
 	struct wlr_pixman_buffer *buffer = pass->buffer;
-	struct wlr_box box;
+	struct wlr_fbox box;
 	wlr_render_rect_options_get_box(options, pass->buffer->buffer, &box);
 
 	pixman_op_t op = get_pixman_blending(options->color.a == 1 ?
