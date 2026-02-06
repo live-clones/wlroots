@@ -35,6 +35,7 @@ struct wlr_drm_crtc_props {
 	uint32_t vrr_enabled;
 	uint32_t gamma_lut;
 	uint32_t gamma_lut_size;
+	uint32_t ctm;
 
 	// atomic-modesetting only
 
