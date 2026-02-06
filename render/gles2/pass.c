@@ -253,6 +253,28 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	pop_gles2_debug(renderer);
 }
 
+static void render_pass_clear(struct wlr_gles2_render_pass *pass,
+		const struct wlr_render_color *color, const pixman_region32_t *clip) {
+	glClearColor(color->r, color->g, color->b, color->a);
+
+	if (clip) {
+		int rects_len;
+		const pixman_box32_t *rects = pixman_region32_rectangles(clip, &rects_len);
+
+		glEnable(GL_SCISSOR_TEST);
+		for (int i = 0; i < rects_len; i++) {
+			const pixman_box32_t *rect = &rects[i];
+			int height = pass->buffer->buffer->height;
+			glScissor(rect->x1, height - rect->y2,
+				rect->x2 - rect->x1, rect->y2 - rect->y1);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		glDisable(GL_SCISSOR_TEST);
+	} else {
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
+}
+
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
 	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
@@ -263,14 +285,16 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	wlr_render_rect_options_get_box(options, pass->buffer->buffer, &box);
 
 	push_gles2_debug(renderer);
-	setup_blending(color->a == 1.0 ? WLR_RENDER_BLEND_MODE_NONE : options->blend_mode);
 
-	glUseProgram(renderer->shaders.quad.program);
-
-	set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
-	glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
-
-	render(&box, options->clip, renderer->shaders.quad.pos_attrib);
+	if (color->a == 1.0) {
+		render_pass_clear(pass, color, options->clip);
+	} else {
+		setup_blending(options->blend_mode);
+		glUseProgram(renderer->shaders.quad.program);
+		set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
+		glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
+		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
+	}
 
 	pop_gles2_debug(renderer);
 }
