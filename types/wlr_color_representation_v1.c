@@ -1,13 +1,17 @@
 #include <assert.h>
+#include <drm_fourcc.h>
 #include <stdlib.h>
 
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/util/addon.h>
 #include <wlr/util/log.h>
 
 #include "color-representation-v1-protocol.h"
+#include "render/pixel_format.h"
+#include "types/wlr_buffer.h"
 #include "util/mem.h"
 
 #define WP_COLOR_REPRESENTATION_VERSION 1
@@ -230,8 +234,44 @@ static void color_repr_manager_handle_destroy(struct wl_client *client,
 	wl_resource_destroy(resource);
 }
 
+static void surface_synced_commit(struct wlr_surface_synced *synced) {
+	struct wlr_color_representation_v1 *color_repr = wl_container_of(synced, color_repr, synced);
+
+	if (color_repr->current.coefficients == 0 && color_repr->current.range == 0) {
+		return;
+	}
+
+	uint32_t drm_format = DRM_FORMAT_INVALID;
+	if (!color_repr->surface->buffer){
+		drm_format = buffer_get_drm_format(&color_repr->surface->buffer->base);
+	}
+	if (drm_format == DRM_FORMAT_INVALID) {
+		return;
+	}
+	bool is_ycbcr = pixel_format_is_ycbcr(drm_format);
+
+	bool is_identity_full =
+		color_repr->current.coefficients == WP_COLOR_REPRESENTATION_SURFACE_V1_COEFFICIENTS_IDENTITY &&
+		color_repr->current.range == WP_COLOR_REPRESENTATION_SURFACE_V1_RANGE_FULL;
+
+	if (is_ycbcr) {
+		if (is_identity_full) {
+			wl_resource_post_error(color_repr->resource,
+				WP_COLOR_REPRESENTATION_SURFACE_V1_ERROR_PIXEL_FORMAT,
+				"unexpected encoding/range for yuv");
+		}
+	} else /* rgb */ {
+		if (!is_identity_full) {
+			wl_resource_post_error(color_repr->resource,
+				WP_COLOR_REPRESENTATION_SURFACE_V1_ERROR_PIXEL_FORMAT,
+				"unexpected encoding/range for rgb");
+		}
+	}
+}
+
 static const struct wlr_surface_synced_impl surface_synced_impl = {
 	.state_size = sizeof(struct wlr_color_representation_v1_surface_state),
+	.commit = surface_synced_commit
 };
 
 static struct wlr_color_representation_v1 *color_repr_from_surface(
@@ -276,6 +316,7 @@ static void color_repr_manager_handle_get_surface(struct wl_client *client,
 	}
 
 	color_repr->manager = manager_from_resource(manager_resource);
+	color_repr->surface = surface;
 
 	if (!wlr_surface_synced_init(&color_repr->synced, surface,
 			&surface_synced_impl, &color_repr->pending, &color_repr->current)) {
@@ -427,6 +468,10 @@ struct wlr_color_representation_manager_v1 *wlr_color_representation_manager_v1_
 
 	struct wlr_color_representation_v1_coeffs_and_range coeffs_and_ranges[COEFFICIENTS_LEN * RANGES_LEN];
 	size_t coeffs_and_ranges_len = 0;
+	coeffs_and_ranges[coeffs_and_ranges_len++] = (struct wlr_color_representation_v1_coeffs_and_range){
+		.coeffs = WP_COLOR_REPRESENTATION_SURFACE_V1_COEFFICIENTS_IDENTITY,
+		.range = WP_COLOR_REPRESENTATION_SURFACE_V1_RANGE_FULL,
+	};
 	for (size_t i = 0; i < COEFFICIENTS_LEN; i++) {
 		enum wp_color_representation_surface_v1_coefficients coeffs = coefficients[i];
 		enum wlr_color_encoding enc = wlr_color_representation_v1_color_encoding_to_wlr(coeffs);

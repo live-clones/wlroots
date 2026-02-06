@@ -1630,8 +1630,8 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 static bool pipeline_layout_key_equals(
 		const struct wlr_vk_pipeline_layout_key *a,
 		const struct wlr_vk_pipeline_layout_key *b) {
-	assert(!a->ycbcr.format || a->ycbcr.format->is_ycbcr);
-	assert(!b->ycbcr.format || b->ycbcr.format->is_ycbcr);
+	assert(!a->ycbcr.format || vulkan_format_is_ycbcr(a->ycbcr.format));
+	assert(!b->ycbcr.format || vulkan_format_is_ycbcr(b->ycbcr.format));
 
 	if (a->filter_mode != b->filter_mode) {
 		return false;
@@ -2039,8 +2039,8 @@ struct wlr_vk_pipeline_layout *get_or_create_pipeline_layout(
 		};
 		sampler_create_info.pNext = &conversion_info;
 	} else {
-		assert(key->ycbcr.encoding == WLR_COLOR_ENCODING_NONE);
-		assert(key->ycbcr.range == WLR_COLOR_RANGE_NONE);
+		assert(key->ycbcr.encoding == WLR_COLOR_ENCODING_NONE || key->ycbcr.encoding == WLR_COLOR_ENCODING_IDENTITY);
+		assert(key->ycbcr.range == WLR_COLOR_RANGE_NONE || key->ycbcr.range == WLR_COLOR_RANGE_FULL);
 	}
 
 	res = vkCreateSampler(renderer->dev->dev, &sampler_create_info, NULL, &pipeline_layout->sampler);
