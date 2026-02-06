@@ -1749,6 +1749,45 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	return true;
 }
 
+static void detect_preferred_mode_change(struct wlr_drm_connector *wlr_conn,
+		const drmModeConnector *drm_conn) {
+	const drmModeModeInfo *old_preferred = NULL;
+	const drmModeModeInfo *new_preferred = NULL;
+
+	struct wlr_drm_mode *mode;
+	wl_list_for_each(mode, &wlr_conn->output.modes, wlr_mode.link) {
+		if (mode->wlr_mode.preferred) {
+			old_preferred = &mode->drm_mode;
+			break;
+		}
+	}
+
+	for (int i = 0; i < drm_conn->count_modes; i++) {
+		const drmModeModeInfo *new_mode = &drm_conn->modes[i];
+		if (new_mode->type & DRM_MODE_TYPE_PREFERRED) {
+			new_preferred = new_mode;
+			break;
+		}
+	}
+
+	if (old_preferred && new_preferred && memcmp(old_preferred, new_preferred,
+			sizeof(*new_preferred)) != 0) {
+		wlr_log(WLR_INFO, "Preferred mode changed to %dx%d@%.2f",
+			new_preferred->hdisplay, new_preferred->vdisplay,
+			(float)calculate_refresh_rate(new_preferred) / 1000
+		);
+
+		struct wlr_output_state state;
+		wlr_output_state_init(&state);
+		wlr_output_state_set_custom_mode(&state,
+			new_preferred->hdisplay, new_preferred->vdisplay,
+			calculate_refresh_rate(new_preferred)
+		);
+		wlr_output_send_request_state(&wlr_conn->output, &state);
+		wlr_output_state_finish(&state);
+	}
+}
+
 static void disconnect_drm_connector(struct wlr_drm_connector *conn);
 
 void scan_drm_connectors(struct wlr_drm_backend *drm,
@@ -1847,6 +1886,11 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 				drm_conn->connection != DRM_MODE_CONNECTED) {
 			wlr_log(WLR_INFO, "'%s' disconnected", wlr_conn->name);
 			disconnect_drm_connector(wlr_conn);
+		}
+
+		if (wlr_conn && wlr_conn->status == DRM_MODE_CONNECTED &&
+				drm_conn->connection == DRM_MODE_CONNECTED) {
+			detect_preferred_mode_change(wlr_conn, drm_conn);
 		}
 
 		drmModeFreeConnector(drm_conn);
