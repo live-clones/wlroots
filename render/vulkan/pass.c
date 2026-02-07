@@ -56,14 +56,6 @@ static void convert_pixman_box_to_vk_rect(const pixman_box32_t *box, VkRect2D *r
 	};
 }
 
-static float color_to_linear(float non_linear) {
-	return pow(non_linear, 2.2);
-}
-
-static float color_to_linear_premult(float non_linear, float alpha) {
-	return (alpha == 0) ? 0 : color_to_linear(non_linear / alpha) * alpha;
-}
-
 static void encode_proj_matrix(const float mat3[9], float mat4[4][4]) {
 	float result[4][4] = {
 		{ mat3[0], mat3[1], 0, mat3[2] },
@@ -146,11 +138,11 @@ static VkSemaphore render_pass_wait_sync_file(struct wlr_vk_render_pass *pass,
 	return *sem_ptr;
 }
 
-static bool unwrap_color_transform(struct wlr_color_transform *transform,
+static bool unwrap_output_color_transform(struct wlr_color_transform *transform,
 		float matrix[static 9], enum wlr_color_transfer_function *tf) {
 	if (transform == NULL) {
 		wlr_matrix_identity(matrix);
-		*tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		*tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 		return true;
 	}
 	struct wlr_color_transform_inverse_eotf *eotf;
@@ -179,6 +171,48 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 		memcpy(matrix, as_matrix->matrix, sizeof(float[9]));
 		*tf = eotf->tf;
 		return true;
+	case COLOR_TRANSFORM_LCMS2:
+	case COLOR_TRANSFORM_LUT_3X1D:
+	case COLOR_TRANSFORM_EOTF:
+		return false;
+	}
+	return false;
+}
+
+static bool unwrap_texture_color_transform(struct wlr_color_transform *transform,
+		float matrix[static 9], enum wlr_color_transfer_function *tf) {
+	if (transform == NULL) {
+		wlr_matrix_identity(matrix);
+		*tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+		return true;
+	}
+	struct wlr_color_transform_eotf *eotf;
+	struct wlr_color_transform_matrix *as_matrix;
+	struct wlr_color_transform_pipeline *pipeline;
+	switch (transform->type) {
+	case COLOR_TRANSFORM_EOTF:
+		eotf = wlr_color_transform_eotf_from_base(transform);
+		wlr_matrix_identity(matrix);
+		*tf = eotf->tf;
+		return true;
+	case COLOR_TRANSFORM_MATRIX:
+		as_matrix = wl_container_of(transform, as_matrix, base);
+		memcpy(matrix, as_matrix->matrix, sizeof(float[9]));
+		*tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+		return true;
+	case COLOR_TRANSFORM_PIPELINE:
+		pipeline = wl_container_of(transform, pipeline, base);
+		if (pipeline->len != 2
+				|| pipeline->transforms[0]->type != COLOR_TRANSFORM_EOTF
+				|| pipeline->transforms[1]->type != COLOR_TRANSFORM_MATRIX) {
+			return false;
+		}
+		eotf = wlr_color_transform_eotf_from_base(pipeline->transforms[0]);
+		*tf = eotf->tf;
+		as_matrix = wl_container_of(pipeline->transforms[1], as_matrix, base);
+		memcpy(matrix, as_matrix->matrix, sizeof(float[9]));
+		return true;
+	case COLOR_TRANSFORM_INVERSE_EOTF:
 	case COLOR_TRANSFORM_LCMS2:
 	case COLOR_TRANSFORM_LUT_3X1D:
 		return false;
@@ -226,7 +260,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		encode_proj_matrix(final_matrix, vert_pcr_data.mat4);
 
 		float matrix[9];
-		enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 		bool need_lut = false;
 		size_t dim = 1;
 		struct wlr_vk_color_transform *transform = NULL;
@@ -236,7 +270,12 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			need_lut = transform->lut_3d.dim > 0;
 			dim = need_lut ? transform->lut_3d.dim : 1;
 			memcpy(matrix, transform->color_matrix, sizeof(matrix));
-			tf = transform->inverse_eotf;
+			tf = transform->eotf;
+		}
+		if (need_lut) {
+			if (!vulkan_command_buffer_ref_color_transform(render_cb, pass->color_transform)) {
+				goto error;
+			}
 		}
 		if (pass->color_transform == NULL || need_lut) {
 			wlr_matrix_identity(matrix);
@@ -282,7 +321,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		if (need_lut) {
 			lut_ds = transform->lut_3d.ds;
 		} else {
-			lut_ds = renderer->output_ds_lut3d_dummy;
+			lut_ds = renderer->ds_lut3d_dummy;
 		}
 		VkDescriptorSet ds[] = {
 			render_buffer->two_pass.blend_descriptor_set, // set 0
@@ -649,16 +688,11 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
 	VkCommandBuffer cb = pass->command_buffer->vk;
 
-	// Input color values are given in sRGB space, shader expects
-	// them in linear space. The shader does all computation in linear
-	// space and expects in inputs in linear space since it outputs
-	// colors in linear space as well (and vulkan then automatically
-	// does the conversion for out sRGB render targets).
 	float linear_color[] = {
-		color_to_linear_premult(options->color.r, options->color.a),
-		color_to_linear_premult(options->color.g, options->color.a),
-		color_to_linear_premult(options->color.b, options->color.a),
-		options->color.a, // no conversion for alpha
+		options->color.r,
+		options->color.g,
+		options->color.b,
+		options->color.a,
 	};
 
 	pixman_region32_t clip;
@@ -746,6 +780,9 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	pixman_region32_fini(&clip);
 }
 
+static struct wlr_vk_color_transform *vk_color_transform_create(
+		struct wlr_vk_renderer *renderer, struct wlr_color_transform *transform, bool output);
+
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
@@ -791,34 +828,64 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	};
 	encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
-	enum wlr_color_transfer_function tf = options->transfer_function;
-	if (tf == 0) {
-		tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+	enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
+	float color_matrix[9];
+	bool need_lut = false;
+	size_t dim = 1;
+	struct wlr_vk_color_transform *transform = NULL;
+	if (options->color_transform != NULL) {
+		transform = get_color_transform(options->color_transform, renderer);
+		if (transform == NULL) {
+			transform = vk_color_transform_create(renderer, options->color_transform, false);
+			if (transform == NULL) {
+				wlr_log(WLR_ERROR, "Failed to create color transform");
+				pass->failed = true;
+				return;
+			}
+		}
+		need_lut = transform->lut_3d.dim > 0;
+		dim = need_lut ? transform->lut_3d.dim : 1;
+		memcpy(color_matrix, transform->color_matrix, sizeof(color_matrix));
+		tf = transform->eotf;
+	}
+	if (need_lut) {
+		if (!vulkan_command_buffer_ref_color_transform(pass->command_buffer,
+				options->color_transform)) {
+			pass->failed = true;
+			return;
+		}
+	}
+	if (options->color_transform == NULL || need_lut) {
+		wlr_matrix_identity(color_matrix);
 	}
 
 	bool srgb_image_view = false;
 	enum wlr_vk_texture_transform tex_transform = 0;
-	switch (tf) {
-	case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
-		if (texture->using_mutable_srgb) {
+	if (need_lut) {
+		tex_transform = WLR_VK_TEXTURE_TRANSFORM_LUT_3D;
+	} else {
+		switch (tf) {
+		case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
+			if (texture->using_mutable_srgb) {
+				tex_transform = WLR_VK_TEXTURE_TRANSFORM_IDENTITY;
+				srgb_image_view = true;
+			} else {
+				tex_transform = WLR_VK_TEXTURE_TRANSFORM_SRGB;
+			}
+			break;
+		case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
 			tex_transform = WLR_VK_TEXTURE_TRANSFORM_IDENTITY;
-			srgb_image_view = true;
-		} else {
-			tex_transform = WLR_VK_TEXTURE_TRANSFORM_SRGB;
+			break;
+		case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
+			tex_transform = WLR_VK_TEXTURE_TRANSFORM_ST2084_PQ;
+			break;
+		case WLR_COLOR_TRANSFER_FUNCTION_GAMMA22:
+			tex_transform = WLR_VK_TEXTURE_TRANSFORM_GAMMA22;
+			break;
+		case WLR_COLOR_TRANSFER_FUNCTION_BT1886:
+			tex_transform = WLR_VK_TEXTURE_TRANSFORM_BT1886;
+			break;
 		}
-		break;
-	case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
-		tex_transform = WLR_VK_TEXTURE_TRANSFORM_IDENTITY;
-		break;
-	case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
-		tex_transform = WLR_VK_TEXTURE_TRANSFORM_ST2084_PQ;
-		break;
-	case WLR_COLOR_TRANSFER_FUNCTION_GAMMA22:
-		tex_transform = WLR_VK_TEXTURE_TRANSFORM_GAMMA22;
-		break;
-	case WLR_COLOR_TRANSFER_FUNCTION_BT1886:
-		tex_transform = WLR_VK_TEXTURE_TRANSFORM_BT1886;
-		break;
 	}
 
 	enum wlr_color_encoding color_encoding = options->color_encoding;
@@ -860,32 +927,28 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		return;
 	}
 
-	float color_matrix[9];
-	if (options->primaries != NULL) {
-		struct wlr_color_primaries srgb;
-		wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
-
-		wlr_color_primaries_transform_absolute_colorimetric(options->primaries,
-			&srgb, color_matrix);
-	} else {
-		wlr_matrix_identity(color_matrix);
-	}
-
-	float luminance_multiplier = 1;
-	if (options->luminance_multiplier != NULL) {
-		luminance_multiplier = *options->luminance_multiplier;
-	}
-
 	struct wlr_vk_frag_texture_pcr_data frag_pcr_data = {
 		.alpha = alpha,
-		.luminance_multiplier = luminance_multiplier,
+		.lut_3d_offset = 0.5f / dim,
+		.lut_3d_scale = (float)(dim - 1) / dim,
 	};
 	encode_color_matrix(color_matrix, frag_pcr_data.matrix);
 
 	bind_pipeline(pass, pipe->vk);
 
+	VkDescriptorSet lut_ds;
+	if (need_lut) {
+		lut_ds = transform->lut_3d.ds;
+	} else {
+		lut_ds = renderer->ds_lut3d_dummy;
+	}
+	VkDescriptorSet ds[] = {
+		view->ds, // set 0
+		lut_ds, // set 1
+	};
+	size_t ds_len = sizeof(ds) / sizeof(ds[0]);
 	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-		pipe->layout->vk, 0, 1, &view->ds, 0, NULL);
+		pipe->layout->vk, 0, ds_len, ds, 0, NULL);
 
 	vkCmdPushConstants(cb, pipe->layout->vk,
 		VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vert_pcr_data), &vert_pcr_data);
@@ -1111,7 +1174,7 @@ static bool create_3d_lut_image(struct wlr_vk_renderer *renderer,
 		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_SHADER_READ_BIT);
 
 	*ds_pool = vulkan_alloc_texture_ds(renderer,
-		renderer->output_ds_lut3d_layout, ds);
+		renderer->ds_lut3d_layout, ds);
 	if (!*ds_pool) {
 		wlr_log(WLR_ERROR, "Failed to allocate descriptor");
 		goto fail_imageview;
@@ -1142,15 +1205,22 @@ fail_image:
 }
 
 static struct wlr_vk_color_transform *vk_color_transform_create(
-		struct wlr_vk_renderer *renderer, struct wlr_color_transform *transform) {
+		struct wlr_vk_renderer *renderer, struct wlr_color_transform *transform,
+		bool output) {
 	struct wlr_vk_color_transform *vk_transform =
 		calloc(1, sizeof(*vk_transform));
 	if (!vk_transform) {
 		return NULL;
 	}
 
-	bool need_lut = !unwrap_color_transform(transform, vk_transform->color_matrix,
-		&vk_transform->inverse_eotf);
+	bool need_lut;
+	if (output) {
+		need_lut = !unwrap_output_color_transform(transform, vk_transform->color_matrix,
+			&vk_transform->eotf);
+	} else {
+		need_lut = !unwrap_texture_color_transform(transform, vk_transform->color_matrix,
+			&vk_transform->eotf);
+	}
 
 	if (need_lut) {
 		vk_transform->lut_3d.dim = 33;
@@ -1193,7 +1263,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		}
 	} else {
 		// This is the default when unspecified
-		inv_eotf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+		inv_eotf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 	}
 
 	bool using_linear_pathway = inv_eotf == WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
@@ -1214,7 +1284,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		if (options != NULL && options->color_transform != NULL &&
 				!get_color_transform(options->color_transform, renderer)) {
 			/* Try to create a new color transform */
-			if (!vk_color_transform_create(renderer, options->color_transform)) {
+			if (!vk_color_transform_create(renderer, options->color_transform, true)) {
 				wlr_log(WLR_ERROR, "Failed to create color transform");
 				return NULL;
 			}

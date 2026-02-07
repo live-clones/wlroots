@@ -29,6 +29,17 @@ void wlr_color_transform_init(struct wlr_color_transform *tr, enum wlr_color_tra
 	wlr_addon_set_init(&tr->addons);
 }
 
+struct wlr_color_transform *wlr_color_transform_init_linear_to_eotf(
+		enum wlr_color_transfer_function tf) {
+	struct wlr_color_transform_inverse_eotf *tx = calloc(1, sizeof(*tx));
+	if (!tx) {
+		return NULL;
+	}
+	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_EOTF);
+	tx->tf = tf;
+	return &tx->base;
+}
+
 struct wlr_color_transform *wlr_color_transform_init_linear_to_inverse_eotf(
 		enum wlr_color_transfer_function tf) {
 	struct wlr_color_transform_inverse_eotf *tx = calloc(1, sizeof(*tx));
@@ -103,6 +114,7 @@ static void color_transform_destroy(struct wlr_color_transform *tr) {
 	switch (tr->type) {
 	case COLOR_TRANSFORM_INVERSE_EOTF:
 	case COLOR_TRANSFORM_MATRIX:
+	case COLOR_TRANSFORM_EOTF:
 		break;
 	case COLOR_TRANSFORM_LCMS2:
 		color_transform_lcms2_finish(color_transform_lcms2_from_base(tr));
@@ -140,6 +152,13 @@ void wlr_color_transform_unref(struct wlr_color_transform *tr) {
 	}
 }
 
+struct wlr_color_transform_eotf *wlr_color_transform_eotf_from_base(
+		struct wlr_color_transform *tr) {
+	assert(tr->type == COLOR_TRANSFORM_EOTF);
+	struct wlr_color_transform_eotf *eotf = wl_container_of(tr, eotf, base);
+	return eotf;
+}
+
 struct wlr_color_transform_inverse_eotf *wlr_color_transform_inverse_eotf_from_base(
 		struct wlr_color_transform *tr) {
 	assert(tr->type == COLOR_TRANSFORM_INVERSE_EOTF);
@@ -154,6 +173,14 @@ struct wlr_color_transform_lut_3x1d *color_transform_lut_3x1d_from_base(
 	return lut_3x1d;
 }
 
+static float srgb_eval_eotf(float x) {
+	if (x <= 0.04045) {
+		return x / 12.92;
+	} else {
+		return powf((x + 0.055) / 1.055, 2.4);
+	}
+}
+
 static float srgb_eval_inverse_eotf(float x) {
 	// See https://www.w3.org/Graphics/Color/srgb
 	if (x <= 0.0031308) {
@@ -161,6 +188,21 @@ static float srgb_eval_inverse_eotf(float x) {
 	} else {
 		return 1.055 * powf(x, 1.0 / 2.4) - 0.055;
 	}
+}
+
+static float st2084_pq_eval_eotf(float x) {
+	float c1 = 0.8359375;
+	float c2 = 18.8515625;
+	float c3 = 18.6875;
+	float inv_m2 = 1.0 / 78.84375;
+	float inv_m1 = 1.0 / 0.1593017578125;
+	float pow_m2 = powf(x, inv_m2);
+	float num = pow_m2 - c1;
+	if (num < 0) {
+		num = 0;
+	}
+	float denom = c2 - c3 * pow_m2;
+	return powf(num / denom, inv_m1);
 }
 
 static float st2084_pq_eval_inverse_eotf(float x) {
@@ -180,12 +222,36 @@ static float st2084_pq_eval_inverse_eotf(float x) {
 	return powf((c1 + c2 * pow_n) / (1 + c3 * pow_n), m);
 }
 
+static float bt1886_eval_eotf(float x) {
+	float lb = powf(0.0001, 1.0 / 2.4);
+	float lw = powf(1.0, 1.0 / 2.4);
+	float a  = powf(lw - lb, 2.4);
+	float b  = lb / (lw - lb);
+	return a * powf(x + b, 2.4);
+}
+
 static float bt1886_eval_inverse_eotf(float x) {
 	float lb = powf(0.0001, 1.0 / 2.4);
 	float lw = powf(1.0, 1.0 / 2.4);
 	float a  = powf(lw - lb, 2.4);
 	float b  = lb / (lw - lb);
 	return powf(x / a, 1.0 / 2.4) - b;
+}
+
+static float transfer_function_eval_eotf(enum wlr_color_transfer_function tf, float x) {
+	switch (tf) {
+	case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
+		return srgb_eval_eotf(x);
+	case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
+		return st2084_pq_eval_eotf(x);
+	case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
+		return x;
+	case WLR_COLOR_TRANSFER_FUNCTION_GAMMA22:
+		return powf(x, 2.2);
+	case WLR_COLOR_TRANSFER_FUNCTION_BT1886:
+		return bt1886_eval_eotf(x);
+	}
+	abort(); // unreachable
 }
 
 static float transfer_function_eval_inverse_eotf(
@@ -203,6 +269,14 @@ static float transfer_function_eval_inverse_eotf(
 		return bt1886_eval_inverse_eotf(x);
 	}
 	abort(); // unreachable
+}
+
+static void color_transform_eotf_eval(
+		struct wlr_color_transform_eotf *tr,
+		float out[static 3], const float in[static 3]) {
+	for (size_t i = 0; i < 3; i++) {
+		out[i] = transfer_function_eval_eotf(tr->tf, in[i]);
+	}
 }
 
 static void color_transform_inverse_eotf_eval(
@@ -264,6 +338,9 @@ void wlr_color_transform_eval(struct wlr_color_transform *tr,
 			wlr_color_transform_eval(pipeline->transforms[i], color, color);
 		}
 		memcpy(out, color, sizeof(color));
+		break;
+	case COLOR_TRANSFORM_EOTF:
+		color_transform_eotf_eval(wlr_color_transform_eotf_from_base(tr), out, in);
 		break;
 	}
 }
