@@ -81,7 +81,6 @@ wlr_files += files(
 	'wlr_relative_pointer_v1.c',
 	'wlr_screencopy_v1.c',
 	'wlr_security_context_v1.c',
-	'wlr_server_decoration.c',
 	'wlr_session_lock_v1.c',
 	'wlr_shm.c',
 	'wlr_single_pixel_buffer_v1.c',
