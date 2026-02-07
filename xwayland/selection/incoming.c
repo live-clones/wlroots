@@ -7,6 +7,7 @@
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/util/log.h>
 #include <xcb/xfixes.h>
+#include "wlr/types/wlr_data_receiver.h"
 #include "xwayland/selection.h"
 #include "xwayland/xwm.h"
 
@@ -40,6 +41,39 @@ xwm_selection_transfer_create_incoming(struct wlr_xwm_selection *selection) {
 	xwm_schedule_flush(xwm);
 
 	return transfer;
+}
+
+void xwm_selection_transfer_destroy_incoming(
+		struct wlr_xwm_selection_transfer *transfer) {
+	if (!transfer) {
+		return;
+	}
+
+	xwm_selection_transfer_destroy_property_reply(transfer);
+	xwm_selection_transfer_remove_event_source(transfer);
+	xwm_selection_transfer_close_wl_client_fd(transfer);
+
+
+	if (transfer->incoming_window) {
+		struct wlr_xwm *xwm = transfer->selection->xwm;
+		xcb_destroy_window(xwm->xcb_conn, transfer->incoming_window);
+		xwm_schedule_flush(xwm);
+	}
+
+	if (transfer->wl_client_receiver) {
+		wl_list_remove(&transfer->receiver_destroy.link);
+		wlr_data_receiver_destroy(transfer->wl_client_receiver);
+	}
+
+	wl_list_remove(&transfer->link);
+	free(transfer);
+}
+
+static void handle_incoming_receiver_destroy(struct wl_listener *listener, void *data) {
+	struct wlr_xwm_selection_transfer *transfer =
+		wl_container_of(listener, transfer, receiver_destroy);
+	transfer->wl_client_receiver = NULL;
+	wl_list_remove(&transfer->receiver_destroy.link);
 }
 
 struct wlr_xwm_selection_transfer *
@@ -110,7 +144,7 @@ static int write_selection_property_to_wl_client(int fd, uint32_t mask,
 	ssize_t len = write(fd, property + transfer->property_start, remainder);
 	if (len == -1) {
 		wlr_log_errno(WLR_ERROR, "write error to target fd %d", fd);
-		xwm_selection_transfer_destroy(transfer);
+		xwm_selection_transfer_destroy_incoming(transfer);
 		return 0;
 	}
 
@@ -126,7 +160,7 @@ static int write_selection_property_to_wl_client(int fd, uint32_t mask,
 		xwm_notify_ready_for_next_incr_chunk(transfer);
 	} else {
 		wlr_log(WLR_DEBUG, "transfer complete");
-		xwm_selection_transfer_destroy(transfer);
+		xwm_selection_transfer_destroy_incoming(transfer);
 	}
 
 	return 0;
@@ -171,7 +205,7 @@ void xwm_get_incr_chunk(struct wlr_xwm_selection_transfer *transfer) {
 		xwm_write_selection_property_to_wl_client(transfer);
 	} else {
 		wlr_log(WLR_DEBUG, "incremental transfer complete");
-		xwm_selection_transfer_destroy(transfer);
+		xwm_selection_transfer_destroy_incoming(transfer);
 	}
 }
 
@@ -195,7 +229,7 @@ static void xwm_selection_transfer_get_data(
 
 static void source_send(struct wlr_xwm_selection *selection,
 		struct wl_array *mime_types, struct wl_array *mime_types_atoms,
-		const char *requested_mime_type, int fd) {
+		const char *requested_mime_type, struct wlr_data_receiver *receiver) {
 	struct wlr_xwm *xwm = selection->xwm;
 
 	xcb_atom_t *atoms = mime_types_atoms->data;
@@ -215,7 +249,7 @@ static void source_send(struct wlr_xwm_selection *selection,
 	if (!found) {
 		wlr_log(WLR_DEBUG, "Cannot send X11 selection to Wayland: "
 			"unsupported MIME type");
-		close(fd);
+		wlr_data_receiver_cancelled(receiver);
 		return;
 	}
 
@@ -223,9 +257,13 @@ static void source_send(struct wlr_xwm_selection *selection,
 		xwm_selection_transfer_create_incoming(selection);
 	if (!transfer) {
 		wlr_log(WLR_ERROR, "Cannot create transfer");
-		close(fd);
+		wlr_data_receiver_cancelled(receiver);
 		return;
 	}
+
+	// Listen for receiver destruction to clean up the reference
+	transfer->receiver_destroy.notify = handle_incoming_receiver_destroy;
+	wl_signal_add(&receiver->events.destroy, &transfer->receiver_destroy);
 
 	xcb_convert_selection(xwm->xcb_conn,
 		transfer->incoming_window,
@@ -236,8 +274,9 @@ static void source_send(struct wlr_xwm_selection *selection,
 
 	xwm_schedule_flush(xwm);
 
-	fcntl(fd, F_SETFL, O_WRONLY | O_NONBLOCK);
-	transfer->wl_client_fd = fd;
+	fcntl(receiver->fd, F_SETFL, O_WRONLY | O_NONBLOCK);
+	transfer->wl_client_fd = receiver->fd;
+	transfer->wl_client_receiver = receiver;
 }
 
 struct x11_data_source {
@@ -250,24 +289,26 @@ static const struct wlr_data_source_impl data_source_impl;
 
 bool data_source_is_xwayland(
 		struct wlr_data_source *wlr_source) {
-	return wlr_source->impl == &data_source_impl;
+	struct wlr_data_source *original = wlr_data_source_get_original(wlr_source);
+	return original->impl == &data_source_impl;
 }
 
 static struct x11_data_source *data_source_from_wlr_data_source(
 		struct wlr_data_source *wlr_source) {
 	assert(data_source_is_xwayland(wlr_source));
-	struct x11_data_source *source = wl_container_of(wlr_source, source, base);
+	struct wlr_data_source *original = wlr_data_source_get_original(wlr_source);
+	struct x11_data_source *source = wl_container_of(original, source, base);
 	return source;
 }
 
 static void data_source_send(struct wlr_data_source *wlr_source,
-		const char *mime_type, int32_t fd) {
+		const char *mime_type, struct wlr_data_receiver *receiver) {
 	struct x11_data_source *source =
 		data_source_from_wlr_data_source(wlr_source);
 	struct wlr_xwm_selection *selection = source->selection;
 
 	source_send(selection, &wlr_source->mime_types, &source->mime_types_atoms,
-		mime_type, fd);
+		mime_type, receiver);
 }
 
 static void data_source_destroy(struct wlr_data_source *wlr_source) {
@@ -293,17 +334,18 @@ static const struct wlr_primary_selection_source_impl
 
 bool primary_selection_source_is_xwayland(
 		struct wlr_primary_selection_source *wlr_source) {
-	return wlr_source->impl == &primary_selection_source_impl;
+	struct wlr_primary_selection_source *original = wlr_primary_selection_source_get_original(wlr_source);
+	return original->impl == &primary_selection_source_impl;
 }
 
 static void primary_selection_source_send(
 		struct wlr_primary_selection_source *wlr_source,
-		const char *mime_type, int fd) {
+		const char *mime_type, struct wlr_data_receiver *receiver) {
 	struct x11_primary_selection_source *source = wl_container_of(wlr_source, source, base);
 	struct wlr_xwm_selection *selection = source->selection;
 
 	source_send(selection, &wlr_source->mime_types, &source->mime_types_atoms,
-		mime_type, fd);
+		mime_type, receiver);
 }
 
 static void primary_selection_source_destroy(
@@ -409,6 +451,10 @@ static void xwm_selection_get_targets(struct wlr_xwm_selection *selection) {
 		}
 		wlr_data_source_init(&source->base, &data_source_impl);
 
+		// Set client and PID for XWayland data sources
+		source->base.client = xwm->xwayland->server->client;
+		source->base.pid = get_x11_window_pid(xwm->xcb_conn, selection->owner);
+
 		source->selection = selection;
 		wl_array_init(&source->mime_types_atoms);
 
@@ -427,6 +473,10 @@ static void xwm_selection_get_targets(struct wlr_xwm_selection *selection) {
 		}
 		wlr_primary_selection_source_init(&source->base,
 			&primary_selection_source_impl);
+
+		// Set client and PID for XWayland primary selection sources
+		source->base.client = xwm->xwayland->server->client;
+		source->base.pid = get_x11_window_pid(xwm->xcb_conn, selection->owner);
 
 		source->selection = selection;
 		wl_array_init(&source->mime_types_atoms);
@@ -462,7 +512,7 @@ void xwm_handle_selection_notify(struct wlr_xwm *xwm,
 	if (event->property == XCB_ATOM_NONE) {
 		if (transfer) {
 			wlr_log(WLR_ERROR, "convert selection failed");
-			xwm_selection_transfer_destroy(transfer);
+			xwm_selection_transfer_destroy_incoming(transfer);
 		}
 	} else if (event->target == xwm->atoms[TARGETS]) {
 		// No xwayland surface focused, deny access to clipboard
