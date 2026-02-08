@@ -7,6 +7,7 @@
 #include <wlr/util/log.h>
 #include "backend/libinput.h"
 #include "util/env.h"
+#include "config.h"
 
 static struct wlr_libinput_backend *get_libinput_backend_from_backend(
 		struct wlr_backend *wlr_backend) {
@@ -93,6 +94,12 @@ static bool backend_start(struct wlr_backend *wlr_backend) {
 		wlr_log(WLR_ERROR, "Failed to create libinput context");
 		return false;
 	}
+
+# if HAVE_LIBINPUT_PLUGINS
+	wlr_log(WLR_INFO, "Enabling libinput plugins from default paths");
+	libinput_plugin_system_append_default_paths(backend->libinput_context);
+	libinput_plugin_system_load_plugins(backend->libinput_context, LIBINPUT_PLUGIN_SYSTEM_FLAG_NONE);
+#endif
 
 	if (libinput_udev_assign_seat(backend->libinput_context,
 			backend->session->seat) != 0) {

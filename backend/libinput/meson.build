@@ -29,3 +29,4 @@ features += { 'libinput-backend': true }
 wlr_deps += libinput
 
 internal_config.set10('HAVE_LIBINPUT_BUSTYPE', libinput.version().version_compare('>=1.26.0'))
+internal_config.set10('HAVE_LIBINPUT_PLUGINS', libinput.version().version_compare('>=1.30.0'))
