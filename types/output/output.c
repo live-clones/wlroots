@@ -233,6 +233,11 @@ static void output_apply_state(struct wlr_output *output,
 		output->transform = state->transform;
 	}
 
+	if (state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) {
+		output->color_encoding = state->color_encoding;
+		output->color_range = state->color_range;
+	}
+
 	if (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
 		if (state->image_description != NULL) {
 			output->image_description_value = *state->image_description;
@@ -579,6 +584,11 @@ static uint32_t output_compare_state(struct wlr_output *output,
 	if ((state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) &&
 			output->color_transform == state->color_transform) {
 		fields |= WLR_OUTPUT_STATE_COLOR_TRANSFORM;
+	}
+	if ((state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) &&
+			output->color_encoding == state->color_encoding &&
+			output->color_range == state->color_range) {
+		fields |= WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
 	}
 	return fields;
 }
