@@ -36,6 +36,9 @@ struct wlr_switch {
 enum wlr_switch_type {
 	WLR_SWITCH_TYPE_LID,
 	WLR_SWITCH_TYPE_TABLET_MODE,
+#ifdef LIBINPUT_HAS_KEYPAD_SLIDE_SWITCH
+	WLR_SWITCH_TYPE_KEYPAD_SLIDE,
+#endif
 };
 
 enum wlr_switch_state {

@@ -14,6 +14,11 @@ if not (libinput.found() and features['session'])
 	subdir_done()
 endif
 
+# This condition should be dropped once required libinput version is >=1.31
+if libinput.version().version_compare('>=1.30.901')
+	add_project_arguments('-DLIBINPUT_HAS_KEYPAD_SLIDE_SWITCH', language: 'c')
+endif
+
 wlr_files += files(
 	'backend.c',
 	'events.c',
