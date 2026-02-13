@@ -292,3 +292,44 @@ void generate_cvt_mode(drmModeModeInfo *mode, int hdisplay, int vdisplay,
 	};
 	snprintf(mode->name, sizeof(mode->name), "%dx%d", hdisplay, vdisplay);
 }
+
+char *get_drm_bus_str(const drmDevice *dev) {
+	char buf[128];
+	switch (dev->bustype) {
+	case DRM_BUS_PCI:;
+		const drmPciBusInfo *pci = dev->businfo.pci;
+		snprintf(buf, sizeof(buf), "pci-%04" PRIx16 ":%02" PRIx8 ":%02" PRIx8 ".%" PRIu8,
+			pci->domain, pci->bus, pci->dev, pci->func);
+		return strdup(buf);
+	case DRM_BUS_PLATFORM:;
+		const drmPlatformBusInfo *platform = dev->businfo.platform;
+		size_t str_size = strlen("platform-") + strlen(platform->fullname) + 1;
+		char *str = malloc(str_size);
+		if (str == NULL) {
+			return NULL;
+		}
+		snprintf(str, str_size, "platform-%s", platform->fullname);
+		return str;
+	}
+	return NULL;
+}
+
+bool parse_dp_mst_path(const char *path, uint32_t *parent_conn_id, const char **child_path) {
+	const char prefix[] = "mst:";
+	if (strncmp(path, prefix, strlen(prefix)) != 0) {
+		return false;
+	}
+	path = &path[strlen(prefix)];
+
+	char *id_end;
+	errno = 0;
+	unsigned long id = strtoul(path, &id_end, 10);
+	if (errno != 0 || id_end[0] != '-' || id > UINT32_MAX) {
+		wlr_log(WLR_ERROR, "Malformed PATH DP-MST property: invalid parent connector ID");
+		return false;
+	}
+
+	*parent_conn_id = (uint32_t)id;
+	*child_path = &id_end[1];
+	return true;
+}
