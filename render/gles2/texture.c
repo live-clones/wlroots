@@ -325,6 +325,7 @@ static struct wlr_texture *gles2_texture_from_pixels(
 	}
 	texture->target = GL_TEXTURE_2D;
 	texture->has_alpha = pixel_format_has_alpha(fmt->drm_format);
+	texture->format = fmt->gl_format;
 	texture->drm_format = fmt->drm_format;
 
 	GLint internal_format = fmt->gl_internalformat;
@@ -436,5 +437,6 @@ void wlr_gles2_texture_get_attribs(struct wlr_texture *wlr_texture,
 		.target = texture->target,
 		.tex = texture->tex,
 		.has_alpha = texture->has_alpha,
+		.format = texture->format,
 	};
 }
