@@ -918,6 +918,12 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	}
 
 	texture->last_used_cb = pass->command_buffer;
+	if (texture->buffer != NULL) {
+		if (!vulkan_command_buffer_ref_buffer(pass->command_buffer, texture->buffer)) {
+			pass->failed = true;
+			return;
+		}
+	}
 
 	pixman_region32_fini(&clip);
 
