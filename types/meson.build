@@ -45,7 +45,6 @@ wlr_files += files(
 	'wlr_cursor.c',
 	'wlr_cursor_shape_v1.c',
 	'wlr_damage_ring.c',
-	'wlr_data_control_v1.c',
 	'wlr_drm.c',
 	'wlr_export_dmabuf_v1.c',
 	'wlr_ext_data_control_v1.c',
