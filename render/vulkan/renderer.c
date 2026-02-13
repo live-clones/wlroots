@@ -491,10 +491,12 @@ static void release_command_buffer_resources(struct wlr_vk_command_buffer *cb,
 		wl_list_insert(&renderer->stage.buffers, &buf->link);
 	}
 
-	if (cb->color_transform) {
-		wlr_color_transform_unref(cb->color_transform);
-		cb->color_transform = NULL;
+	struct wlr_color_transform **transform;
+	wl_array_for_each(transform, &cb->color_transforms) {
+		wlr_color_transform_unref(*transform);
 	}
+	wl_array_release(&cb->color_transforms);
+	wl_array_init(&cb->color_transforms);
 }
 
 static struct wlr_vk_command_buffer *get_command_buffer(
@@ -604,6 +606,16 @@ void vulkan_reset_command_buffer(struct wlr_vk_command_buffer *cb) {
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkResetCommandBuffer", res);
 	}
+}
+
+bool vulkan_command_buffer_ref_color_transform(struct wlr_vk_command_buffer *cb,
+		struct wlr_color_transform *color_transform) {
+	struct wlr_color_transform **ref = wl_array_add(&cb->color_transforms, sizeof(*ref));
+	if (ref == NULL) {
+		return false;
+	}
+	*ref = wlr_color_transform_ref(color_transform);
+	return true;
 }
 
 static void finish_render_buffer_out(struct wlr_vk_render_buffer_out *out,
@@ -1175,9 +1187,9 @@ static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 	vkDestroySemaphore(dev->dev, renderer->timeline_semaphore, NULL);
 	vkDestroyPipelineLayout(dev->dev, renderer->output_pipe_layout, NULL);
 	vkDestroyDescriptorSetLayout(dev->dev, renderer->output_ds_srgb_layout, NULL);
-	vkDestroyDescriptorSetLayout(dev->dev, renderer->output_ds_lut3d_layout, NULL);
+	vkDestroyDescriptorSetLayout(dev->dev, renderer->ds_lut3d_layout, NULL);
 	vkDestroyCommandPool(dev->dev, renderer->command_pool, NULL);
-	vkDestroySampler(dev->dev, renderer->output_sampler_lut3d, NULL);
+	vkDestroySampler(dev->dev, renderer->sampler_lut3d, NULL);
 
 	if (renderer->read_pixels_cache.initialized) {
 		vkFreeMemory(dev->dev, renderer->read_pixels_cache.dst_img_memory, NULL);
@@ -1510,10 +1522,15 @@ static bool init_tex_layouts(struct wlr_vk_renderer *renderer,
 		},
 	};
 
+	VkDescriptorSetLayout out_ds_layouts[] = {
+		*out_ds_layout,
+		renderer->ds_lut3d_layout,
+	};
+
 	VkPipelineLayoutCreateInfo pl_info = {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		.setLayoutCount = 1,
-		.pSetLayouts = out_ds_layout,
+		.setLayoutCount = sizeof(out_ds_layouts) / sizeof(out_ds_layouts[0]),
+		.pSetLayouts = out_ds_layouts,
 		.pushConstantRangeCount = sizeof(pc_ranges) / sizeof(pc_ranges[0]),
 		.pPushConstantRanges = pc_ranges,
 	};
@@ -1564,7 +1581,7 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 	};
 
 	res = vkCreateSampler(renderer->dev->dev, &sampler_create_info, NULL,
-		&renderer->output_sampler_lut3d);
+		&renderer->sampler_lut3d);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateSampler", res);
 		return false;
@@ -1575,7 +1592,7 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		.descriptorCount = 1,
 		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.pImmutableSamplers = &renderer->output_sampler_lut3d,
+		.pImmutableSamplers = &renderer->sampler_lut3d,
 	};
 
 	VkDescriptorSetLayoutCreateInfo ds_lut3d_info = {
@@ -1585,7 +1602,7 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 	};
 
 	res = vkCreateDescriptorSetLayout(dev, &ds_lut3d_info, NULL,
-		&renderer->output_ds_lut3d_layout);
+		&renderer->ds_lut3d_layout);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateDescriptorSetLayout", res);
 		return false;
@@ -1607,7 +1624,7 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 
 	VkDescriptorSetLayout out_ds_layouts[] = {
 		renderer->output_ds_srgb_layout,
-		renderer->output_ds_lut3d_layout,
+		renderer->ds_lut3d_layout,
 	};
 
 	VkPipelineLayoutCreateInfo pl_info = {
@@ -2137,9 +2154,9 @@ static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
 		return false;
 	}
 
-	renderer->output_ds_lut3d_dummy_pool = vulkan_alloc_texture_ds(renderer,
-		renderer->output_ds_lut3d_layout, &renderer->output_ds_lut3d_dummy);
-	if (!renderer->output_ds_lut3d_dummy_pool) {
+	renderer->ds_lut3d_dummy_pool = vulkan_alloc_texture_ds(renderer,
+		renderer->ds_lut3d_layout, &renderer->ds_lut3d_dummy);
+	if (!renderer->ds_lut3d_dummy_pool) {
 		wlr_log(WLR_ERROR, "Failed to allocate descriptor");
 		return false;
 	}
@@ -2151,7 +2168,7 @@ static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.descriptorCount = 1,
 		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.dstSet = renderer->output_ds_lut3d_dummy,
+		.dstSet = renderer->ds_lut3d_dummy,
 		.pImageInfo = &ds_img_info,
 	};
 	vkUpdateDescriptorSets(dev, 1, &ds_write, 0, NULL);
