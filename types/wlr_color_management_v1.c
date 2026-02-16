@@ -10,6 +10,7 @@
 
 #include "color-management-v1-protocol.h"
 #include "render/color.h"
+#include "types/wlr_color_management_v1.h"
 #include "util/mem.h"
 
 #define COLOR_MANAGEMENT_V1_VERSION 2
@@ -1016,8 +1017,7 @@ void wlr_color_manager_v1_set_surface_preferred_image_description(
 	}
 }
 
-enum wlr_color_transfer_function
-wlr_color_manager_v1_transfer_function_to_wlr(enum wp_color_manager_v1_transfer_function tf) {
+uint32_t transfer_function_try_to_wlr(enum wp_color_manager_v1_transfer_function tf) {
 	switch (tf) {
 	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_COMPOUND_POWER_2_4:
 		return WLR_COLOR_TRANSFER_FUNCTION_SRGB;
@@ -1030,8 +1030,15 @@ wlr_color_manager_v1_transfer_function_to_wlr(enum wp_color_manager_v1_transfer_
 	case WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_BT1886:
 		return WLR_COLOR_TRANSFER_FUNCTION_BT1886;
 	default:
-		abort();
+		return 0;
 	}
+}
+
+enum wlr_color_transfer_function
+wlr_color_manager_v1_transfer_function_to_wlr(enum wp_color_manager_v1_transfer_function tf) {
+	uint32_t wlr_tf = transfer_function_try_to_wlr(tf);
+	assert(wlr_tf != 0);
+	return wlr_tf;
 }
 
 enum wp_color_manager_v1_transfer_function
@@ -1051,16 +1058,22 @@ wlr_color_manager_v1_transfer_function_from_wlr(enum wlr_color_transfer_function
 	abort();
 }
 
-enum wlr_color_named_primaries
-wlr_color_manager_v1_primaries_to_wlr(enum wp_color_manager_v1_primaries primaries) {
+uint32_t named_primaries_try_to_wlr(enum wp_color_manager_v1_primaries primaries) {
 	switch (primaries) {
 	case WP_COLOR_MANAGER_V1_PRIMARIES_SRGB:
 		return WLR_COLOR_NAMED_PRIMARIES_SRGB;
 	case WP_COLOR_MANAGER_V1_PRIMARIES_BT2020:
 		return WLR_COLOR_NAMED_PRIMARIES_BT2020;
 	default:
-		abort();
+		return 0;
 	}
+}
+
+enum wlr_color_named_primaries
+wlr_color_manager_v1_primaries_to_wlr(enum wp_color_manager_v1_primaries primaries) {
+	uint32_t wlr_primaries = named_primaries_try_to_wlr(primaries);
+	assert(wlr_primaries != 0);
+	return wlr_primaries;
 }
 
 enum wp_color_manager_v1_primaries
