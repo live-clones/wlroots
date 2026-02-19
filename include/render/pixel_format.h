@@ -68,4 +68,10 @@ bool pixel_format_has_alpha(uint32_t fmt);
  */
 bool pixel_format_is_ycbcr(uint32_t fmt);
 
+/**
+ * Get the equivalent opaque variant of a format if it has an alpha channel,
+ * DRM_FORMAT_INVALID otherwise.
+ */
+uint32_t pixel_format_get_opaque_substitute(uint32_t fmt);
+
 #endif
