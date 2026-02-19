@@ -18,11 +18,6 @@
 struct wlr_pixel_format_info {
 	uint32_t drm_format;
 
-	/* Equivalent of the format if it has an alpha channel,
-	 * DRM_FORMAT_INVALID (0) if NA
-	 */
-	uint32_t opaque_substitute;
-
 	/* Bytes per block (including padding) */
 	uint32_t bytes_per_block;
 	/* Size of a block in pixels (zero for 1×1) */
