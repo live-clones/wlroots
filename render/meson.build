@@ -12,9 +12,15 @@ wlr_files += files(
 	'drm_syncobj.c',
 	'pass.c',
 	'pixel_format.c',
+	'pixel_format_table.c',
 	'swapchain.c',
 	'wlr_renderer.c',
 	'wlr_texture.c',
+)
+
+run_target(
+	'gen-pixel-format',
+	command: [files('gen_pixel_format.sh'), files('pixel_format_table.c')],
 )
 
 has_dma_buf_import_sync_file = cc.has_header('linux/dma-buf.h') and cc.has_define(
