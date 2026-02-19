@@ -163,11 +163,10 @@ static struct wlr_drm_fb *drm_fb_create(struct wlr_drm_backend *drm,
 			attribs.modifier)) {
 		// The format isn't supported by the plane. Try stripping the alpha
 		// channel, if any.
-		const struct wlr_pixel_format_info *info =
-			drm_get_pixel_format_info(attribs.format);
-		if (info != NULL && info->opaque_substitute != DRM_FORMAT_INVALID &&
-				wlr_drm_format_set_has(formats, info->opaque_substitute, attribs.modifier)) {
-			attribs.format = info->opaque_substitute;
+		uint32_t opaque_substitute = pixel_format_get_opaque_substitute(attribs.format);
+		if (opaque_substitute != DRM_FORMAT_INVALID &&
+				wlr_drm_format_set_has(formats, opaque_substitute, attribs.modifier)) {
+			attribs.format = opaque_substitute;
 		} else {
 			wlr_log(WLR_DEBUG, "Buffer format 0x%"PRIX32" with modifier "
 				"0x%"PRIX64" cannot be scanned out",
