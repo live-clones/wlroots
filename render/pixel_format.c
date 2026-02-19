@@ -372,3 +372,11 @@ bool pixel_format_is_ycbcr(uint32_t format) {
 	}
 	return false;
 }
+
+uint32_t pixel_format_get_opaque_substitute(uint32_t fmt) {
+	const struct wlr_pixel_format_info *info = drm_get_pixel_format_info(fmt);
+	if (info == NULL) {
+		return DRM_FORMAT_INVALID;
+	}
+	return info->opaque_substitute;
+}
