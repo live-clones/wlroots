@@ -6,6 +6,7 @@
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
 #include <xf86drmMode.h>
+#include "backend/drm/color.h"
 #include "backend/drm/drm.h"
 #include "backend/drm/fb.h"
 #include "backend/drm/iface.h"
@@ -149,6 +150,31 @@ static bool create_gamma_lut_blob(struct wlr_drm_backend *drm,
 		return false;
 	}
 	free(gamma);
+
+	return true;
+}
+
+static bool create_ctm_blob(struct wlr_drm_backend *drm,
+		const float *matrix, uint32_t *blob_id) {
+	if (matrix == NULL) {
+		*blob_id = 0;
+		return true;
+	}
+
+	// Convert to S31.32 sign-magnitude fixed floating-point encoding
+	struct drm_color_ctm ctm = {0};
+	for (size_t i = 0; i < 9; i++) {
+		uint64_t v = fabs(matrix[i]) * ((uint64_t)1 << 32);
+		if (matrix[i] < 0) {
+			v |= (uint64_t)1 << 63;
+		}
+		ctm.matrix[i] = v;
+	}
+
+	if (drmModeCreatePropertyBlob(drm->fd, &ctm, sizeof(ctm), blob_id) != 0) {
+		wlr_log_errno(WLR_ERROR, "Unable to create CTM property blob");
+		return false;
+	}
 
 	return true;
 }
@@ -331,27 +357,38 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	}
 
 	uint32_t gamma_lut = crtc->gamma_lut;
+	uint32_t ctm = crtc->ctm;
 	if (state->base->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) {
-		size_t dim = 0;
+		size_t lut_dim = 0;
 		uint16_t *lut = NULL;
-		if (state->base->color_transform != NULL) {
-			struct wlr_color_transform_lut_3x1d *tr =
-				color_transform_lut_3x1d_from_base(state->base->color_transform);
-			dim = tr->dim;
-			lut = tr->lut_3x1d;
+		const float *matrix = NULL;
+		if (state->crtc_color_transform != NULL) {
+			lut_dim = state->crtc_color_transform->lut_3x1d->dim;
+			lut = state->crtc_color_transform->lut_3x1d->lut_3x1d;
+			if (state->crtc_color_transform->has_matrix) {
+				matrix = state->crtc_color_transform->matrix;
+			}
 		}
 
 		// Fallback to legacy gamma interface when gamma properties are not
 		// available (can happen on older Intel GPUs that support gamma but not
 		// degamma).
 		if (crtc->props.gamma_lut == 0) {
-			if (!drm_legacy_crtc_set_gamma(drm, crtc, dim, lut)) {
+			if (!drm_legacy_crtc_set_gamma(drm, crtc, lut_dim, lut)) {
 				return false;
 			}
 		} else {
-			if (!create_gamma_lut_blob(drm, dim, lut, &gamma_lut)) {
+			if (!create_gamma_lut_blob(drm, lut_dim, lut, &gamma_lut)) {
 				return false;
 			}
+		}
+
+		if (matrix != NULL && crtc->props.ctm == 0) {
+			wlr_log(WLR_DEBUG, "CRTC %"PRIu32" doesn't support CTM", crtc->id);
+			return false;
+		}
+		if (!create_ctm_blob(drm, matrix, &ctm)) {
+			return false;
 		}
 	}
 
@@ -395,6 +432,7 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 
 	state->mode_id = mode_id;
 	state->gamma_lut = gamma_lut;
+	state->ctm = ctm;
 	state->fb_damage_clips = fb_damage_clips;
 	state->primary_in_fence_fd = in_fence_fd;
 	state->vrr_enabled = vrr_enabled;
@@ -414,6 +452,7 @@ void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state) {
 	crtc->own_mode_id = true;
 	commit_blob(drm, &crtc->mode_id, state->mode_id);
 	commit_blob(drm, &crtc->gamma_lut, state->gamma_lut);
+	commit_blob(drm, &crtc->ctm, state->ctm);
 	commit_blob(drm, &conn->hdr_output_metadata, state->hdr_output_metadata);
 
 	conn->output.adaptive_sync_status = state->vrr_enabled ?
@@ -440,6 +479,7 @@ void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state)
 
 	rollback_blob(drm, &crtc->mode_id, state->mode_id);
 	rollback_blob(drm, &crtc->gamma_lut, state->gamma_lut);
+	rollback_blob(drm, &crtc->ctm, state->ctm);
 	rollback_blob(drm, &conn->hdr_output_metadata, state->hdr_output_metadata);
 
 	destroy_blob(drm, state->fb_damage_clips);
@@ -543,6 +583,9 @@ static void atomic_connector_add(struct atomic *atom,
 	if (active) {
 		if (crtc->props.gamma_lut != 0) {
 			atomic_add(atom, crtc->id, crtc->props.gamma_lut, state->gamma_lut);
+		}
+		if (crtc->props.ctm != 0) {
+			atomic_add(atom, crtc->id, crtc->props.ctm, state->ctm);
 		}
 		if (crtc->props.vrr_enabled != 0) {
 			atomic_add(atom, crtc->id, crtc->props.vrr_enabled, state->vrr_enabled);
