@@ -13,6 +13,7 @@
 #include "render/color.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_output.h"
+#include <util/time.h>
 
 static bool output_set_hardware_cursor(struct wlr_output *output,
 		struct wlr_buffer *buffer, int hotspot_x, int hotspot_y) {
@@ -433,8 +434,11 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 	return true;
 }
 
-bool wlr_output_cursor_move(struct wlr_output_cursor *cursor,
-		double x, double y) {
+static bool output_cursor_move(struct wlr_output_cursor *cursor,
+		double x, double y, struct timespec *now) {
+	cursor->deferred = false;
+	cursor->last_presentation = *now;
+
 	// Scale coordinates for the output
 	x *= cursor->output->scale;
 	y *= cursor->output->scale;
@@ -463,6 +467,58 @@ bool wlr_output_cursor_move(struct wlr_output_cursor *cursor,
 	}
 
 	return output_move_hardware_cursor(cursor->output, (int)x, (int)y);
+}
+
+
+static bool output_cursor_move_should_defer(struct wlr_output_cursor *cursor,
+		struct timespec *now) {
+	if (cursor->output->adaptive_sync_status != WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED)
+		return false;
+
+	struct timespec delta;
+	int32_t vrr_min = NSEC_PER_SEC / 10; // enforce 10fps minimum for now.
+	timespec_sub(&delta, now, &cursor->last_presentation);
+	if (delta.tv_sec || delta.tv_nsec >= vrr_min)
+		return false;
+
+	return true;
+}
+
+
+bool wlr_output_cursor_move(struct wlr_output_cursor *cursor,
+		double x, double y) {
+	// Scale coordinates for the output
+	x *= cursor->output->scale;
+	y *= cursor->output->scale;
+
+	if (cursor->x == x && cursor->y == y) {
+		return true;
+	}
+
+
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+
+	if (output_cursor_move_should_defer(cursor, &now)) {
+		cursor->deferred_x = x;
+		cursor->deferred_y = y;
+		cursor->deferred = true;
+		return true;
+	}
+
+	return output_cursor_move(cursor, x, y, &now);
+}
+
+void wlr_output_cursor_move_all_deferred(struct wlr_output *output, struct timespec *now) {
+	struct wlr_output_cursor *cursor;
+	wl_list_for_each(cursor, &output->cursors, link) {
+		if (cursor->deferred)
+			output_cursor_move(cursor, cursor->deferred_x, cursor->deferred_y, now);
+		else {
+			// Should be on wlr_output?
+			cursor->last_presentation = *now;
+		};
+	}
 }
 
 struct wlr_output_cursor *wlr_output_cursor_create(struct wlr_output *output) {
