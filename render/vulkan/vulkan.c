@@ -60,6 +60,9 @@ static VKAPI_ATTR VkBool32 debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT
 	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
 		importance = WLR_INFO;
 		break;
+	case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+		importance = WLR_DEBUG;
+		break;
 	}
 
 	wlr_log(importance, "%s (%s)", debug_data->pMessage,
@@ -152,14 +155,23 @@ struct wlr_vk_instance *vulkan_instance_create(bool debug) {
 		.ppEnabledLayerNames = NULL,
 	};
 
-	VkDebugUtilsMessageSeverityFlagsEXT severity =
-		// VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	VkDebugUtilsMessageSeverityFlagsEXT severity = 0;
 	VkDebugUtilsMessageTypeFlagsEXT types =
-		// VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+
+	enum wlr_log_importance verbosity = wlr_log_get_verbosity();
+	if (verbosity >= WLR_DEBUG) {
+		severity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+	}
+	if (verbosity >= WLR_INFO) {
+		severity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+		types |= VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
+	}
+	if (verbosity >= WLR_ERROR) {
+		severity |= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	}
 
 	VkDebugUtilsMessengerCreateInfoEXT debug_info = {
 		.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
