@@ -20,6 +20,14 @@ struct wlr_drm_viewport {
 	struct wlr_box dst_box;
 };
 
+struct wlr_drm_colorop {
+	uint32_t id;
+	uint32_t type;
+
+	struct wlr_drm_colorop_props props;
+	struct wl_list link; // wlr_drm_plane.color_pipelines
+};
+
 struct wlr_drm_plane {
 	uint32_t type;
 	uint32_t id;
@@ -38,6 +46,9 @@ struct wlr_drm_plane {
 
 	struct wlr_output_cursor_size *cursor_sizes;
 	size_t cursor_sizes_len;
+
+	struct wl_list *color_pipelines; // wlr_drm_colorop.link
+	size_t color_pipelines_len;
 
 	struct wlr_drm_plane_props props;
 

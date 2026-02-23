@@ -157,6 +157,68 @@ static bool init_plane_cursor_sizes(struct wlr_drm_plane *plane,
 	return true;
 }
 
+static bool init_color_pipeline(struct wlr_drm_backend *drm,
+		uint32_t head_id, struct wl_list *list) {
+	uint32_t id = head_id;
+	while (id != 0) {
+		struct wlr_drm_colorop *colorop = calloc(1, sizeof(*colorop));
+		if (colorop == NULL) {
+			return false;
+		}
+
+		colorop->id = id;
+		wl_list_insert(list->prev, &colorop->link);
+
+		if (!get_drm_colorop_props(drm->fd, id, &colorop->props)) {
+			return false;
+		}
+
+		uint64_t type = 0, next = 0;
+		if (!get_drm_prop(drm->fd, id, colorop->props.type, &type) ||
+				!get_drm_prop(drm->fd, id, colorop->props.next, &next)) {
+			return false;
+		}
+
+		colorop->type = (uint32_t)type;
+		id = (uint32_t)next;
+	}
+
+	return true;
+}
+
+static bool init_plane_color_pipelines(struct wlr_drm_backend *drm,
+		struct wlr_drm_plane *plane) {
+	if (plane->props.color_pipeline == 0) {
+		return true;
+	}
+
+	drmModePropertyRes *prop = drmModeGetProperty(drm->fd, plane->props.color_pipeline);
+	if (prop == NULL) {
+		return false;
+	}
+
+	plane->color_pipelines = calloc(prop->count_enums, sizeof(plane->color_pipelines[0]));
+	if (plane->color_pipelines == NULL) {
+		goto error;
+	}
+
+	for (int i = 0; i < prop->count_enums; i++) {
+		wl_list_init(&plane->color_pipelines[i]);
+		plane->color_pipelines_len++;
+
+		if (!init_color_pipeline(drm, prop->enums[i].value, &plane->color_pipelines[i])) {
+			goto error;
+		}
+	}
+
+	drmModeFreeProperty(prop);
+	return true;
+
+error:
+	drmModeFreeProperty(prop);
+	return false;
+}
+
 static bool init_plane(struct wlr_drm_backend *drm,
 		struct wlr_drm_plane *p, const drmModePlane *drm_plane) {
 	uint32_t id = drm_plane->plane_id;
@@ -237,6 +299,10 @@ static bool init_plane(struct wlr_drm_backend *drm,
 		if (!init_plane_cursor_sizes(p, &size_hint, 1)) {
 			return false;
 		}
+	}
+
+	if (!init_plane_color_pipelines(drm, p)) {
+		return false;
 	}
 
 	assert(drm->num_crtcs <= 32);
@@ -372,6 +438,14 @@ static void drm_plane_finish_surface(struct wlr_drm_plane *plane) {
 	finish_drm_surface(&plane->mgpu_surf);
 }
 
+static void finish_color_pipeline(struct wl_list *list) {
+	struct wlr_drm_colorop *colorop, *tmp;
+	wl_list_for_each_safe(colorop, tmp, list, link) {
+		wl_list_remove(&colorop->link);
+		free(colorop);
+	}
+}
+
 void finish_drm_resources(struct wlr_drm_backend *drm) {
 	if (!drm) {
 		return;
@@ -396,9 +470,15 @@ void finish_drm_resources(struct wlr_drm_backend *drm) {
 
 	for (size_t i = 0; i < drm->num_planes; ++i) {
 		struct wlr_drm_plane *plane = &drm->planes[i];
+
 		drm_plane_finish_surface(plane);
 		wlr_drm_format_set_finish(&plane->formats);
 		free(plane->cursor_sizes);
+
+		for (size_t j = 0; j < plane->color_pipelines_len; j++) {
+			finish_color_pipeline(&plane->color_pipelines[j]);
+		}
+		free(plane->color_pipelines);
 	}
 
 	free(drm->planes);
