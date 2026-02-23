@@ -968,13 +968,11 @@ static struct wlr_vk_render_buffer *get_render_buffer(
 	return buffer;
 }
 
-bool vulkan_sync_foreign_texture(struct wlr_vk_texture *texture,
-		int sync_file_fds[static WLR_DMABUF_MAX_PLANES]) {
-	struct wlr_vk_renderer *renderer = texture->renderer;
-
+static bool buffer_export_sync_file(struct wlr_vk_renderer *renderer, struct wlr_buffer *buffer,
+		uint32_t flags, int sync_file_fds[static WLR_DMABUF_MAX_PLANES]) {
 	struct wlr_dmabuf_attributes dmabuf = {0};
-	if (!wlr_buffer_get_dmabuf(texture->buffer, &dmabuf)) {
-		wlr_log(WLR_ERROR, "Failed to get texture DMA-BUF");
+	if (!wlr_buffer_get_dmabuf(buffer, &dmabuf)) {
+		wlr_log(WLR_ERROR, "wlr_buffer_get_dmabuf() failed");
 		return false;
 	}
 
@@ -984,7 +982,7 @@ bool vulkan_sync_foreign_texture(struct wlr_vk_texture *texture,
 		for (int i = 0; i < dmabuf.n_planes; i++) {
 			struct pollfd pollfd = {
 				.fd = dmabuf.fd[i],
-				.events = POLLIN,
+				.events = (flags & DMA_BUF_SYNC_WRITE) ? POLLOUT : POLLIN,
 			};
 			int timeout_ms = 1000;
 			int ret = poll(&pollfd, 1, timeout_ms);
@@ -1001,7 +999,7 @@ bool vulkan_sync_foreign_texture(struct wlr_vk_texture *texture,
 	}
 
 	for (int i = 0; i < dmabuf.n_planes; i++) {
-		int sync_file_fd = dmabuf_export_sync_file(dmabuf.fd[i], DMA_BUF_SYNC_READ);
+		int sync_file_fd = dmabuf_export_sync_file(dmabuf.fd[i], flags);
 		if (sync_file_fd < 0) {
 			wlr_log(WLR_ERROR, "Failed to extract DMA-BUF fence");
 			return false;
@@ -1013,12 +1011,40 @@ bool vulkan_sync_foreign_texture(struct wlr_vk_texture *texture,
 	return true;
 }
 
-bool vulkan_sync_render_buffer(struct wlr_vk_renderer *renderer,
-		struct wlr_vk_render_buffer *render_buffer, struct wlr_vk_command_buffer *cb,
-		struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point) {
-	VkResult res;
+bool vulkan_sync_foreign_texture_acquire(struct wlr_vk_texture *texture,
+		int sync_file_fds[static WLR_DMABUF_MAX_PLANES]) {
+	return buffer_export_sync_file(texture->renderer, texture->buffer, DMA_BUF_SYNC_READ, sync_file_fds);
+}
 
-	if (!renderer->dev->implicit_sync_interop && signal_timeline == NULL) {
+bool vulkan_sync_render_buffer_acquire(struct wlr_vk_render_buffer *render_buffer,
+		int sync_file_fds[static WLR_DMABUF_MAX_PLANES]) {
+	return buffer_export_sync_file(render_buffer->renderer, render_buffer->wlr_buffer,
+		DMA_BUF_SYNC_WRITE, sync_file_fds);
+}
+
+static bool buffer_import_sync_file(struct wlr_buffer *buffer, uint32_t flags, int sync_file_fd) {
+	struct wlr_dmabuf_attributes dmabuf = {0};
+	if (!wlr_buffer_get_dmabuf(buffer, &dmabuf)) {
+		wlr_log(WLR_ERROR, "wlr_buffer_get_dmabuf() failed");
+		return false;
+	}
+
+	for (int i = 0; i < dmabuf.n_planes; i++) {
+		if (!dmabuf_import_sync_file(dmabuf.fd[i], flags,
+				sync_file_fd)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+bool vulkan_sync_render_pass_release(struct wlr_vk_renderer *renderer,
+		struct wlr_vk_render_pass *pass) {
+	VkResult res;
+	struct wlr_vk_command_buffer *cb = pass->command_buffer;
+
+	if (!renderer->dev->implicit_sync_interop && pass->signal_timeline == NULL) {
 		// We have no choice but to block here sadly
 		return vulkan_wait_command_buffer(cb, renderer);
 	}
@@ -1040,21 +1066,19 @@ bool vulkan_sync_render_buffer(struct wlr_vk_renderer *renderer,
 	}
 
 	bool ok = false;
-	if (signal_timeline != NULL) {
-		if (!wlr_drm_syncobj_timeline_import_sync_file(signal_timeline,
-				signal_point, sync_file_fd)) {
+	if (pass->signal_timeline != NULL) {
+		if (!wlr_drm_syncobj_timeline_import_sync_file(pass->signal_timeline,
+				pass->signal_point, sync_file_fd)) {
 			goto out;
 		}
 	} else {
-		struct wlr_dmabuf_attributes dmabuf = {0};
-		if (!wlr_buffer_get_dmabuf(render_buffer->wlr_buffer, &dmabuf)) {
-			wlr_log(WLR_ERROR, "wlr_buffer_get_dmabuf failed");
+		if (!buffer_import_sync_file(pass->render_buffer->wlr_buffer, DMA_BUF_SYNC_WRITE, sync_file_fd)) {
 			goto out;
 		}
 
-		for (int i = 0; i < dmabuf.n_planes; i++) {
-			if (!dmabuf_import_sync_file(dmabuf.fd[i], DMA_BUF_SYNC_WRITE,
-					sync_file_fd)) {
+		struct wlr_vk_render_pass_texture *pass_texture;
+		wl_array_for_each(pass_texture, &pass->textures) {
+			if (!buffer_import_sync_file(pass_texture->texture->buffer, DMA_BUF_SYNC_READ, sync_file_fd)) {
 				goto out;
 			}
 		}
