@@ -35,6 +35,7 @@ struct wlr_gles2_tex_shader {
 	GLint tex;
 	GLint alpha;
 	GLint pos_attrib;
+	GLint dst_bounds;
 };
 
 struct wlr_gles2_renderer {
@@ -79,6 +80,7 @@ struct wlr_gles2_renderer {
 			GLint proj;
 			GLint color;
 			GLint pos_attrib;
+			GLint dst_bounds;
 		} quad;
 		struct wlr_gles2_tex_shader tex_rgba;
 		struct wlr_gles2_tex_shader tex_rgbx;

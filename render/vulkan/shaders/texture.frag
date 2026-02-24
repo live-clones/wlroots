@@ -10,6 +10,8 @@ layout(push_constant, row_major) uniform UBO {
 	layout(offset = 80) mat4 matrix;
 	float alpha;
 	float luminance_multiplier;
+	vec2 _pad; // padding for vec4 alignment
+	vec4 dst_bounds; // x, y, x+width, y+height in output coordinates
 } data;
 
 layout (constant_id = 0) const int TEXTURE_TRANSFORM = 0;
@@ -57,6 +59,17 @@ vec3 bt1886_color_to_linear(vec3 color) {
 	return (L - Lmin) / (Lmax - Lmin);
 }
 
+float compute_coverage() {
+	vec4 d = vec4(
+		gl_FragCoord.x - data.dst_bounds.x,
+		gl_FragCoord.y - data.dst_bounds.y,
+		data.dst_bounds.z - gl_FragCoord.x,
+		data.dst_bounds.w - gl_FragCoord.y
+	);
+	vec4 cov = clamp(d + 0.5, 0.0, 1.0);
+	return min(min(cov.x, cov.y), min(cov.z, cov.w));
+}
+
 void main() {
 	vec4 in_color = textureLod(tex, uv, 0);
 
@@ -89,5 +102,5 @@ void main() {
 	// Back to pre-multiplied alpha
 	out_color = vec4(rgb * alpha, alpha);
 
-	out_color *= data.alpha;
+	out_color *= data.alpha * compute_coverage();
 }

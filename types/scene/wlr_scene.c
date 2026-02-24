@@ -1457,12 +1457,19 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 	int x = entry->x - data->logical.x;
 	int y = entry->y - data->logical.y;
 
-	struct wlr_box dst_box = {
+	struct wlr_box box = {
 		.x = x,
 		.y = y,
 	};
-	scene_node_get_size(node, &dst_box.width, &dst_box.height);
-	transform_output_box(&dst_box, data);
+	scene_node_get_size(node, &box.width, &box.height);
+	transform_output_box(&box, data);
+
+	struct wlr_fbox dst_box = (struct wlr_fbox){
+		.x = box.x,
+		.y = box.y,
+		.width = box.width,
+		.height = box.height,
+	};
 
 	pixman_region32_t opaque;
 	pixman_region32_init(&opaque);

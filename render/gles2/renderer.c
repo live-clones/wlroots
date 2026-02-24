@@ -641,6 +641,7 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	renderer->shaders.quad.proj = glGetUniformLocation(prog, "proj");
 	renderer->shaders.quad.color = glGetUniformLocation(prog, "color");
 	renderer->shaders.quad.pos_attrib = glGetAttribLocation(prog, "pos");
+	renderer->shaders.quad.dst_bounds = glGetUniformLocation(prog, "dst_bounds");
 
 	renderer->shaders.tex_rgba.program = prog =
 		link_program(renderer, common_vert_src, tex_rgba_frag_src);
@@ -652,6 +653,7 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	renderer->shaders.tex_rgba.tex = glGetUniformLocation(prog, "tex");
 	renderer->shaders.tex_rgba.alpha = glGetUniformLocation(prog, "alpha");
 	renderer->shaders.tex_rgba.pos_attrib = glGetAttribLocation(prog, "pos");
+	renderer->shaders.tex_rgba.dst_bounds = glGetUniformLocation(prog, "dst_bounds");
 
 	renderer->shaders.tex_rgbx.program = prog =
 		link_program(renderer, common_vert_src, tex_rgbx_frag_src);
@@ -663,6 +665,7 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	renderer->shaders.tex_rgbx.tex = glGetUniformLocation(prog, "tex");
 	renderer->shaders.tex_rgbx.alpha = glGetUniformLocation(prog, "alpha");
 	renderer->shaders.tex_rgbx.pos_attrib = glGetAttribLocation(prog, "pos");
+	renderer->shaders.tex_rgbx.dst_bounds = glGetUniformLocation(prog, "dst_bounds");
 
 	if (renderer->exts.OES_egl_image_external) {
 		renderer->shaders.tex_ext.program = prog =
@@ -675,6 +678,7 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 		renderer->shaders.tex_ext.tex = glGetUniformLocation(prog, "tex");
 		renderer->shaders.tex_ext.alpha = glGetUniformLocation(prog, "alpha");
 		renderer->shaders.tex_ext.pos_attrib = glGetAttribLocation(prog, "pos");
+		renderer->shaders.tex_ext.dst_bounds = glGetUniformLocation(prog, "dst_bounds");
 	}
 
 	pop_gles2_debug(renderer);
