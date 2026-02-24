@@ -50,7 +50,7 @@ typedef bool (*wlr_scene_buffer_point_accepts_input_func_t)(
 	struct wlr_scene_buffer *buffer, double *sx, double *sy);
 
 typedef void (*wlr_scene_buffer_iterator_func_t)(
-	struct wlr_scene_buffer *buffer, int sx, int sy, void *user_data);
+	struct wlr_scene_buffer *buffer, double sx, double sy, void *user_data);
 
 enum wlr_scene_node_type {
 	WLR_SCENE_NODE_TREE,
@@ -66,18 +66,19 @@ struct wlr_scene_node {
 	struct wl_list link; // wlr_scene_tree.children
 
 	bool enabled;
-	int x, y; // relative to parent
+	double x, y; // relative to parent
 
 	struct {
 		struct wl_signal destroy;
 	} events;
 
+	bool scaling_group;
 	void *data;
 
 	struct wlr_addon_set addons;
 
 	struct {
-		pixman_region32_t visible;
+		pixman_region64f_t visible;
 	} WLR_PRIVATE;
 };
 
@@ -143,7 +144,7 @@ struct wlr_scene_surface {
 /** A scene-graph node displaying a solid-colored rectangle */
 struct wlr_scene_rect {
 	struct wlr_scene_node node;
-	int width, height;
+	double width, height;
 	float color[4];
 };
 
@@ -190,9 +191,9 @@ struct wlr_scene_buffer {
 	float opacity;
 	enum wlr_scale_filter_mode filter_mode;
 	struct wlr_fbox src_box;
-	int dst_width, dst_height;
+	double dst_width, dst_height;
 	enum wl_output_transform transform;
-	pixman_region32_t opaque_region;
+	pixman_region64f_t opaque_region;
 	enum wlr_color_transfer_function transfer_function;
 	enum wlr_color_named_primaries primaries;
 	enum wlr_color_encoding color_encoding;
@@ -230,7 +231,7 @@ struct wlr_scene_output {
 
 	struct wlr_damage_ring damage_ring;
 
-	int x, y;
+	double x, y;
 
 	struct {
 		struct wl_signal destroy;
@@ -301,7 +302,7 @@ void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled);
 /**
  * Set the position of the node relative to its parent.
  */
-void wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y);
+void wlr_scene_node_set_position(struct wlr_scene_node *node, double x, double y);
 /**
  * Move the node right above the specified sibling.
  * Asserts that node and sibling are distinct and share the same parent.
@@ -332,7 +333,7 @@ void wlr_scene_node_reparent(struct wlr_scene_node *node,
  *
  * True is returned if the node and all of its ancestors are enabled.
  */
-bool wlr_scene_node_coords(struct wlr_scene_node *node, int *lx, int *ly);
+bool wlr_scene_node_coords(struct wlr_scene_node *node, double *lx, double *ly);
 /**
  * Call `iterator` on each buffer in the scene-graph, with the buffer's
  * position in layout coordinates. The function is called from root to leaves
@@ -453,12 +454,12 @@ void wlr_scene_surface_send_frame_done(struct wlr_scene_surface *scene_surface,
  * The color argument must be a premultiplied color value.
  */
 struct wlr_scene_rect *wlr_scene_rect_create(struct wlr_scene_tree *parent,
-		int width, int height, const float color[static 4]);
+		double width, double height, const float color[static 4]);
 
 /**
  * Change the width and height of an existing rectangle node.
  */
-void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, int width, int height);
+void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, double width, double height);
 
 /**
  * Change the color of an existing rectangle node.
@@ -519,7 +520,7 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
  * determine if buffers which reside under this one need to be rendered or not.
  */
 void wlr_scene_buffer_set_opaque_region(struct wlr_scene_buffer *scene_buffer,
-	const pixman_region32_t *region);
+	const pixman_region64f_t *region);
 
 /**
  * Set the source rectangle describing the region of the buffer which will be
@@ -538,7 +539,7 @@ void wlr_scene_buffer_set_source_box(struct wlr_scene_buffer *scene_buffer,
  * destination size is zero.
  */
 void wlr_scene_buffer_set_dest_size(struct wlr_scene_buffer *scene_buffer,
-	int width, int height);
+	double width, double height);
 
 /**
  * Set a transform which will be applied to the buffer.
@@ -591,7 +592,7 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output);
  * Set the output's position in the scene-graph.
  */
 void wlr_scene_output_set_position(struct wlr_scene_output *scene_output,
-	int lx, int ly);
+	double lx, double ly);
 
 struct wlr_scene_output_state_options {
 	struct wlr_scene_timer *timer;

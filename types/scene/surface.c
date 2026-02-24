@@ -11,6 +11,7 @@
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/util/transform.h>
+#include <wlr/util/region.h>
 #include "types/wlr_scene.h"
 
 static double get_surface_preferred_buffer_scale(struct wlr_surface *surface) {
@@ -163,7 +164,7 @@ static void handle_scene_buffer_frame_done(
 
 void wlr_scene_surface_send_frame_done(struct wlr_scene_surface *scene_surface,
 		const struct timespec *when) {
-	if (!pixman_region32_empty(&scene_surface->buffer->node.visible)) {
+	if (!pixman_region64f_empty(&scene_surface->buffer->node.visible)) {
 		wlr_surface_send_frame_done(scene_surface->surface, when);
 	}
 }
@@ -279,7 +280,11 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		}
 	}
 
-	wlr_scene_buffer_set_opaque_region(scene_buffer, &opaque);
+	pixman_region64f_t opaquef;
+	pixman_region64f_init(&opaquef);
+	wlr_region64f_copy_from_region32(&opaquef, &opaque);
+
+	wlr_scene_buffer_set_opaque_region(scene_buffer, &opaquef);
 	wlr_scene_buffer_set_source_box(scene_buffer, &src_box);
 	wlr_scene_buffer_set_dest_size(scene_buffer, width, height);
 	wlr_scene_buffer_set_transform(scene_buffer, state->transform);
@@ -336,6 +341,7 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
 	}
 
+	pixman_region64f_fini(&opaquef);
 	pixman_region32_fini(&opaque);
 }
 
@@ -352,7 +358,7 @@ static void handle_scene_surface_surface_commit(
 	// schedule the frame however if the node is enabled and there is an
 	// output intersecting, otherwise the frame done events would never reach
 	// the surface anyway.
-	int lx, ly;
+	double lx, ly;
 	bool enabled = wlr_scene_node_coords(&scene_buffer->node, &lx, &ly);
 
 	if (!wl_list_empty(&surface->surface->current.frame_callback_list) &&

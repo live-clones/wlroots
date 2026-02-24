@@ -74,6 +74,34 @@ bool wlr_box_intersection(struct wlr_box *dest, const struct wlr_box *box_a,
 	return true;
 }
 
+bool wlr_fbox_intersection(struct wlr_fbox *dest, const struct wlr_fbox *box_a,
+		const struct wlr_fbox *box_b) {
+	bool a_empty = wlr_fbox_empty(box_a);
+	bool b_empty = wlr_fbox_empty(box_b);
+
+	if (a_empty || b_empty) {
+		*dest = (struct wlr_fbox){0};
+		return false;
+	}
+
+	double x1 = fmax(box_a->x, box_b->x);
+	double y1 = fmax(box_a->y, box_b->y);
+	double x2 = fmin(box_a->x + box_a->width, box_b->x + box_b->width);
+	double y2 = fmin(box_a->y + box_a->height, box_b->y + box_b->height);
+
+	dest->x = x1;
+	dest->y = y1;
+	dest->width = x2 - x1;
+	dest->height = y2 - y1;
+
+	if (wlr_fbox_empty(dest)) {
+		*dest = (struct wlr_fbox){0};
+		return false;
+	}
+
+	return true;
+}
+
 bool wlr_box_contains_point(const struct wlr_box *box, double x, double y) {
 	if (wlr_box_empty(box)) {
 		return false;
@@ -85,6 +113,17 @@ bool wlr_box_contains_point(const struct wlr_box *box, double x, double y) {
 
 bool wlr_box_contains_box(const struct wlr_box *bigger, const struct wlr_box *smaller) {
 	if (wlr_box_empty(bigger) || wlr_box_empty(smaller)) {
+		return false;
+	}
+
+	return smaller->x >= bigger->x &&
+		smaller->x + smaller->width <= bigger->x + bigger->width &&
+		smaller->y >= bigger->y &&
+		smaller->y + smaller->height <= bigger->y + bigger->height;
+}
+
+bool wlr_fbox_contains_box(const struct wlr_fbox *bigger, const struct wlr_fbox *smaller) {
+	if (wlr_fbox_empty(bigger) || wlr_fbox_empty(smaller)) {
 		return false;
 	}
 
