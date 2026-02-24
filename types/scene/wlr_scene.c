@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/backend.h>
@@ -65,6 +66,8 @@ struct wlr_scene *scene_node_get_root(struct wlr_scene_node *node) {
 	return scene;
 }
 
+static void scene_tree_invalidate_bbox(struct wlr_scene_tree *tree);
+
 static void scene_node_init(struct wlr_scene_node *node,
 		enum wlr_scene_node_type type, struct wlr_scene_tree *parent) {
 	*node = (struct wlr_scene_node){
@@ -80,6 +83,7 @@ static void scene_node_init(struct wlr_scene_node *node,
 
 	if (parent != NULL) {
 		wl_list_insert(parent->children.prev, &node->link);
+		scene_tree_invalidate_bbox(parent);
 	}
 
 	wlr_addon_set_init(&node->addons);
@@ -214,6 +218,65 @@ struct wlr_scene_tree *wlr_scene_tree_create(struct wlr_scene_tree *parent) {
 	return tree;
 }
 
+static void scene_tree_invalidate_bbox(struct wlr_scene_tree *tree) {
+	while (tree) {
+		if (!tree->bbox_valid) {
+			break;
+		}
+		tree->bbox_valid = false;
+		tree = tree->node.parent;
+	}
+}
+
+static int max(int a, int b) {
+	return a > b ? a : b;
+}
+
+static int min(int a, int b) {
+	return a < b ? a : b;
+}
+
+// Compute and cache the bounding box for a tree (in local coordinates)
+static void scene_tree_update_bbox(struct wlr_scene_tree *tree) {
+	if (tree->bbox_valid) {
+		return;
+	}
+
+	int min_x = INT_MAX, min_y = INT_MAX, max_x = INT_MIN, max_y = INT_MIN;
+
+	struct wlr_scene_node *child;
+	wl_list_for_each(child, &tree->children, link) {
+		if (child->type == WLR_SCENE_NODE_TREE) {
+			struct wlr_scene_tree *child_tree = wlr_scene_tree_from_node(child);
+			scene_tree_update_bbox(child_tree);
+			// Child tree bbox is in child-local coordinates
+			// Transform to parent coordinates by adding child->x/y
+			min_x = min(min_x, child->x + child_tree->bbox.x);
+			min_y = min(min_y, child->y + child_tree->bbox.y);
+			max_x = max(max_x, child->x + child_tree->bbox.x + child_tree->bbox.width);
+			max_y = max(max_y, child->y + child_tree->bbox.y + child_tree->bbox.height);
+		} else {
+			int child_w = 0, child_h = 0;
+			scene_node_get_size(child, &child_w, &child_h);
+			min_x = min(min_x, child->x);
+			min_y = min(min_y, child->y);
+			max_x = max(max_x, child->x + child_w);
+			max_y = max(max_y, child->y + child_h);
+		}
+	}
+
+	// Only set the bbox as valid when there are valid children are present
+	if (min_x != INT_MAX && max_x != INT_MIN) {
+		tree->bbox.x = min_x;
+		tree->bbox.y = min_y;
+
+		// the max clamps negative sizes (i.e., not enabled nodes) to zero
+		tree->bbox.width = max(0, max_x - min_x);
+		tree->bbox.height = max(0, max_y - min_y);
+		tree->bbox_valid = true;
+	}
+}
+
 typedef bool (*scene_node_box_iterator_func_t)(struct wlr_scene_node *node,
 	int sx, int sy, void *data);
 
@@ -226,6 +289,19 @@ static bool _scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box
 	switch (node->type) {
 	case WLR_SCENE_NODE_TREE:;
 		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
+
+		// Check if this subtree's bbox intersects the query box
+		scene_tree_update_bbox(scene_tree);
+		struct wlr_box tree_box = {
+			.x = lx + scene_tree->bbox.x,
+			.y = ly + scene_tree->bbox.y,
+			.width = scene_tree->bbox.width,
+			.height = scene_tree->bbox.height,
+		};
+		if (!wlr_box_empty(&tree_box) && !wlr_box_intersection(&tree_box, &tree_box, box)) {
+			return false;
+		}
+
 		struct wlr_scene_node *child;
 		wl_list_for_each_reverse(child, &scene_tree->children, link) {
 			if (_scene_nodes_in_box(child, box, iterator, user_data, lx + child->x, ly + child->y)) {
@@ -779,6 +855,7 @@ void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, int width, int height)
 
 	rect->width = width;
 	rect->height = height;
+	scene_tree_invalidate_bbox(rect->node.parent);
 	scene_node_update(&rect->node, NULL);
 }
 
@@ -1096,6 +1173,7 @@ void wlr_scene_buffer_set_dest_size(struct wlr_scene_buffer *scene_buffer,
 	assert(width >= 0 && height >= 0);
 	scene_buffer->dst_width = width;
 	scene_buffer->dst_height = height;
+	scene_tree_invalidate_bbox(scene_buffer->node.parent);
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
@@ -1238,7 +1316,7 @@ void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled) {
 	}
 
 	node->enabled = enabled;
-
+	scene_tree_invalidate_bbox(node->parent);
 	scene_node_update(node, &visible);
 }
 
@@ -1249,6 +1327,7 @@ void wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y) {
 
 	node->x = x;
 	node->y = y;
+	scene_tree_invalidate_bbox(node->parent);
 	scene_node_update(node, NULL);
 }
 
@@ -1319,9 +1398,14 @@ void wlr_scene_node_reparent(struct wlr_scene_node *node,
 		scene_node_visibility(node, &visible);
 	}
 
+	scene_tree_invalidate_bbox(node->parent);
+
 	wl_list_remove(&node->link);
 	node->parent = new_parent;
 	wl_list_insert(new_parent->children.prev, &node->link);
+
+	scene_tree_invalidate_bbox(new_parent);
+
 	scene_node_update(node, &visible);
 }
 
