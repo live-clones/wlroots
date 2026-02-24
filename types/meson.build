@@ -68,6 +68,7 @@ wlr_files += files(
 	'wlr_linux_drm_syncobj_v1.c',
 	'wlr_output_layer.c',
 	'wlr_output_layout.c',
+	'wlr_output_group.c',
 	'wlr_output_management_v1.c',
 	'wlr_output_power_management_v1.c',
 	'wlr_output_swapchain_manager.c',

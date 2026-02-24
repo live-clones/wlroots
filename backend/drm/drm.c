@@ -15,6 +15,7 @@
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_output_group.h>
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
 #include <wlr/util/transform.h>
@@ -1724,6 +1725,12 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	}
 	free(edid);
 
+	size_t tile_len = 0;
+	uint8_t *tile = get_drm_prop_blob(drm->fd,
+		wlr_conn->id, wlr_conn->props.tile, &tile_len);
+	parse_tile(wlr_conn, tile_len, tile);
+	free(tile);
+
 	char *subconnector = NULL;
 	if (wlr_conn->props.subconnector) {
 		subconnector = get_drm_prop_enum(drm->fd,
@@ -1870,10 +1877,20 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 
 	for (size_t i = 0; i < new_outputs_len; ++i) {
 		struct wlr_drm_connector *conn = new_outputs[i];
-
-		wlr_drm_conn_log(conn, WLR_INFO, "Requesting modeset");
-		wl_signal_emit_mutable(&drm->backend.events.new_output,
-			&conn->output);
+		if(conn->tile_info.group_id) {
+			struct wlr_output_group *group = wlr_output_group_match_tile(&conn->tile_info);
+			if (group) {
+				wlr_drm_conn_log(conn, WLR_INFO, "Adding %s to existing group", conn->name);
+			} else {
+				wlr_drm_conn_log(conn, WLR_INFO, "Creating output group for %s", conn->name);
+				group = wlr_output_group_create();
+			}
+			wlr_output_group_add_tile(group, &conn->output, &conn->tile_info);
+		} else {
+			wlr_drm_conn_log(conn, WLR_INFO, "Requesting modeset");
+			wl_signal_emit_mutable(&drm->backend.events.new_output,
+				&conn->output);
+		}
 	}
 }
 
