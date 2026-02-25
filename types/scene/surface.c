@@ -3,6 +3,7 @@
 #include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_color_representation_v1.h>
+#include <wlr/types/wlr_commit_timing_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
@@ -111,6 +112,14 @@ static void handle_scene_buffer_outputs_update(
 		get_surface_preferred_image_description(surface->surface, &img_desc);
 		wlr_color_manager_v1_set_surface_preferred_image_description(scene->color_manager_v1,
 			surface->surface, &img_desc);
+	}
+
+	struct wlr_commit_timer_v1 *timer;
+	wl_list_for_each(timer, &scene->commit_timers, scene_link) {
+		if (timer->surface == surface->surface && surface->buffer->active_outputs &&
+				timer->output != surface->buffer->primary_output->output) {
+			wlr_commit_timer_v1_set_output(timer, surface->buffer->primary_output->output);
+		}
 	}
 }
 

@@ -7,6 +7,11 @@
 static const long NSEC_PER_SEC = 1000000000;
 
 /**
+ * Get the current time, in nanoseconds.
+ */
+int64_t get_current_time_nsec(void);
+
+/**
  * Get the current time, in milliseconds.
  */
 int64_t get_current_time_msec(void);
