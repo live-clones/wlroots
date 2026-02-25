@@ -81,21 +81,6 @@ static VKAPI_ATTR VkBool32 debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT
 }
 
 struct wlr_vk_instance *vulkan_instance_create(bool debug) {
-	// we require vulkan 1.0
-	PFN_vkEnumerateInstanceVersion pfEnumInstanceVersion =
-		(PFN_vkEnumerateInstanceVersion)
-		vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
-	if (!pfEnumInstanceVersion) {
-		wlr_log(WLR_ERROR, "wlroots requires vulkan 1.0 which is not available");
-		return NULL;
-	}
-
-	uint32_t ini_version;
-	if (pfEnumInstanceVersion(&ini_version) != VK_SUCCESS ||
-			ini_version < VK_API_VERSION_1_0) {
-		wlr_log(WLR_ERROR, "wlroots requires vulkan 1.0 which is not available");
-		return NULL;
-	}
 
 	uint32_t avail_extc = 0;
 	VkResult res;
