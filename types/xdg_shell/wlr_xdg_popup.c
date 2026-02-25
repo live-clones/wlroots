@@ -113,7 +113,7 @@ static void xdg_keyboard_grab_enter(struct wlr_seat_keyboard_grab *grab,
 }
 
 static void xdg_keyboard_grab_clear_focus(struct wlr_seat_keyboard_grab *grab) {
-	// keyboard focus should remain on the popup
+	wlr_seat_keyboard_end_grab(grab->seat);
 }
 
 static void xdg_keyboard_grab_key(struct wlr_seat_keyboard_grab *grab, uint32_t time,
