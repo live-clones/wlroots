@@ -29,8 +29,12 @@ struct wlr_drm_plane {
 
 	/* Buffer submitted to the kernel, will be presented on next vblank */
 	struct wlr_drm_fb *queued_fb;
+	struct wlr_drm_syncobj_timeline *queued_release_timeline;
+	uint64_t queued_release_point;
 	/* Buffer currently displayed on screen */
 	struct wlr_drm_fb *current_fb;
+	struct wlr_drm_syncobj_timeline *current_release_timeline;
+	uint64_t current_release_point;
 	/* Viewport belonging to the last committed fb */
 	struct wlr_drm_viewport viewport;
 
@@ -156,7 +160,7 @@ struct wlr_drm_connector_state {
 	uint32_t mode_id;
 	uint32_t gamma_lut;
 	uint32_t fb_damage_clips;
-	int primary_in_fence_fd, out_fence_fd;
+	int primary_in_fence_fd;
 	bool vrr_enabled;
 	uint32_t colorspace;
 	uint32_t hdr_output_metadata;

@@ -21,6 +21,8 @@ struct wlr_linux_drm_syncobj_surface_v1_state {
 
 	struct wlr_drm_syncobj_timeline *release_timeline;
 	uint64_t release_point;
+
+	struct wlr_drm_syncobj_merger *release_merger;
 };
 
 struct wlr_linux_drm_syncobj_manager_v1 {

@@ -16,6 +16,7 @@
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
 #include "render/color.h"
+#include "render/drm_syncobj_merger.h"
 #include "types/wlr_output.h"
 #include "types/wlr_scene.h"
 #include "util/array.h"
@@ -128,6 +129,9 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 		scene_buffer_set_texture(scene_buffer, NULL);
 		pixman_region32_fini(&scene_buffer->opaque_region);
 		wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
+		if (scene_buffer->release_merger) {
+			wlr_drm_syncobj_merger_unref(scene_buffer->release_merger);
+		}
 
 		assert(wl_list_empty(&scene_buffer->events.output_leave.listener_list));
 		assert(wl_list_empty(&scene_buffer->events.output_enter.listener_list));
@@ -847,16 +851,23 @@ static void scene_buffer_set_texture(struct wlr_scene_buffer *scene_buffer,
 	}
 }
 
-static void scene_buffer_set_wait_timeline(struct wlr_scene_buffer *scene_buffer,
-		struct wlr_drm_syncobj_timeline *timeline, uint64_t point) {
-	wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
-	if (timeline != NULL) {
-		scene_buffer->wait_timeline = wlr_drm_syncobj_timeline_ref(timeline);
-		scene_buffer->wait_point = point;
-	} else {
-		scene_buffer->wait_timeline = NULL;
-		scene_buffer->wait_point = 0;
+static void scene_buffer_set_timelines(struct wlr_scene_buffer *scene_buffer,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point,
+		struct wlr_drm_syncobj_merger *release_merger) {
+	if (wait_timeline != NULL) {
+		wait_timeline = wlr_drm_syncobj_timeline_ref(wait_timeline);
 	}
+	wlr_drm_syncobj_timeline_unref(scene_buffer->wait_timeline);
+	scene_buffer->wait_timeline = wait_timeline;
+	scene_buffer->wait_point = wait_point;
+
+	if (release_merger != NULL) {
+		release_merger = wlr_drm_syncobj_merger_ref(release_merger);
+	}
+	if (scene_buffer->release_merger != NULL) {
+		wlr_drm_syncobj_merger_unref(scene_buffer->release_merger);
+	}
+	scene_buffer->release_merger = release_merger;
 }
 
 struct wlr_scene_buffer *wlr_scene_buffer_create(struct wlr_scene_tree *parent,
@@ -938,8 +949,8 @@ void wlr_scene_buffer_set_buffer_with_options(struct wlr_scene_buffer *scene_buf
 
 	scene_buffer_set_buffer(scene_buffer, buffer);
 	scene_buffer_set_texture(scene_buffer, NULL);
-	scene_buffer_set_wait_timeline(scene_buffer,
-		options->wait_timeline, options->wait_point);
+	scene_buffer_set_timelines(scene_buffer, options->wait_timeline, options->wait_point,
+		options->release_merger);
 
 	if (update) {
 		scene_node_update(&scene_buffer->node, NULL);
@@ -1197,6 +1208,16 @@ static struct wlr_texture *scene_buffer_get_texture(
 	}
 	scene_buffer_set_texture(scene_buffer, texture);
 	return texture;
+}
+
+static void scene_buffer_sample(struct wlr_scene_buffer *buffer,
+		struct wlr_scene_output_sample_event *event, struct wl_event_loop *loop) {
+	if (event->release_timeline && buffer->release_merger) {
+		wlr_drm_syncobj_merger_add(buffer->release_merger,
+			event->release_timeline, event->release_point, loop);
+	}
+
+	wl_signal_emit_mutable(&buffer->events.output_sample, event);
 }
 
 void scene_node_get_size(struct wlr_scene_node *node, int *width, int *height) {
@@ -1553,8 +1574,10 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 		struct wlr_scene_output_sample_event sample_event = {
 			.output = data->output,
 			.direct_scanout = false,
+			.release_timeline = data->output->in_timeline,
+			.release_point = data->output->in_point,
 		};
-		wl_signal_emit_mutable(&scene_buffer->events.output_sample, &sample_event);
+		scene_buffer_sample(scene_buffer, &sample_event, data->output->output->event_loop);
 
 		if (entry->highlight_transparent_region) {
 			wlr_render_pass_add_rect(data->render_pass, &(struct wlr_render_rect_options){
@@ -1785,7 +1808,10 @@ struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 	if (drm_fd >= 0 && output->backend->features.timeline &&
 			output->renderer != NULL && output->renderer->features.timeline) {
 		scene_output->in_timeline = wlr_drm_syncobj_timeline_create(drm_fd);
-		if (scene_output->in_timeline == NULL) {
+		scene_output->out_timeline = wlr_drm_syncobj_timeline_create(drm_fd);
+		if (scene_output->in_timeline == NULL || scene_output->out_timeline == NULL) {
+			wlr_drm_syncobj_timeline_unref(scene_output->in_timeline);
+			wlr_drm_syncobj_timeline_unref(scene_output->out_timeline);
 			return NULL;
 		}
 	}
@@ -1840,7 +1866,14 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
 	wl_list_remove(&scene_output->output_commit.link);
 	wl_list_remove(&scene_output->output_damage.link);
 	wl_list_remove(&scene_output->output_needs_frame.link);
-	wlr_drm_syncobj_timeline_unref(scene_output->in_timeline);
+	if (scene_output->in_timeline != NULL) {
+		wlr_drm_syncobj_timeline_signal(scene_output->in_timeline, UINT64_MAX);
+		wlr_drm_syncobj_timeline_unref(scene_output->in_timeline);
+	}
+	if (scene_output->out_timeline != NULL) {
+		wlr_drm_syncobj_timeline_signal(scene_output->out_timeline, UINT64_MAX);
+		wlr_drm_syncobj_timeline_unref(scene_output->out_timeline);
+	}
 	wlr_color_transform_unref(scene_output->gamma_lut_color_transform);
 	wlr_color_transform_unref(scene_output->prev_gamma_lut_color_transform);
 	wlr_color_transform_unref(scene_output->prev_supplied_color_transform);
@@ -2136,6 +2169,12 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 	if (buffer->wait_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(&pending, buffer->wait_timeline, buffer->wait_point);
 	}
+
+	if (scene_output->out_timeline) {
+		scene_output->out_point++;
+		wlr_output_state_set_signal_timeline(&pending, scene_output->out_timeline, scene_output->out_point);
+	}
+
 	if (!wlr_output_test_state(scene_output->output, &pending)) {
 		wlr_output_state_finish(&pending);
 		return SCANOUT_CANDIDATE;
@@ -2147,8 +2186,10 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 	struct wlr_scene_output_sample_event sample_event = {
 		.output = scene_output,
 		.direct_scanout = true,
+		.release_timeline = data->output->out_timeline,
+		.release_point = data->output->out_point,
 	};
-	wl_signal_emit_mutable(&buffer->events.output_sample, &sample_event);
+	scene_buffer_sample(buffer, &sample_event, scene_output->output->event_loop);
 	return SCANOUT_SUCCESS;
 }
 
@@ -2606,6 +2647,9 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	if (scene_output->in_timeline != NULL) {
 		wlr_output_state_set_wait_timeline(state, scene_output->in_timeline,
 			scene_output->in_point);
+		scene_output->out_point++;
+		wlr_output_state_set_signal_timeline(state, scene_output->out_timeline,
+			scene_output->out_point);
 	}
 
 	if (!render_gamma_lut) {
