@@ -77,6 +77,7 @@ enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_SIGNAL_TIMELINE = 1 << 11,
 	WLR_OUTPUT_STATE_COLOR_TRANSFORM = 1 << 12,
 	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION = 1 << 13,
+	WLR_OUTPUT_STATE_COLOR_REPRESENTATION = 1 << 14,
 };
 
 enum wlr_output_state_mode_type {
@@ -141,6 +142,10 @@ struct wlr_output_state {
 	 * cannot be performed, in which case the caller should fall back to a
 	 * regular page-flip at the next wlr_output.frame event. */
 	bool tearing_page_flip;
+
+	// Set if (committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION)
+	enum wlr_color_encoding color_encoding;
+	enum wlr_color_range color_range;
 
 	enum wlr_output_state_mode_type mode_type;
 	struct wlr_output_mode *mode;
@@ -624,6 +629,15 @@ void wlr_output_state_set_color_transform(struct wlr_output_state *state,
  */
 bool wlr_output_state_set_image_description(struct wlr_output_state *state,
 	const struct wlr_output_image_description *image_desc);
+
+/**
+ * Set the color encoding and range of the primary scanout buffer.
+ *
+ * Use WLR_COLOR_ENCODING_NONE / WLR_COLOR_RANGE_NONE to clear.
+ */
+void wlr_output_state_set_color_encoding_and_range(
+	struct wlr_output_state *state,
+	enum wlr_color_encoding encoding, enum wlr_color_range range);
 
 /**
  * Copies the output state from src to dst. It is safe to then
