@@ -88,7 +88,7 @@ struct wlr_vk_format {
 	VkFormat vk_srgb; // sRGB version of the format, or 0 if nonexistent
 };
 
-extern const VkImageUsageFlags vulkan_render_usage, vulkan_shm_tex_usage, vulkan_dma_tex_usage;
+extern const VkImageUsageFlags vulkan_render_usage, vulkan_render_bridged_usage, vulkan_shm_tex_usage, vulkan_dma_tex_usage;
 
 // Returns all known format mappings.
 // Might not be supported for gpu/usecase.
@@ -99,6 +99,7 @@ struct wlr_vk_format_modifier_props {
 	VkDrmFormatModifierPropertiesEXT props;
 	VkExtent2D max_extent;
 	bool has_mutable_srgb;
+	bool render_needs_bridge;
 };
 
 struct wlr_vk_format_props {
@@ -233,6 +234,7 @@ struct wlr_vk_render_buffer {
 
 	VkDeviceMemory memories[WLR_DMABUF_MAX_PLANES];
 	uint32_t mem_count;
+	bool has_bridge;
 	VkImage image;
 
 	// Framebuffer and image view for rendering directly onto the buffer image,
@@ -264,6 +266,17 @@ struct wlr_vk_render_buffer {
 		struct wlr_vk_descriptor_pool *blend_attachment_pool;
 		bool blend_transitioned;
 	} two_pass;
+
+	// Sometimes, we want to output to a buffer that cannot be used as a
+	// COLOR_ATTACHMENT, but can be used as a TRANSFER_DST. So, render to an
+	// intermediate bridge buffer, then transfer it to the real output. In
+	// this case, the image field above is the fake intermediate buffer, and
+	// bridge.image is the real output.
+	struct {
+		VkImage image;
+		VkDeviceMemory memory;
+		bool transitioned;
+	} bridge;
 };
 
 bool vulkan_setup_one_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
@@ -515,7 +528,7 @@ struct wlr_vk_texture *vulkan_get_texture(struct wlr_texture *wlr_texture);
 VkImage vulkan_import_dmabuf(struct wlr_vk_renderer *renderer,
 	const struct wlr_dmabuf_attributes *attribs,
 	VkDeviceMemory mems[static WLR_DMABUF_MAX_PLANES], uint32_t *n_mems,
-	bool for_render, bool *using_mutable_srgb);
+	bool for_render, bool *render_needs_bridge, bool *using_mutable_srgb);
 struct wlr_texture *vulkan_texture_from_buffer(
 	struct wlr_renderer *wlr_renderer, struct wlr_buffer *buffer);
 void vulkan_texture_destroy(struct wlr_vk_texture *texture);
