@@ -174,6 +174,20 @@ static void read_surface_client_id(struct wlr_xwm *xwm,
 	free(reply);
 }
 
+static void read_surface_property(struct wlr_xwm *xwm,
+		struct wlr_xwayland_surface *xsurface, xcb_atom_t property,
+		xcb_get_property_reply_t *reply);
+
+static xcb_get_property_cookie_t get_property(struct wlr_xwm *xwm,
+		xcb_window_t window_id, xcb_atom_t atom) {
+	uint32_t len = 2048;
+	if (atom == xwm->atoms[NET_WM_ICON]) {
+		/* Compositors need to fetch icon data wlr_xwayland_surface_fetch_icon() */
+		len = 0;
+	}
+	return xcb_get_property(xwm->xcb_conn, 0, window_id, atom, XCB_ATOM_ANY, 0, len);
+}
+
 static struct wlr_xwayland_surface *xwayland_surface_create(
 		struct wlr_xwm *xwm, xcb_window_t window_id, int16_t x, int16_t y,
 		uint16_t width, uint16_t height, bool override_redirect) {
@@ -273,6 +287,39 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 
 	if (xwm->xres) {
 		read_surface_client_id(xwm, surface, client_id_cookie);
+	}
+
+	// read all surface properties
+	const xcb_atom_t props[] = {
+		XCB_ATOM_WM_CLASS,
+		XCB_ATOM_WM_NAME,
+		XCB_ATOM_WM_TRANSIENT_FOR,
+		xwm->atoms[WM_PROTOCOLS],
+		xwm->atoms[WM_HINTS],
+		xwm->atoms[WM_NORMAL_HINTS],
+		xwm->atoms[MOTIF_WM_HINTS],
+		xwm->atoms[NET_STARTUP_ID],
+		xwm->atoms[NET_WM_STATE],
+		xwm->atoms[NET_WM_STRUT_PARTIAL],
+		xwm->atoms[NET_WM_WINDOW_TYPE],
+		xwm->atoms[NET_WM_NAME],
+		xwm->atoms[NET_WM_ICON],
+	};
+
+	xcb_get_property_cookie_t cookies[sizeof(props) / sizeof(props[0])] = {0};
+	for (size_t i = 0; i < sizeof(props) / sizeof(props[0]); i++) {
+		cookies[i] = get_property(xwm, surface->window_id, props[i]);
+	}
+
+	for (size_t i = 0; i < sizeof(props) / sizeof(props[0]); i++) {
+		xcb_get_property_reply_t *reply =
+			xcb_get_property_reply(xwm->xcb_conn, cookies[i], NULL);
+		if (reply == NULL) {
+			wlr_log(WLR_ERROR, "Failed to get window property");
+			continue;
+		}
+		read_surface_property(xwm, surface, props[i], reply);
+		free(reply);
 	}
 
 	wl_signal_emit_mutable(&xwm->xwayland->events.new_surface, surface);
@@ -1165,16 +1212,6 @@ bool wlr_xwayland_surface_fetch_icon(
 	return true;
 }
 
-static xcb_get_property_cookie_t get_property(struct wlr_xwm *xwm,
-		xcb_window_t window_id, xcb_atom_t atom) {
-	uint32_t len = 2048;
-	if (atom == xwm->atoms[NET_WM_ICON]) {
-		/* Compositors need to fetch icon data wlr_xwayland_surface_fetch_icon() */
-		len = 0;
-	}
-	return xcb_get_property(xwm->xcb_conn, 0, window_id, atom, XCB_ATOM_ANY, 0, len);
-}
-
 static void xwayland_surface_associate(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface, struct wlr_surface *surface) {
 	assert(xsurface->surface == NULL);
@@ -1194,39 +1231,6 @@ static void xwayland_surface_associate(struct wlr_xwm *xwm,
 
 	xsurface->surface_unmap.notify = xwayland_surface_handle_unmap;
 	wl_signal_add(&surface->events.unmap, &xsurface->surface_unmap);
-
-	// read all surface properties
-	const xcb_atom_t props[] = {
-		XCB_ATOM_WM_CLASS,
-		XCB_ATOM_WM_NAME,
-		XCB_ATOM_WM_TRANSIENT_FOR,
-		xwm->atoms[WM_PROTOCOLS],
-		xwm->atoms[WM_HINTS],
-		xwm->atoms[WM_NORMAL_HINTS],
-		xwm->atoms[MOTIF_WM_HINTS],
-		xwm->atoms[NET_STARTUP_ID],
-		xwm->atoms[NET_WM_STATE],
-		xwm->atoms[NET_WM_STRUT_PARTIAL],
-		xwm->atoms[NET_WM_WINDOW_TYPE],
-		xwm->atoms[NET_WM_NAME],
-		xwm->atoms[NET_WM_ICON],
-	};
-
-	xcb_get_property_cookie_t cookies[sizeof(props) / sizeof(props[0])] = {0};
-	for (size_t i = 0; i < sizeof(props) / sizeof(props[0]); i++) {
-		cookies[i] = get_property(xwm, xsurface->window_id, props[i]);
-	}
-
-	for (size_t i = 0; i < sizeof(props) / sizeof(props[0]); i++) {
-		xcb_get_property_reply_t *reply =
-			xcb_get_property_reply(xwm->xcb_conn, cookies[i], NULL);
-		if (reply == NULL) {
-			wlr_log(WLR_ERROR, "Failed to get window property");
-			continue;
-		}
-		read_surface_property(xwm, xsurface, props[i], reply);
-		free(reply);
-	}
 
 	wl_signal_emit_mutable(&xsurface->events.associate, NULL);
 }
