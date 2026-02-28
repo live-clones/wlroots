@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <wayland-util.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_data_receiver.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/util/log.h>
 #include <xcb/xfixes.h>
@@ -56,10 +57,21 @@ static int xwm_selection_flush_source_data(
 static void xwm_selection_transfer_start_outgoing(
 		struct wlr_xwm_selection_transfer *transfer);
 
+// Structure to contain wlr_data_receiver and transfer pointer for outgoing transfers
+struct xwm_outgoing_receiver {
+	struct wlr_data_receiver receiver;
+	struct wlr_xwm_selection_transfer *transfer;
+};
+
 void xwm_selection_transfer_destroy_outgoing(
 		struct wlr_xwm_selection_transfer *transfer) {
 	wl_list_remove(&transfer->link);
 	wlr_log(WLR_DEBUG, "Destroying transfer %p", transfer);
+
+	// Destroy the receiver if it exists
+	if (transfer->wl_client_receiver) {
+		wlr_data_receiver_destroy(transfer->wl_client_receiver);
+	}
 
 	xwm_selection_transfer_remove_event_source(transfer);
 	xwm_selection_transfer_close_wl_client_fd(transfer);
@@ -180,32 +192,54 @@ void xwm_send_incr_chunk(struct wlr_xwm_selection_transfer *transfer) {
 	}
 }
 
-static void xwm_selection_source_send(struct wlr_xwm_selection *selection,
-		const char *mime_type, int32_t fd) {
+static void handle_data_receiver_cancelled(struct wlr_data_receiver *receiver) {
+	struct xwm_outgoing_receiver *outgoing_receiver =
+		wl_container_of(receiver, outgoing_receiver, receiver);
+	struct wlr_xwm_selection_transfer *transfer = outgoing_receiver->transfer;
+
+	// Handle failure by destroying the transfer
+	xwm_selection_transfer_destroy_outgoing(transfer);
+}
+
+static void handle_data_receiver_destroy(struct wlr_data_receiver *receiver) {
+	struct xwm_outgoing_receiver *outgoing_receiver =
+			wl_container_of(receiver, outgoing_receiver, receiver);
+	outgoing_receiver->transfer->wl_client_receiver = NULL;
+	free(outgoing_receiver);
+}
+
+static const struct wlr_data_receiver_impl outgoing_receiver_impl = {
+	.cancelled = handle_data_receiver_cancelled,
+	.destroy = handle_data_receiver_destroy,
+};
+
+static bool xwm_selection_source_send(struct wlr_xwm_selection *selection,
+		const char *mime_type, struct wlr_data_receiver *receiver) {
 	if (selection == &selection->xwm->clipboard_selection) {
 		struct wlr_data_source *source =
 			selection->xwm->seat->selection_source;
 		if (source != NULL) {
-			wlr_data_source_send(source, mime_type, fd);
-			return;
+			wlr_data_source_send(source, mime_type, receiver);
+			return true;
 		}
 	} else if (selection == &selection->xwm->primary_selection) {
 		struct wlr_primary_selection_source *source =
 			selection->xwm->seat->primary_selection_source;
 		if (source != NULL) {
-			wlr_primary_selection_source_send(source, mime_type, fd);
-			return;
+			wlr_primary_selection_source_send(source, mime_type, receiver);
+			return true;
 		}
 	} else if (selection == &selection->xwm->dnd_selection) {
 		struct wlr_data_source *source =
 			selection->xwm->seat->drag_source;
 		if (source != NULL) {
-			wlr_data_source_send(source, mime_type, fd);
-			return;
+			wlr_data_source_send(source, mime_type, receiver);
+			return true;
 		}
 	}
 
 	wlr_log(WLR_DEBUG, "not sending selection: no selection source available");
+	return false;
 }
 
 static void xwm_selection_transfer_start_outgoing(
@@ -276,15 +310,16 @@ static bool xwm_selection_send_data(struct wlr_xwm_selection *selection,
 		return false;
 	}
 
-	xwm_selection_transfer_init(transfer, selection);
-	transfer->request = *req;
-	wl_array_init(&transfer->source_data);
-
 	int p[2];
 	if (pipe(p) == -1) {
 		wlr_log_errno(WLR_ERROR, "pipe() failed");
+		free(transfer);
 		return false;
 	}
+
+	xwm_selection_transfer_init(transfer, selection);
+	transfer->request = *req;
+	wl_array_init(&transfer->source_data);
 
 	fcntl(p[0], F_SETFD, FD_CLOEXEC);
 	fcntl(p[0], F_SETFL, O_NONBLOCK);
@@ -293,10 +328,31 @@ static bool xwm_selection_send_data(struct wlr_xwm_selection *selection,
 
 	transfer->wl_client_fd = p[0];
 
-	wlr_log(WLR_DEBUG, "Sending Wayland selection %u to Xwayland window with "
-		"MIME type %s, target %u, transfer %p", req->target, mime_type,
-		req->target, transfer);
-	xwm_selection_source_send(selection, mime_type, p[1]);
+	// Create and initialize the outgoing receiver
+	struct xwm_outgoing_receiver *outgoing_receiver = calloc(1, sizeof(*outgoing_receiver));
+	if (!outgoing_receiver) {
+		wlr_log(WLR_ERROR, "Failed to allocate outgoing receiver");
+		close(p[0]);
+		close(p[1]);
+		free(transfer);
+		return false;
+	}
+
+	outgoing_receiver->transfer = transfer;
+	struct wlr_data_receiver *receiver = &outgoing_receiver->receiver;
+
+	wlr_data_receiver_init(receiver, &outgoing_receiver_impl);
+	receiver->fd = p[1];
+	receiver->client = selection->xwm->xwayland->server->client;
+
+	// Get X11 window PID
+	if (transfer->request.requestor != XCB_WINDOW_NONE) {
+		receiver->pid = get_x11_window_pid(selection->xwm->xcb_conn, transfer->request.requestor);
+	} else {
+		receiver->pid = 0;
+	}
+
+	transfer->wl_client_receiver = receiver;
 
 	// It seems that if we ever try to reply to a selection request after
 	// another has been sent by the same requestor, the requestor never reads
@@ -316,6 +372,14 @@ static bool xwm_selection_send_data(struct wlr_xwm_selection *selection,
 	wl_list_insert(&selection->outgoing, &transfer->link);
 
 	xwm_selection_transfer_start_outgoing(transfer);
+
+	wlr_log(WLR_DEBUG, "Sending Wayland selection %u to Xwayland window with "
+			"MIME type %s, target %u, transfer %p", req->target, mime_type,
+			req->target, transfer);
+	// Maybe the transfer object is destroyed following the receiver object afeter
+	// xwm_selection_source_send, so don't access any member of transfer after this call.
+	transfer = NULL;
+	xwm_selection_source_send(selection, mime_type, receiver);
 
 	return true;
 }

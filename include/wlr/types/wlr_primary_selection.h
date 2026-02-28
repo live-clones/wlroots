@@ -11,6 +11,7 @@
 
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_data_receiver.h>
 
 struct wlr_primary_selection_source;
 
@@ -19,8 +20,14 @@ struct wlr_primary_selection_source;
  */
 struct wlr_primary_selection_source_impl {
 	void (*send)(struct wlr_primary_selection_source *source,
-		const char *mime_type, int fd);
+		const char *mime_type, struct wlr_data_receiver *receiver);
 	void (*destroy)(struct wlr_primary_selection_source *source);
+
+	/**
+	 * Returns the unwrapped source object. This source object maybe is a
+	 * wrapper, its a proxy for the others source.
+	 */
+	struct wlr_primary_selection_source *(*get_original)(struct wlr_primary_selection_source *source);
 };
 
 /**
@@ -31,6 +38,10 @@ struct wlr_primary_selection_source {
 
 	// source metadata
 	struct wl_array mime_types;
+
+	// source information
+	struct wl_client *client;
+	pid_t pid; // PID of the source process (for XWayland, X11 client PID)
 
 	struct {
 		struct wl_signal destroy;
@@ -45,8 +56,22 @@ void wlr_primary_selection_source_init(
 void wlr_primary_selection_source_destroy(
 	struct wlr_primary_selection_source *source);
 void wlr_primary_selection_source_send(
-	struct wlr_primary_selection_source *source, const char *mime_type,
-	int fd);
+	struct wlr_primary_selection_source *source,
+	const char *mime_type, struct wlr_data_receiver *receiver);
+
+/**
+ * Copy metadata from one primary selection source to another. This is useful for implementing
+ * wrapper primary selection sources that can filter MIME types or other metadata.
+ */
+void wlr_primary_selection_source_copy(struct wlr_primary_selection_source *dest,
+	struct wlr_primary_selection_source *src);
+
+/**
+ * Returns the original primary selection source object, it isn't NULL if the source argument
+ * isn't NULL.
+ */
+struct wlr_primary_selection_source *
+wlr_primary_selection_source_get_original(struct wlr_primary_selection_source *source);
 
 /**
  * Request setting the primary selection. If `client` is not null, then the

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_data_receiver.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/log.h>
 #include "types/wlr_data_device.h"
@@ -16,21 +17,28 @@ void wlr_data_source_init(struct wlr_data_source *source,
 	*source = (struct wlr_data_source){
 		.impl = impl,
 		.actions = -1,
+		.pid = 0,
 	};
 	wl_array_init(&source->mime_types);
 	wl_signal_init(&source->events.destroy);
 }
 
-void wlr_data_source_send(struct wlr_data_source *source, const char *mime_type,
-		int32_t fd) {
-	source->impl->send(source, mime_type, fd);
+void wlr_data_source_send(struct wlr_data_source *source,
+		const char *mime_type, struct wlr_data_receiver *receiver) {
+	source->impl->send(source, mime_type, receiver);
 }
 
-void wlr_data_source_accept(struct wlr_data_source *source, uint32_t serial,
-		const char *mime_type) {
+void wlr_data_source_accept(struct wlr_data_source *source,
+		uint32_t serial, const char *mime_type, struct wlr_data_receiver *receiver) {
 	source->accepted = (mime_type != NULL);
 	if (source->impl->accept) {
-		source->impl->accept(source, serial, mime_type);
+		source->impl->accept(source, serial, mime_type, receiver);
+	}
+}
+
+void wlr_data_source_cancelled(struct wlr_data_source *source) {
+	if (source->impl->cancelled) {
+		source->impl->cancelled(source);
 	}
 }
 
@@ -76,6 +84,61 @@ void wlr_data_source_dnd_action(struct wlr_data_source *source,
 	}
 }
 
+void wlr_data_source_copy(struct wlr_data_source *dest, struct wlr_data_source *src) {
+	if (dest == NULL || src == NULL) {
+		return;
+	}
+
+	// Copy basic metadata
+	dest->client = src->client;
+	dest->pid = src->pid;
+	dest->accepted = src->accepted;
+	dest->actions = src->actions;
+	dest->current_dnd_action = src->current_dnd_action;
+	dest->compositor_action = src->compositor_action;
+
+	/* Clear any existing mime types before copying */
+	if (dest->mime_types.size > 0) {
+		char **p;
+		wl_array_for_each(p, &dest->mime_types) {
+			free(*p);
+		}
+		wl_array_release(&dest->mime_types);
+		wl_array_init(&dest->mime_types);
+	}
+
+	// Copy MIME types from source
+	char **p;
+	wl_array_for_each(p, &src->mime_types) {
+		char **dest_p = wl_array_add(&dest->mime_types, sizeof(*dest_p));
+		if (dest_p == NULL) {
+			wlr_log(WLR_ERROR, "Failed to add MIME type to destination");
+			continue;
+		}
+
+		char *mime_type_copy = strdup(*p);
+		if (mime_type_copy == NULL) {
+			wlr_log(WLR_ERROR, "Failed to copy MIME type");
+			continue;
+		}
+
+		*dest_p = mime_type_copy;
+	}
+}
+
+struct wlr_data_source *wlr_data_source_get_original(
+		struct wlr_data_source *source) {
+	if (!source) {
+		return NULL;
+	}
+
+	if (source->impl && source->impl->get_original) {
+		return source->impl->get_original(source);
+	}
+
+	return source;
+}
+
 
 static const struct wl_data_source_interface data_source_impl;
 
@@ -87,7 +150,7 @@ struct wlr_client_data_source *client_data_source_from_resource(
 }
 
 static void client_data_source_accept(struct wlr_data_source *wlr_source,
-	uint32_t serial, const char *mime_type);
+	uint32_t serial, const char *mime_type, struct wlr_data_receiver *receiver);
 
 static struct wlr_client_data_source *client_data_source_from_wlr_data_source(
 		struct wlr_data_source *wlr_source) {
@@ -97,18 +160,26 @@ static struct wlr_client_data_source *client_data_source_from_wlr_data_source(
 }
 
 static void client_data_source_accept(struct wlr_data_source *wlr_source,
-		uint32_t serial, const char *mime_type) {
+		uint32_t serial, const char *mime_type, struct wlr_data_receiver *receiver) {
 	struct wlr_client_data_source *source =
 		client_data_source_from_wlr_data_source(wlr_source);
 	wl_data_source_send_target(source->resource, mime_type);
 }
 
 static void client_data_source_send(struct wlr_data_source *wlr_source,
-		const char *mime_type, int32_t fd) {
+		const char *mime_type, struct wlr_data_receiver *receiver) {
 	struct wlr_client_data_source *source =
 		client_data_source_from_wlr_data_source(wlr_source);
-	wl_data_source_send_send(source->resource, mime_type, fd);
-	close(fd);
+
+	wl_data_source_send_send(source->resource, mime_type, receiver->fd);
+	close(receiver->fd);
+	receiver->fd = -1;
+}
+
+static void client_data_source_cancelled(struct wlr_data_source *wlr_source) {
+	struct wlr_client_data_source *source =
+		client_data_source_from_wlr_data_source(wlr_source);
+	wl_data_source_send_cancelled(source->resource);
 }
 
 static void client_data_source_destroy(struct wlr_data_source *wlr_source) {
@@ -254,6 +325,7 @@ struct wlr_client_data_source *client_data_source_create(
 
 	source->impl.accept = client_data_source_accept;
 	source->impl.send = client_data_source_send;
+	source->impl.cancelled = client_data_source_cancelled;
 	source->impl.destroy = client_data_source_destroy;
 
 	if (wl_resource_get_version(source->resource) >=
@@ -270,5 +342,8 @@ struct wlr_client_data_source *client_data_source_create(
 	}
 
 	wlr_data_source_init(&source->source, &source->impl);
+	source->source.client = client;
+	wl_client_get_credentials(client, &source->source.pid, NULL, NULL);
+
 	return source;
 }

@@ -4,11 +4,22 @@
 #include <unistd.h>
 #include <wlr/types/wlr_ext_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_data_receiver.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/util/log.h>
 #include "ext-data-control-v1-protocol.h"
 
 #define EXT_DATA_CONTROL_MANAGER_VERSION 1
+
+// Empty destroy function for simple data receiver implementation
+static void handle_data_receiver_simple_destroy(struct wlr_data_receiver *receiver) {
+	// No-op: receiver is embedded in another structure and will be freed with it
+}
+
+// Simple data receiver implementation with no callbacks
+static const struct wlr_data_receiver_impl wlr_data_receiver_simple_impl = {
+	.destroy = handle_data_receiver_simple_destroy,
+};
 
 struct data_control_source {
 	struct wl_resource *resource;
@@ -124,11 +135,11 @@ static struct client_data_source *
 }
 
 static void client_source_send(struct wlr_data_source *wlr_source,
-		const char *mime_type, int fd) {
+		const char *mime_type, struct wlr_data_receiver *receiver) {
 	struct client_data_source *source =
 		client_data_source_from_source(wlr_source);
-	ext_data_control_source_v1_send_send(source->resource, mime_type, fd);
-	close(fd);
+	ext_data_control_source_v1_send_send(source->resource, mime_type, receiver->fd);
+	close(receiver->fd);
 }
 
 static void client_source_destroy(struct wlr_data_source *wlr_source) {
@@ -172,11 +183,11 @@ static struct client_primary_selection_source *
 
 static void client_primary_selection_source_send(
 		struct wlr_primary_selection_source *wlr_source,
-		const char *mime_type, int fd) {
+		const char *mime_type, struct wlr_data_receiver *receiver) {
 	struct client_primary_selection_source *source =
 		client_primary_selection_source_from_source(wlr_source);
-	ext_data_control_source_v1_send_send(source->resource, mime_type, fd);
-	close(fd);
+	ext_data_control_source_v1_send_send(source->resource, mime_type, receiver->fd);
+	close(receiver->fd);
 }
 
 static void client_primary_selection_source_destroy(
@@ -208,6 +219,9 @@ struct data_offer {
 	struct wl_resource *resource;
 	struct wlr_ext_data_control_device_v1 *device;
 	bool is_primary;
+
+	// Data receiver for this offer
+	struct wlr_data_receiver receiver;
 };
 
 static void data_offer_destroy(struct data_offer *offer) {
@@ -225,6 +239,8 @@ static void data_offer_destroy(struct data_offer *offer) {
 	}
 
 	wl_resource_set_user_data(offer->resource, NULL);
+
+	wlr_data_receiver_destroy(&offer->receiver);
 	free(offer);
 }
 
@@ -251,6 +267,9 @@ static void offer_handle_receive(struct wl_client *client,
 		return;
 	}
 
+	offer->receiver.fd = fd;
+	assert(offer->receiver.client == client);
+
 	if (offer->is_primary) {
 		if (device->seat->primary_selection_source == NULL) {
 			close(fd);
@@ -258,13 +277,14 @@ static void offer_handle_receive(struct wl_client *client,
 		}
 		wlr_primary_selection_source_send(
 			device->seat->primary_selection_source,
-			mime_type, fd);
+			mime_type, &offer->receiver);
 	} else {
 		if (device->seat->selection_source == NULL) {
 			close(fd);
 			return;
 		}
-		wlr_data_source_send(device->seat->selection_source, mime_type, fd);
+		wlr_data_source_send(device->seat->selection_source,
+			mime_type, &offer->receiver);
 	}
 }
 
@@ -305,6 +325,9 @@ static struct wl_resource *create_offer(struct wlr_ext_data_control_device_v1 *d
 	}
 
 	offer->resource = resource;
+	wlr_data_receiver_init(&offer->receiver, &wlr_data_receiver_simple_impl);
+	offer->receiver.client = client;
+	wl_client_get_credentials(client, &offer->receiver.pid, NULL, NULL);
 
 	wl_resource_set_implementation(resource, &offer_impl, offer,
 		offer_handle_resource_destroy);
@@ -369,6 +392,8 @@ static void control_handle_set_selection(struct wl_client *client,
 
 	struct wlr_data_source *wlr_source = &client_source->source;
 	wlr_data_source_init(wlr_source, &client_source_impl);
+	wlr_source->client = client;
+	wl_client_get_credentials(client, &wlr_source->pid, NULL, NULL);
 	source->active_source = wlr_source;
 
 	wl_array_release(&wlr_source->mime_types);
@@ -421,6 +446,8 @@ static void control_handle_set_primary_selection(struct wl_client *client,
 
 	struct wlr_primary_selection_source *wlr_source = &client_source->source;
 	wlr_primary_selection_source_init(wlr_source, &client_primary_selection_source_impl);
+	wlr_source->client = client;
+	wl_client_get_credentials(client, &wlr_source->pid, NULL, NULL);
 	source->active_primary_source = wlr_source;
 
 	wl_array_release(&wlr_source->mime_types);

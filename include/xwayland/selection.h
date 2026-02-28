@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <xcb/xfixes.h>
 #include <wayland-util.h>
+#include <wlr/types/wlr_data_receiver.h>
 
 #define INCR_CHUNK_SIZE (64 * 1024)
 
@@ -34,6 +35,12 @@ struct wlr_xwm_selection_transfer {
 	int property_start;
 	xcb_get_property_reply_t *property_reply;
 	xcb_window_t incoming_window;
+
+	// Data receiver reference for Wayland client (may be NULL)
+	struct wlr_data_receiver *wl_client_receiver;
+
+	// Listener for receiver destruction
+	struct wl_listener receiver_destroy;
 };
 
 struct wlr_xwm_selection {
@@ -60,7 +67,7 @@ void xwm_selection_transfer_destroy_property_reply(
 	struct wlr_xwm_selection_transfer *transfer);
 void xwm_selection_transfer_init(struct wlr_xwm_selection_transfer *transfer,
 	struct wlr_xwm_selection *selection);
-void xwm_selection_transfer_destroy(
+void xwm_selection_transfer_destroy_incoming(
 	struct wlr_xwm_selection_transfer *transfer);
 
 void xwm_selection_transfer_destroy_outgoing(
@@ -87,6 +94,8 @@ bool primary_selection_source_is_xwayland(
 	struct wlr_primary_selection_source *wlr_source);
 
 void xwm_seat_handle_start_drag(struct wlr_xwm *xwm, struct wlr_drag *drag);
+
+pid_t get_x11_window_pid(xcb_connection_t *conn, xcb_window_t window);
 
 void xwm_selection_init(struct wlr_xwm_selection *selection,
 	struct wlr_xwm *xwm, xcb_atom_t atom);

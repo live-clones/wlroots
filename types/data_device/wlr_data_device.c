@@ -37,6 +37,7 @@ static void data_device_set_selection(struct wl_client *client,
 
 	if (source != NULL) {
 		source->finalized = true;
+		assert(client == source->source.client);
 	}
 
 	struct wlr_data_source *wlr_source =

@@ -39,11 +39,61 @@ void wlr_primary_selection_source_destroy(
 }
 
 void wlr_primary_selection_source_send(
-		struct wlr_primary_selection_source *source, const char *mime_type,
-		int32_t fd) {
-	source->impl->send(source, mime_type, fd);
+		struct wlr_primary_selection_source *source,
+		const char *mime_type, struct wlr_data_receiver *receiver) {
+	source->impl->send(source, mime_type, receiver);
 }
 
+void wlr_primary_selection_source_copy(struct wlr_primary_selection_source *dest,
+		struct wlr_primary_selection_source *src) {
+	if (dest == NULL || src == NULL) {
+		return;
+	}
+
+	dest->client = src->client;
+	dest->pid = src->pid;
+
+	/* Clear any existing mime types before copying */
+	if (dest->mime_types.size > 0) {
+		char **p;
+		wl_array_for_each(p, &dest->mime_types) {
+			free(*p);
+		}
+		wl_array_release(&dest->mime_types);
+		wl_array_init(&dest->mime_types);
+	}
+
+	// Copy MIME types from source
+	char **p;
+	wl_array_for_each(p, &src->mime_types) {
+		char **dest_p = wl_array_add(&dest->mime_types, sizeof(*dest_p));
+		if (dest_p == NULL) {
+			wlr_log(WLR_ERROR, "Failed to add MIME type to destination");
+			continue;
+		}
+
+		char *mime_type_copy = strdup(*p);
+		if (mime_type_copy == NULL) {
+			wlr_log(WLR_ERROR, "Failed to copy MIME type");
+			continue;
+		}
+
+		*dest_p = mime_type_copy;
+	}
+}
+
+struct wlr_primary_selection_source *wlr_primary_selection_source_get_original(
+		struct wlr_primary_selection_source *source) {
+	if (!source) {
+		return NULL;
+	}
+
+	if (source->impl && source->impl->get_original) {
+		return source->impl->get_original(source);
+	}
+
+	return source;
+}
 
 void wlr_seat_request_set_primary_selection(struct wlr_seat *seat,
 		struct wlr_seat_client *client,
