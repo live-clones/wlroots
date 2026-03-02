@@ -403,8 +403,12 @@ static bool update_title(struct wlr_wl_output *output, const char *title) {
 }
 
 static bool update_app_id(struct wlr_wl_output *output, const char *app_id) {
+	struct wlr_output *wlr_output = &output->wlr_output;
+
+	char default_app_id[64];
 	if (app_id == NULL) {
-		app_id = "wlroots";
+		snprintf(default_app_id, sizeof(default_app_id), "wlroots-%s", wlr_output->name);
+		app_id = default_app_id;
 	}
 
 	char *wl_app_id = strdup(app_id);
