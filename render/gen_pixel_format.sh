@@ -28,6 +28,18 @@ gen_opaque() {
 	'
 }
 
+gen_opaque_substitute() {
+	# TODO: filter out formats without alpha
+	"$KDFS" compat --json --with 'DRM_FORMAT_*' --strip-channel=a 'DRM_FORMAT_*' | jq -r '
+		to_entries[]
+		| select((.value | to_entries[] | select(.value.little_endian and .value.big_endian) | length) > 0)
+		| (.key as $format | .value | to_entries[] | { format: $format, opaque_substitute: .key })
+		|
+			"	case \(.format):\n" +
+			"		return \(.opaque_substitute);"
+	'
+}
+
 gen_ycbcr() {
 	"$KDFS" show --json 'DRM_FORMAT_*' | jq -r '
 		to_entries[]
@@ -54,6 +66,14 @@ $(gen_opaque)
 		return true;
 	default:
 		return false;
+	}
+}
+
+uint32_t pixel_format_get_opaque_substitute(uint32_t format) {
+	switch (format) {
+$(gen_opaque_substitute)
+	default:
+		return DRM_FORMAT_INVALID;
 	}
 }
 
