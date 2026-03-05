@@ -475,6 +475,14 @@ bool vulkan_wait_command_buffer(struct wlr_vk_command_buffer *cb,
 
 static void release_command_buffer_resources(struct wlr_vk_command_buffer *cb,
 		struct wlr_vk_renderer *renderer, int64_t now) {
+
+	struct wlr_buffer **buffer;
+	wl_array_for_each(buffer, &cb->unlock_buffers) {
+		wlr_buffer_unlock(*buffer);
+	}
+	wl_array_release(&cb->unlock_buffers);
+	wl_array_init(&cb->unlock_buffers);
+
 	struct wlr_vk_texture *texture, *texture_tmp;
 	wl_list_for_each_safe(texture, texture_tmp, &cb->destroy_textures, destroy_link) {
 		wl_list_remove(&texture->destroy_link);
@@ -604,6 +612,16 @@ void vulkan_reset_command_buffer(struct wlr_vk_command_buffer *cb) {
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkResetCommandBuffer", res);
 	}
+}
+
+bool vulkan_command_buffer_ref_buffer(struct wlr_vk_command_buffer *cb,
+		struct wlr_buffer *buffer) {
+	struct wlr_buffer **ref = wl_array_add(&cb->unlock_buffers, sizeof(*ref));
+	if (ref == NULL) {
+		return false;
+	}
+	*ref = wlr_buffer_lock(buffer);
+	return true;
 }
 
 static void finish_render_buffer_out(struct wlr_vk_render_buffer_out *out,

@@ -275,6 +275,8 @@ struct wlr_vk_command_buffer {
 	VkCommandBuffer vk;
 	bool recording;
 	uint64_t timeline_point;
+	// buffers to unlock after the command buffer completes
+	struct wl_array unlock_buffers; // struct wlr_buffer*
 	// Textures to destroy after the command buffer completes
 	struct wl_list destroy_textures; // wlr_vk_texture.destroy_link
 	// Staging shared buffers to release after the command buffer completes
@@ -472,6 +474,8 @@ uint64_t vulkan_end_command_buffer(struct wlr_vk_command_buffer *cb,
 void vulkan_reset_command_buffer(struct wlr_vk_command_buffer *cb);
 bool vulkan_wait_command_buffer(struct wlr_vk_command_buffer *cb,
 	struct wlr_vk_renderer *renderer);
+bool vulkan_command_buffer_ref_buffer(struct wlr_vk_command_buffer *cb,
+	struct wlr_buffer *buffer);
 
 bool vulkan_sync_render_pass_release(struct wlr_vk_renderer *renderer,
 	struct wlr_vk_render_pass *pass);
