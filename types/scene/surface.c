@@ -311,27 +311,25 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		struct wlr_linux_drm_syncobj_surface_v1_state *syncobj_surface_state =
 			wlr_linux_drm_syncobj_v1_get_surface_state(surface);
 
-		struct wlr_drm_syncobj_timeline *wait_timeline = NULL;
-		uint64_t wait_point = 0;
-		if (syncobj_surface_state != NULL) {
-			wait_timeline = syncobj_surface_state->acquire_timeline;
-			wait_point = syncobj_surface_state->acquire_point;
-		}
-
 		struct wlr_scene_buffer_set_buffer_options options = {
 			.damage = &surface->buffer_damage,
-			.wait_timeline = wait_timeline,
-			.wait_point = wait_point,
+			.wait_timeline = scene_buffer->wait_timeline,
+			.wait_point = scene_buffer->wait_point,
+			.release_merger = scene_buffer->release_merger,
 		};
+		if (surface->current.committed & WLR_SURFACE_STATE_BUFFER) {
+			if (syncobj_surface_state != NULL) {
+				options.wait_timeline = syncobj_surface_state->acquire_timeline;
+				options.wait_point = syncobj_surface_state->acquire_point;
+				options.release_merger = syncobj_surface_state->release_merger;
+			} else if (syncobj_surface_state == NULL) {
+				options.wait_timeline = NULL;
+				options.wait_point = 0;
+				options.release_merger = NULL;
+			}
+		}
 		wlr_scene_buffer_set_buffer_with_options(scene_buffer,
 			&surface->buffer->base, &options);
-
-		if (syncobj_surface_state != NULL &&
-				(surface->current.committed & WLR_SURFACE_STATE_BUFFER) &&
-				surface->buffer->source != NULL) {
-			wlr_linux_drm_syncobj_v1_state_signal_release_with_buffer(syncobj_surface_state,
-				surface->buffer->source);
-		}
 	} else {
 		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
 	}

@@ -423,12 +423,6 @@ void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state) {
 	if (state->primary_in_fence_fd >= 0) {
 		close(state->primary_in_fence_fd);
 	}
-	if (state->out_fence_fd >= 0) {
-		// TODO: error handling
-		wlr_drm_syncobj_timeline_import_sync_file(state->base->signal_timeline,
-			state->base->signal_point, state->out_fence_fd);
-		close(state->out_fence_fd);
-	}
 
 	conn->colorspace = state->colorspace;
 }
@@ -445,9 +439,6 @@ void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state)
 	destroy_blob(drm, state->fb_damage_clips);
 	if (state->primary_in_fence_fd >= 0) {
 		close(state->primary_in_fence_fd);
-	}
-	if (state->out_fence_fd >= 0) {
-		close(state->out_fence_fd);
 	}
 }
 
@@ -500,19 +491,6 @@ static void set_plane_in_fence_fd(struct atomic *atom,
 	atomic_add(atom, plane->id, plane->props.in_fence_fd, sync_file_fd);
 }
 
-static void set_crtc_out_fence_ptr(struct atomic *atom, struct wlr_drm_crtc *crtc,
-		int *fd_ptr) {
-	if (!crtc->props.out_fence_ptr) {
-		wlr_log(WLR_ERROR,
-			"CRTC %"PRIu32" is missing the OUT_FENCE_PTR property",
-			crtc->id);
-		atom->failed = true;
-		return;
-	}
-
-	atomic_add(atom, crtc->id, crtc->props.out_fence_ptr, (uintptr_t)fd_ptr);
-}
-
 static void atomic_connector_add(struct atomic *atom,
 		struct wlr_drm_connector_state *state, bool modeset) {
 	struct wlr_drm_connector *conn = state->connector;
@@ -556,9 +534,6 @@ static void atomic_connector_add(struct atomic *atom,
 		}
 		if (state->primary_in_fence_fd >= 0) {
 			set_plane_in_fence_fd(atom, crtc->primary, state->primary_in_fence_fd);
-		}
-		if (state->base->committed & WLR_OUTPUT_STATE_SIGNAL_TIMELINE) {
-			set_crtc_out_fence_ptr(atom, crtc, &state->out_fence_fd);
 		}
 		if (crtc->cursor) {
 			if (drm_connector_is_cursor_visible(conn)) {
