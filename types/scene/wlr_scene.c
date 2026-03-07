@@ -6,6 +6,7 @@
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_color_management_v1.h>
+#include <wlr/types/wlr_commit_timing_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_damage_ring.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
@@ -181,6 +182,7 @@ struct wlr_scene *wlr_scene_create(void) {
 	scene_tree_init(&scene->tree, NULL);
 
 	wl_list_init(&scene->outputs);
+	wl_list_init(&scene->commit_timers);
 	wl_list_init(&scene->linux_dmabuf_v1_destroy.link);
 	wl_list_init(&scene->gamma_control_manager_v1_destroy.link);
 	wl_list_init(&scene->gamma_control_manager_v1_set_gamma.link);
@@ -1651,6 +1653,78 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene *scene, struct wlr_color_ma
 
 	scene->color_manager_v1_destroy.notify = scene_handle_color_manager_v1_destroy;
 	wl_signal_add(&manager->events.destroy, &scene->color_manager_v1_destroy);
+}
+
+static void scene_handle_commit_timer_v1_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene *scene =
+		wl_container_of(listener, scene, commit_timer_v1_destroy);
+	struct wlr_commit_timer_v1 *timer = data;
+	struct wlr_surface *surface = timer->surface;
+
+	struct wlr_commit_timer_v1 *tmp_timer;
+	wl_list_for_each_safe(timer, tmp_timer, &scene->commit_timers, scene_link) {
+		if (timer->surface == surface) {
+			wl_list_remove(&timer->scene_link);
+		}
+	}
+}
+
+static void timer_set_output(struct wlr_scene_buffer *scene_buffer, int x, int y, void *data) {
+	struct wlr_scene_surface *scene_surface =
+		wlr_scene_surface_try_from_buffer(scene_buffer);
+	if (!scene_surface) {
+		return;
+	}
+
+	struct wlr_commit_timer_v1 *timer = data;
+	if (scene_surface->surface == timer->surface) {
+		struct wlr_scene_output *primary_output = scene_surface->buffer->primary_output;
+		if (primary_output) {
+			wlr_commit_timer_v1_set_output(timer, primary_output->output);
+		}
+	}
+}
+
+static void scene_handle_commit_timing_manager_v1_new_timer(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene *scene =
+		wl_container_of(listener, scene, commit_timing_manager_v1_new_timer);
+	struct wlr_commit_timing_manager_v1_new_timer_event *event = data;
+	struct wlr_commit_timer_v1 *timer = event->timer;
+
+	wl_list_insert(&scene->commit_timers, &timer->scene_link);
+	scene->commit_timer_v1_destroy.notify = scene_handle_commit_timer_v1_destroy;
+	wl_signal_add(&timer->events.destroy, &scene->commit_timer_v1_destroy);
+
+	wlr_scene_node_for_each_buffer(&scene->tree.node, timer_set_output, event->timer);
+}
+
+static void scene_handle_commit_timing_manager_v1_destroy(struct wl_listener *listener,
+		void *data) {
+	struct wlr_scene *scene =
+		wl_container_of(listener, scene, commit_timing_manager_v1_destroy);
+	wl_list_remove(&scene->commit_timing_manager_v1_destroy.link);
+	wl_list_init(&scene->commit_timing_manager_v1_destroy.link);
+	wl_list_remove(&scene->commit_timing_manager_v1_new_timer.link);
+	wl_list_init(&scene->commit_timing_manager_v1_new_timer.link);
+	scene->commit_timing_manager_v1 = NULL;
+}
+
+void wlr_scene_set_commit_timing_manager_v1(struct wlr_scene *scene,
+		struct wlr_commit_timing_manager_v1 *commit_timing) {
+	assert(scene->commit_timing_manager_v1 == NULL);
+
+	scene->commit_timing_manager_v1 = commit_timing;
+
+	scene->commit_timing_manager_v1_new_timer.notify =
+		scene_handle_commit_timing_manager_v1_new_timer;
+	wl_signal_add(&commit_timing->events.new_timer,
+		&scene->commit_timing_manager_v1_new_timer);
+	scene->commit_timing_manager_v1_destroy.notify =
+		scene_handle_commit_timing_manager_v1_destroy;
+	wl_signal_add(&commit_timing->events.destroy,
+		&scene->commit_timing_manager_v1_destroy);
 }
 
 static void scene_output_handle_destroy(struct wlr_addon *addon) {
