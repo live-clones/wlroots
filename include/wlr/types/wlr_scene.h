@@ -92,6 +92,10 @@ struct wlr_scene_tree {
 	struct wlr_scene_node node;
 
 	struct wl_list children; // wlr_scene_node.link
+
+	struct {
+		struct wlr_box clip;
+	} WLR_PRIVATE;
 };
 
 /** The root scene-graph node. */
@@ -385,6 +389,17 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene *scene, struct wlr_color_ma
  * Add a node displaying nothing but its children.
  */
 struct wlr_scene_tree *wlr_scene_tree_create(struct wlr_scene_tree *parent);
+
+/**
+ * Sets a cropping region for any nodes that are children of this scene tree.
+ * Note that clip boxes cascade down the tree, as in the clip boxes are
+ * intersected with each other from the root to the leaves.
+ * The clip coordinate space will be that of the tree node.
+ *
+ * A NULL or empty clip will disable clipping.
+ */
+void wlr_scene_tree_set_clip(struct wlr_scene_tree *tree,
+		const struct wlr_box *clip);
 
 /**
  * Add a node displaying a single surface to the scene-graph.
