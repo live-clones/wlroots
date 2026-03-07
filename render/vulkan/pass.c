@@ -115,7 +115,7 @@ static bool render_pass_wait_render_buffer(struct wlr_vk_render_pass *pass,
 			continue;
 		}
 
-		VkSemaphore sem = vulkan_command_buffer_wait_sync_file(pass->renderer,
+		VkSemaphore sem = vulkan_command_buffer_wait_sync_file(pass->render_buffer->renderer,
 			pass->command_buffer, *render_wait_len_ptr, sync_file_fds[i]);
 		if (sem == VK_NULL_HANDLE) {
 			close(sync_file_fds[i]);
@@ -176,7 +176,7 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_vk_renderer *renderer = pass->renderer;
+	struct wlr_vk_renderer *renderer = pass->render_buffer->renderer;
 	struct wlr_vk_command_buffer *render_cb = pass->command_buffer;
 	struct wlr_vk_render_buffer *render_buffer = pass->render_buffer;
 	struct wlr_vk_command_buffer *stage_cb = NULL;
@@ -746,7 +746,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
 	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_vk_renderer *renderer = pass->renderer;
+	struct wlr_vk_renderer *renderer = pass->render_buffer->renderer;
 	VkCommandBuffer cb = pass->command_buffer->vk;
 
 	struct wlr_vk_texture *texture = vulkan_get_texture(options->texture);
@@ -1248,7 +1248,6 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	}
 
 	wlr_render_pass_init(&pass->base, &render_pass_impl);
-	pass->renderer = renderer;
 	pass->two_pass = using_two_pass_pathway;
 	if (options != NULL && options->color_transform != NULL) {
 		pass->color_transform = wlr_color_transform_ref(options->color_transform);
