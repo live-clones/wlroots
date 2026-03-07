@@ -185,7 +185,7 @@ static bool handle_keybinding(struct tinywl_server *server, xkb_keysym_t sym) {
 		break;
 	case XKB_KEY_F1:
 		/* Cycle to the next toplevel */
-		if (wl_list_length(&server->toplevels) < 2) {
+		if (wl_list_empty(&server->toplevels)) {
 			break;
 		}
 		struct tinywl_toplevel *next_toplevel =
