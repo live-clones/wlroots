@@ -20,6 +20,7 @@ packages:
   - xwayland-dev
   - libseat-dev
   - hwdata-dev
+  - clang-extra-tools
   # for docs
   - go
   - zip
@@ -55,3 +56,6 @@ tasks:
         -o public \
         "$include_dir/wlr/"
       zip -r ~/public.zip public/
+  - clang-tidy: |
+      cd wlroots
+      ninja -C build clang-tidy
