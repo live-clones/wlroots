@@ -50,6 +50,7 @@ static const struct prop_info crtc_info[] = {
 
 static const struct prop_info plane_info[] = {
 #define INDEX(name) (offsetof(struct wlr_drm_plane_props, name) / sizeof(uint32_t))
+	{ "COLOR_PIPELINE", INDEX(color_pipeline) },
 	{ "CRTC_H", INDEX(crtc_h) },
 	{ "CRTC_ID", INDEX(crtc_id) },
 	{ "CRTC_W", INDEX(crtc_w) },
@@ -68,6 +69,18 @@ static const struct prop_info plane_info[] = {
 	{ "SRC_Y", INDEX(src_y) },
 	{ "rotation", INDEX(rotation) },
 	{ "type", INDEX(type) },
+#undef INDEX
+};
+
+static const struct prop_info colorop_info[] = {
+#define INDEX(name) (offsetof(struct wlr_drm_colorop_props, name) / sizeof(uint32_t))
+	{ "BYPASS", INDEX(bypass) },
+	{ "CURVE_1D_TYPE", INDEX(curve_1d_type) },
+	{ "DATA", INDEX(data) },
+	{ "MULTIPLIER", INDEX(multiplier) },
+	{ "NEXT", INDEX(next) },
+	{ "SIZE", INDEX(size) },
+	{ "TYPE", INDEX(type) },
 #undef INDEX
 };
 
@@ -119,6 +132,11 @@ bool get_drm_crtc_props(int fd, uint32_t id, struct wlr_drm_crtc_props *out) {
 bool get_drm_plane_props(int fd, uint32_t id, struct wlr_drm_plane_props *out) {
 	return scan_properties(fd, id, DRM_MODE_OBJECT_PLANE, (uint32_t *)out,
 		plane_info, sizeof(plane_info) / sizeof(plane_info[0]));
+}
+
+bool get_drm_colorop_props(int fd, uint32_t id, struct wlr_drm_colorop_props *out) {
+	return scan_properties(fd, id, DRM_MODE_OBJECT_COLOROP, (uint32_t *)out,
+		colorop_info, sizeof(colorop_info) / sizeof(colorop_info[0]));
 }
 
 bool get_drm_prop(int fd, uint32_t obj, uint32_t prop, uint64_t *ret) {
