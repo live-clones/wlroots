@@ -216,6 +216,19 @@ static void buffer_handle_buffer_destroy(struct wl_listener *listener,
 	destroy_x11_buffer(buffer);
 }
 
+static bool format_set_has_explicit_modifier(
+		const struct wlr_drm_format_set *formats) {
+	for (size_t i = 0; i < formats->len; i++) {
+		const struct wlr_drm_format *fmt = &formats->formats[i];
+		for (size_t j = 0; j < fmt->len; j++) {
+			if (fmt->modifiers[j] != DRM_FORMAT_MOD_INVALID) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 static xcb_pixmap_t import_dmabuf(struct wlr_x11_output *output,
 		struct wlr_dmabuf_attributes *dmabuf) {
 	struct wlr_x11_backend *x11 = output->x11;
@@ -235,6 +248,16 @@ static xcb_pixmap_t import_dmabuf(struct wlr_x11_output *output,
 	const struct wlr_x11_format *x11_fmt = x11->x11_format;
 	xcb_pixmap_t pixmap = xcb_generate_id(x11->xcb);
 
+	// When the DRI3 format set has no explicit modifiers (e.g. NVIDIA
+	// proprietary driver), use DRM_FORMAT_MOD_INVALID so the X server
+	// treats the buffer as having an implicit modifier. The driver
+	// stack understands its own buffers at import time regardless of
+	// the client-side modifier.
+	uint64_t modifier = dmabuf->modifier;
+	if (!format_set_has_explicit_modifier(&x11->primary_dri3_formats)) {
+		modifier = DRM_FORMAT_MOD_INVALID;
+	}
+
 	if (x11->dri3_major_version > 1 || x11->dri3_minor_version >= 2) {
 		if (dmabuf->n_planes > 4) {
 			wlr_dmabuf_attributes_finish(&dup_attrs);
@@ -244,12 +267,14 @@ static xcb_pixmap_t import_dmabuf(struct wlr_x11_output *output,
 			dmabuf->n_planes, dmabuf->width, dmabuf->height, dmabuf->stride[0],
 			dmabuf->offset[0], dmabuf->stride[1], dmabuf->offset[1],
 			dmabuf->stride[2], dmabuf->offset[2], dmabuf->stride[3],
-			dmabuf->offset[3], x11_fmt->depth, x11_fmt->bpp, dmabuf->modifier,
+			dmabuf->offset[3], x11_fmt->depth, x11_fmt->bpp, modifier,
 			dup_attrs.fd);
 	} else {
-		// PixmapFromBuffers requires DRI3 1.2
-		if (dmabuf->n_planes != 1
-				|| dmabuf->modifier != DRM_FORMAT_MOD_INVALID) {
+		// PixmapFromBuffers requires DRI3 1.2. Fall back to
+		// PixmapFromBuffer which doesn't take a modifier parameter.
+		// Allow single-plane buffers regardless of modifier since
+		// the X server imports the raw FD as-is.
+		if (dmabuf->n_planes != 1) {
 			wlr_dmabuf_attributes_finish(&dup_attrs);
 			return XCB_PIXMAP_NONE;
 		}
@@ -569,6 +594,14 @@ static const struct wlr_drm_format_set *output_get_primary_formats(
 	struct wlr_x11_backend *x11 = output->x11;
 
 	if (x11->have_dri3 && (buffer_caps & WLR_BUFFER_CAP_DMABUF)) {
+		// When the DRI3 format set has no explicit modifiers (only
+		// DRM_FORMAT_MOD_INVALID), return NULL to signal "no format
+		// constraint" rather than returning a set that would strip
+		// the renderer's explicit modifiers during intersection.
+		if (!format_set_has_explicit_modifier(
+				&x11->primary_dri3_formats)) {
+			return NULL;
+		}
 		return &output->x11->primary_dri3_formats;
 	} else if (x11->have_shm && (buffer_caps & WLR_BUFFER_CAP_SHM)) {
 		return &output->x11->primary_shm_formats;
