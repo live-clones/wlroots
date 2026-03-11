@@ -90,6 +90,9 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 		return;
 	}
 
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(region.extents.x1, region.extents.y1, region.extents.x2, region.extents.y2);
+
 	glEnableVertexAttribArray(attrib);
 
 	for (int i = 0; i < rects_len;) {
@@ -120,6 +123,7 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 	}
 
 	glDisableVertexAttribArray(attrib);
+	glDisable(GL_SCISSOR_TEST);
 
 	pixman_region32_fini(&region);
 }
