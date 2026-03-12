@@ -312,6 +312,8 @@ static void xdg_popup_handle_grab(struct wl_client *client,
 		&popup_grab->keyboard_grab);
 	wlr_seat_touch_start_grab(seat_client->seat,
 		&popup_grab->touch_grab);
+
+	wl_signal_emit_mutable(&popup->events.grab, NULL);
 }
 
 static void xdg_popup_handle_reposition(
@@ -416,6 +418,7 @@ void create_xdg_popup(struct wlr_xdg_surface *surface, struct wlr_xdg_surface *p
 
 	wl_signal_init(&surface->popup->events.destroy);
 	wl_signal_init(&surface->popup->events.reposition);
+	wl_signal_init(&surface->popup->events.grab);
 
 	if (parent) {
 		surface->popup->parent = parent->surface;
@@ -475,6 +478,7 @@ void destroy_xdg_popup(struct wlr_xdg_popup *popup) {
 
 	assert(wl_list_empty(&popup->events.destroy.listener_list));
 	assert(wl_list_empty(&popup->events.reposition.listener_list));
+	assert(wl_list_empty(&popup->events.grab.listener_list));
 
 	wlr_surface_synced_finish(&popup->synced);
 	popup->base->popup = NULL;
