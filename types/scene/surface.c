@@ -289,6 +289,13 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		if (color_repr->range != 0) {
 			color_range = wlr_color_representation_v1_color_range_to_wlr(color_repr->range);
 		}
+		// IDENTITY+FULL (used for RGB formats) is equivalent to no color
+		// representation being set at all.
+		if (color_encoding == WLR_COLOR_ENCODING_IDENTITY &&
+				color_range == WLR_COLOR_RANGE_FULL) {
+			color_encoding = WLR_COLOR_ENCODING_NONE;
+			color_range = WLR_COLOR_RANGE_NONE;
+		}
 	}
 
 	wlr_scene_buffer_set_opaque_region(scene_buffer, &opaque);
