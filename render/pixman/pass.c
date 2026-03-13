@@ -229,8 +229,20 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	pixman_image_unref(fill);
 }
 
+static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
+	(void)wlr_pass;
+}
+
+static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
+	struct wlr_pixman_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_pixman_renderer *renderer = pass->buffer->renderer;
+
+	return &renderer->wlr_renderer;
+}
+
 static const struct wlr_render_pass_impl render_pass_impl = {
-	.submit = render_pass_submit,
+	.destroy = render_pass_destory,
+	.get_renderer = render_pass_get_renderer,
 };
 
 static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
@@ -327,8 +339,46 @@ struct wlr_pixman_render_pass *begin_pixman_render_pass(
 	}
 
 	wlr_buffer_lock(buffer->buffer);
-	pass->base.renderer = &buffer->renderer->wlr_renderer;
 	pass->buffer = buffer;
+
+	return pass;
+}
+
+static void render_submit_pass_destroy(struct wlr_render_submit_pass *pass) {
+	struct wlr_pixman_render_submit_pass *pixman_pass =
+		wlr_pixman_render_submit_pass_from_pass(pass);
+	free(pixman_pass);
+}
+
+static const struct wlr_render_submit_pass_impl pixman_render_submit_pass_impl = {
+	.destroy = render_submit_pass_destroy,
+	.render = render_pass_submit,
+};
+
+struct wlr_render_submit_pass *wlr_pixman_render_submit_pass_create(void) {
+	struct wlr_pixman_render_submit_pass *pass = malloc(sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_pixman_render_submit_pass");
+		return NULL;
+	}
+
+	wlr_render_submit_pass_init(&pass->base, &pixman_render_submit_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_submit_pass_is_pixman(const struct wlr_render_submit_pass *submit_pass) {
+	return submit_pass->impl == &pixman_render_submit_pass_impl;
+}
+
+struct wlr_pixman_render_submit_pass *wlr_pixman_render_submit_pass_from_pass(
+		struct wlr_render_submit_pass *submit_pass) {
+	if (!wlr_render_submit_pass_is_pixman(submit_pass)) {
+		return NULL;
+	}
+
+	struct wlr_pixman_render_submit_pass *pass =
+		wl_container_of(submit_pass, pass, base);
 
 	return pass;
 }
