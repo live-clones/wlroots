@@ -37,6 +37,8 @@ bool wlr_output_init_render(struct wlr_output *output,
 	output->renderer = renderer;
 	wlr_render_rect_pass_destroy(renderer->rect_pass);
 	wlr_get_render_rect_pass(renderer);
+	wlr_render_texture_pass_destroy(renderer->texture_pass);
+	wlr_get_render_texture_pass(renderer);
 	wl_signal_emit_mutable(&output->events.render_inited, output);
 
 	return true;

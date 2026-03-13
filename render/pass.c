@@ -17,7 +17,7 @@
 
 void wlr_render_pass_init(struct wlr_render_pass *render_pass,
 		const struct wlr_render_pass_impl *impl) {
-	assert(impl->submit && impl->add_texture);
+	assert(impl->submit);
 	*render_pass = (struct wlr_render_pass){
 		.impl = impl,
 	};
@@ -38,7 +38,7 @@ void wlr_render_pass_add_texture(struct wlr_render_pass *render_pass,
 		(uint32_t)(box->y + box->height) <= options->texture->height);
 	}
 
-	render_pass->impl->add_texture(render_pass, options);
+	render_pass->renderer->texture_pass->impl->render(render_pass, options);
 }
 
 void wlr_render_pass_add_rect(struct wlr_render_pass *render_pass,
@@ -142,3 +142,56 @@ struct wlr_render_rect_pass *wlr_get_render_rect_pass(
 		return renderer->rect_pass;
 	}
 }
+
+void wlr_render_texture_pass_init(struct wlr_render_texture_pass *render_pass,
+			const struct wlr_render_texture_pass_impl *impl) {
+		assert(impl->render);
+		*render_pass = (struct wlr_render_texture_pass){
+			.impl = impl,
+		};
+		wl_signal_init(&render_pass->events.destroy);
+}
+void wlr_render_texture_pass_destroy(struct wlr_render_texture_pass *render_pass) {
+	if (render_pass == NULL) {
+		return;
+	}
+
+	wl_signal_emit_mutable(&render_pass->events.destroy, NULL);
+	assert(wl_list_empty(&render_pass->events.destroy.listener_list));
+
+	if (render_pass->impl->destroy != NULL) {
+		render_pass->impl->destroy(render_pass);
+	}
+}
+
+struct wlr_render_texture_pass *wlr_get_render_texture_pass(
+		struct wlr_renderer *renderer) {
+	if (renderer == NULL) {
+		return NULL;
+	}
+
+	if (renderer->texture_pass == NULL) {
+		struct wlr_render_texture_pass *pass = NULL;
+		if (wlr_renderer_is_pixman(renderer)) {
+			pass = wlr_pixman_render_texture_pass_create();
+		}
+
+#if WLR_HAS_GLES2_RENDERER
+		else if (wlr_renderer_is_gles2(renderer)) {
+			pass = wlr_gles2_render_texture_pass_create();
+		}
+#endif
+
+#if WLR_HAS_VULKAN_RENDERER
+		else if (wlr_renderer_is_vk(renderer)) {
+			pass = wlr_vk_render_texture_pass_create();
+		}
+#endif
+
+		renderer->texture_pass = pass;
+		return pass;
+	} else {
+		return renderer->texture_pass;
+	}
+}
+

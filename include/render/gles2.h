@@ -181,4 +181,12 @@ bool wlr_render_rect_pass_is_gles2(const struct wlr_render_rect_pass *rect_pass)
 struct wlr_gles2_render_rect_pass *wlr_gles2_render_rect_pass_from_pass(
 	const struct wlr_render_rect_pass *rect_pass);
 
+struct wlr_gles2_render_texture_pass {
+	struct wlr_render_texture_pass base;
+};
+
+bool wlr_render_texture_pass_is_gles2(const struct wlr_render_texture_pass *texture_pass);
+struct wlr_gles2_render_texture_pass *wlr_gles2_render_texture_pass_from_pass(
+	const struct wlr_render_texture_pass *texture_pass);
+
 #endif

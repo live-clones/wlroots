@@ -230,7 +230,6 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 static const struct wlr_render_pass_impl render_pass_impl = {
 	.submit = render_pass_submit,
-	.add_texture = render_pass_add_texture,
 };
 
 static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
@@ -268,6 +267,45 @@ struct wlr_pixman_render_rect_pass *wlr_pixman_render_rect_pass_from_pass(
 
 	struct wlr_pixman_render_rect_pass *pixman_pass =
 		wl_container_of(rect_pass, pixman_pass, base);
+
+	return pixman_pass;
+}
+
+static void render_texture_pass_destroy(struct wlr_render_texture_pass *pass) {
+	struct wlr_pixman_render_texture_pass *pixman_pass =
+		wlr_pixman_render_texture_pass_from_pass(pass);
+	free(pixman_pass);
+}
+
+static const struct wlr_render_texture_pass_impl render_texture_pass_impl = {
+	.destroy = render_texture_pass_destroy,
+	.render = render_pass_add_texture,
+};
+
+struct wlr_render_texture_pass *wlr_pixman_render_texture_pass_create(void) {
+	struct wlr_pixman_render_texture_pass *pass = malloc(sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_pixman_render_texture_pass");
+		return NULL;
+	}
+
+	wlr_render_texture_pass_init(&pass->base, &render_texture_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_texture_pass_is_pixman(const struct wlr_render_texture_pass *texture_pass) {
+	return texture_pass->impl == &render_texture_pass_impl;
+}
+
+struct wlr_pixman_render_texture_pass *wlr_pixman_render_texture_pass_from_pass(
+	const struct wlr_render_texture_pass *texture_pass) {
+	if (!wlr_render_texture_pass_is_pixman(texture_pass)) {
+		return NULL;
+	}
+
+	struct wlr_pixman_render_texture_pass *pixman_pass =
+		wl_container_of(texture_pass, pixman_pass, base);
 
 	return pixman_pass;
 }
