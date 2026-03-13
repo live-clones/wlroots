@@ -1002,7 +1002,8 @@ void wlr_color_manager_v1_set_surface_preferred_image_description(
 
 	struct wlr_color_management_surface_feedback_v1 *surface_feedback;
 	wl_list_for_each(surface_feedback, &manager->surface_feedbacks, link) {
-		if (surface_feedback->surface != surface) {
+		if (surface_feedback->surface != surface ||
+				memcmp(&surface_feedback->data, data, sizeof(*data)) == 0) {
 			continue;
 		}
 
