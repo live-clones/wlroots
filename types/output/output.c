@@ -377,6 +377,7 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 	wl_signal_init(&output->events.description);
 	wl_signal_init(&output->events.request_state);
 	wl_signal_init(&output->events.destroy);
+	wl_signal_init(&output->events.render_inited);
 
 	output->software_cursor_locks = env_parse_bool("WLR_NO_HARDWARE_CURSORS");
 	if (output->software_cursor_locks) {
@@ -407,6 +408,7 @@ void wlr_output_finish(struct wlr_output *output) {
 	assert(wl_list_empty(&output->events.description.listener_list));
 	assert(wl_list_empty(&output->events.request_state.listener_list));
 	assert(wl_list_empty(&output->events.destroy.listener_list));
+	assert(wl_list_empty(&output->events.render_inited.listener_list));
 
 	wlr_output_destroy_global(output);
 

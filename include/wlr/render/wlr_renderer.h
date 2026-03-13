@@ -26,6 +26,10 @@ struct wlr_fbox;
  * A renderer for basic 2D operations.
  */
 struct wlr_renderer {
+	struct wlr_render_rect_pass *rect_pass;
+
+	void *data;
+
 	// Capabilities required for the buffer used as a render target (bitmask of
 	// enum wlr_buffer_cap)
 	uint32_t render_buffer_caps;
