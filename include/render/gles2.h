@@ -173,4 +173,12 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 	struct wlr_egl_context *prev_ctx, struct wlr_gles2_render_timer *timer,
 	struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point);
 
+struct wlr_gles2_render_rect_pass {
+	struct wlr_render_rect_pass base;
+};
+
+bool wlr_render_rect_pass_is_gles2(const struct wlr_render_rect_pass *rect_pass);
+struct wlr_gles2_render_rect_pass *wlr_gles2_render_rect_pass_from_pass(
+	const struct wlr_render_rect_pass *rect_pass);
+
 #endif

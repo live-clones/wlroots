@@ -1,10 +1,23 @@
 #include <assert.h>
 #include <string.h>
+#include <stdlib.h>
 #include <wlr/render/interface.h>
+#include <wlr/util/log.h>
+#include <wlr/render/pixman.h>
+
+#include <wlr/config.h>
+
+#if WLR_HAS_GLES2_RENDERER
+#include <wlr/render/gles2.h>
+#endif
+
+#if WLR_HAS_VULKAN_RENDERER
+#include <wlr/render/vulkan.h>
+#endif
 
 void wlr_render_pass_init(struct wlr_render_pass *render_pass,
 		const struct wlr_render_pass_impl *impl) {
-	assert(impl->submit && impl->add_texture && impl->add_rect);
+	assert(impl->submit && impl->add_texture);
 	*render_pass = (struct wlr_render_pass){
 		.impl = impl,
 	};
@@ -31,7 +44,7 @@ void wlr_render_pass_add_texture(struct wlr_render_pass *render_pass,
 void wlr_render_pass_add_rect(struct wlr_render_pass *render_pass,
 		const struct wlr_render_rect_options *options) {
 	assert(options->box.width >= 0 && options->box.height >= 0);
-	render_pass->impl->add_rect(render_pass, options);
+	render_pass->renderer->rect_pass->impl->render(render_pass, options);
 }
 
 void wlr_render_texture_options_get_src_box(const struct wlr_render_texture_options *options,
@@ -73,4 +86,59 @@ void wlr_render_rect_options_get_box(const struct wlr_render_rect_options *optio
 	}
 
 	*box = options->box;
+}
+
+void wlr_render_rect_pass_init(struct wlr_render_rect_pass *render_pass,
+	const struct wlr_render_rect_pass_impl *impl) {
+	assert(impl->render);
+	*render_pass = (struct wlr_render_rect_pass){
+		.impl = impl,
+	};
+	wl_signal_init(&render_pass->events.destroy);
+}
+
+void wlr_render_rect_pass_destroy(struct wlr_render_rect_pass *render_pass) {
+	if (render_pass == NULL) {
+		return;
+	}
+
+	wl_signal_emit_mutable(&render_pass->events.destroy, NULL);
+	assert(wl_list_empty(&render_pass->events.destroy.listener_list));
+
+	if (render_pass->impl->destroy != NULL) {
+		render_pass->impl->destroy(render_pass);
+	} else {
+		free(render_pass);
+	}
+}
+
+struct wlr_render_rect_pass *wlr_get_render_rect_pass(
+		struct wlr_renderer *renderer) {
+	if (renderer == NULL) {
+		return NULL;
+	}
+
+	if (renderer->rect_pass == NULL) {
+		struct wlr_render_rect_pass *pass = NULL;
+		if (wlr_renderer_is_pixman(renderer)) {
+			pass = wlr_pixman_render_rect_pass_create();
+		}
+
+#if WLR_HAS_GLES2_RENDERER
+		else if (wlr_renderer_is_gles2(renderer)) {
+			pass = wlr_gles2_render_rect_pass_create();
+		}
+#endif
+
+#if WLR_HAS_VULKAN_RENDERER
+		else if (wlr_renderer_is_vk(renderer)) {
+			pass = wlr_vk_render_rect_pass_create();
+		}
+#endif
+
+		renderer->rect_pass = pass;
+		return pass;
+	} else {
+		return renderer->rect_pass;
+	}
 }

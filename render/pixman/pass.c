@@ -1,5 +1,8 @@
 #include <assert.h>
 #include <stdlib.h>
+
+#include <wlr/util/log.h>
+
 #include "render/pixman.h"
 
 static const struct wlr_render_pass_impl render_pass_impl;
@@ -228,8 +231,46 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 static const struct wlr_render_pass_impl render_pass_impl = {
 	.submit = render_pass_submit,
 	.add_texture = render_pass_add_texture,
-	.add_rect = render_pass_add_rect,
 };
+
+static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
+	struct wlr_pixman_render_rect_pass *pixman_pass =
+		wlr_pixman_render_rect_pass_from_pass(pass);
+	free(pixman_pass);
+}
+
+static const struct wlr_render_rect_pass_impl render_rect_pass_impl = {
+	.destroy = render_rect_pass_destroy,
+	.render = render_pass_add_rect,
+};
+
+struct wlr_render_rect_pass *wlr_pixman_render_rect_pass_create(void) {
+	struct wlr_pixman_render_rect_pass *pass = malloc(sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_pixman_render_rect_pass");
+		return NULL;
+	}
+
+	wlr_render_rect_pass_init(&pass->base, &render_rect_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_rect_pass_is_pixman(const struct wlr_render_rect_pass *rect_pass) {
+	return rect_pass->impl == &render_rect_pass_impl;
+}
+
+struct wlr_pixman_render_rect_pass *wlr_pixman_render_rect_pass_from_pass(
+		const struct wlr_render_rect_pass *rect_pass) {
+	if (!wlr_render_rect_pass_is_pixman(rect_pass)) {
+		return NULL;
+	}
+
+	struct wlr_pixman_render_rect_pass *pixman_pass =
+		wl_container_of(rect_pass, pixman_pass, base);
+
+	return pixman_pass;
+}
 
 struct wlr_pixman_render_pass *begin_pixman_render_pass(
 		struct wlr_pixman_buffer *buffer) {
@@ -247,6 +288,7 @@ struct wlr_pixman_render_pass *begin_pixman_render_pass(
 	}
 
 	wlr_buffer_lock(buffer->buffer);
+	pass->base.renderer = &buffer->renderer->wlr_renderer;
 	pass->buffer = buffer;
 
 	return pass;

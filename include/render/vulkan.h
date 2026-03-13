@@ -592,4 +592,12 @@ void vulkan_change_layout(VkCommandBuffer cb, VkImage img,
 
 #endif
 
+struct wlr_vk_render_rect_pass {
+	struct wlr_render_rect_pass base;
+};
+
+bool wlr_render_rect_pass_is_vk(const struct wlr_render_rect_pass *rect_pass);
+struct wlr_vk_render_rect_pass *wlr_vk_render_rect_pass_from_pass(
+	const struct wlr_render_rect_pass *rect_pass);
+
 #endif // RENDER_VULKAN_H

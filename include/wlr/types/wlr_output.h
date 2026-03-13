@@ -243,6 +243,8 @@ struct wlr_output {
 		struct wl_signal description;
 		struct wl_signal request_state; // struct wlr_output_event_request_state
 		struct wl_signal destroy;
+		// Emitted when the output's rendering subsystem is initialized or reinitialized
+		struct wl_signal render_inited;
 	} events;
 
 	struct wl_event_source *idle_frame;
