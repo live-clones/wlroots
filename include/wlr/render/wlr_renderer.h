@@ -28,6 +28,7 @@ struct wlr_fbox;
 struct wlr_renderer {
 	struct wlr_render_rect_pass *rect_pass;
 	struct wlr_render_texture_pass *texture_pass;
+	struct wlr_render_submit_pass *submit_pass;
 	void *data;
 
 	// Capabilities required for the buffer used as a render target (bitmask of

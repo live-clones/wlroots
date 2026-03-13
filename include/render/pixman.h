@@ -77,4 +77,12 @@ bool wlr_render_texture_pass_is_pixman(const struct wlr_render_texture_pass *tex
 struct wlr_pixman_render_texture_pass *wlr_pixman_render_texture_pass_from_pass(
 	const struct wlr_render_texture_pass *texture_pass);
 
+struct wlr_pixman_render_submit_pass {
+	struct wlr_render_submit_pass base;
+};
+
+bool wlr_render_submit_pass_is_pixman(const struct wlr_render_submit_pass *submit_pass);
+struct wlr_pixman_render_submit_pass *wlr_pixman_render_submit_pass_from_pass(
+	const struct wlr_render_submit_pass *submit_pass);
+
 #endif

@@ -48,17 +48,22 @@ struct wlr_texture_impl {
 void wlr_texture_init(struct wlr_texture *texture, struct wlr_renderer *rendener,
 	const struct wlr_texture_impl *impl, uint32_t width, uint32_t height);
 
+struct wlr_render_pass;
+
+struct wlr_render_pass_impl {
+	void (*destroy)(struct wlr_render_pass *pass);
+	struct wlr_renderer *(*get_renderer)(struct wlr_render_pass *pass);
+};
+
 struct wlr_render_pass {
 	const struct wlr_render_pass_impl *impl;
-	struct wlr_renderer *renderer;
 };
 
 void wlr_render_pass_init(struct wlr_render_pass *pass,
 	const struct wlr_render_pass_impl *impl);
-
-struct wlr_render_pass_impl {
-	bool (*submit)(struct wlr_render_pass *pass);
-};
+void wlr_render_pass_destroy(struct wlr_render_pass *pass);
+struct wlr_renderer *wlr_get_wlr_renderer_from_render_pass(
+	struct wlr_render_pass *wlr_pass);
 
 struct wlr_render_timer {
 	const struct wlr_render_timer_impl *impl;
@@ -132,5 +137,28 @@ struct wlr_render_texture_pass *wlr_get_render_texture_pass(
 struct wlr_render_texture_pass *wlr_pixman_render_texture_pass_create(void);
 struct wlr_render_texture_pass *wlr_gles2_render_texture_pass_create(void);
 struct wlr_render_texture_pass *wlr_vk_render_texture_pass_create(void);
+
+struct wlr_render_submit_pass;
+
+struct wlr_render_submit_pass_impl {
+	void (*destroy)(struct wlr_render_submit_pass *pass);
+	bool (*render)(struct wlr_render_pass *pass);
+};
+
+struct wlr_render_submit_pass {
+	const struct wlr_render_submit_pass_impl *impl;
+	struct {
+		struct wl_signal destroy;
+	} events;
+};
+
+void wlr_render_submit_pass_init(struct wlr_render_submit_pass *pass,
+	const struct wlr_render_submit_pass_impl *impl);
+void wlr_render_submit_pass_destroy(struct wlr_render_submit_pass *pass);
+struct wlr_render_submit_pass *wlr_get_render_submit_pass(
+	struct wlr_renderer *renderer);
+struct wlr_render_submit_pass *wlr_pixman_render_submit_pass_create(void);
+struct wlr_render_submit_pass *wlr_gles2_render_submit_pass_create(void);
+struct wlr_render_submit_pass *wlr_vk_render_submit_pass_create(void);
 
 #endif
