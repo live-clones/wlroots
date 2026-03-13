@@ -54,6 +54,7 @@ void wlr_renderer_destroy(struct wlr_renderer *r) {
 	assert(wl_list_empty(&r->events.lost.listener_list));
 
 	wlr_render_rect_pass_destroy(r->rect_pass);
+	wlr_render_texture_pass_destroy(r->texture_pass);
 	if (r->impl && r->impl->destroy) {
 		r->impl->destroy(r);
 	} else {
