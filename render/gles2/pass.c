@@ -287,7 +287,6 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 static const struct wlr_render_pass_impl render_pass_impl = {
 	.submit = render_pass_submit,
 	.add_texture = render_pass_add_texture,
-	.add_rect = render_pass_add_rect,
 };
 
 static const char *reset_status_str(GLenum status) {
@@ -330,6 +329,7 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 
 	wlr_render_pass_init(&pass->base, &render_pass_impl);
 	wlr_buffer_lock(wlr_buffer);
+	pass->base.renderer = &renderer->wlr_renderer;
 	pass->buffer = buffer;
 	pass->timer = timer;
 	pass->prev_ctx = *prev_ctx;
@@ -351,3 +351,43 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 
 	return pass;
 }
+
+static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
+	struct wlr_gles2_render_rect_pass *gles2_pass =
+		wlr_gles2_render_rect_pass_from_pass(pass);
+	free(gles2_pass);
+}
+
+static const struct wlr_render_rect_pass_impl render_rect_pass_impl = {
+	.destroy = render_rect_pass_destroy,
+	.render = render_pass_add_rect,
+};
+
+struct wlr_render_rect_pass *wlr_gles2_render_rect_pass_create(void) {
+	struct wlr_gles2_render_rect_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_gles2_render_rect_pass");
+		return NULL;
+	}
+
+	wlr_render_rect_pass_init(&pass->base, &render_rect_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_rect_pass_is_gles2(const struct wlr_render_rect_pass *rect_pass) {
+	return rect_pass != NULL && rect_pass->impl == &render_rect_pass_impl;
+}
+
+struct wlr_gles2_render_rect_pass *wlr_gles2_render_rect_pass_from_pass(
+		struct wlr_render_rect_pass *rect_pass) {
+	if (!wlr_render_rect_pass_is_gles2(rect_pass)) {
+		return NULL;
+	}
+
+	struct wlr_gles2_render_rect_pass *pass =
+		wl_container_of(rect_pass, pass, base);
+
+	return pass;
+}
+

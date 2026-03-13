@@ -943,10 +943,8 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 
 static const struct wlr_render_pass_impl render_pass_impl = {
 	.submit = render_pass_submit,
-	.add_rect = render_pass_add_rect,
 	.add_texture = render_pass_add_texture,
 };
-
 
 void vk_color_transform_destroy(struct wlr_addon *addon) {
 	struct wlr_vk_renderer *renderer = (struct wlr_vk_renderer *)addon->owner;
@@ -1249,6 +1247,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 
 	wlr_render_pass_init(&pass->base, &render_pass_impl);
 	pass->renderer = renderer;
+	pass->base.renderer = &renderer->wlr_renderer;
 	pass->two_pass = using_two_pass_pathway;
 	if (options != NULL && options->color_transform != NULL) {
 		pass->color_transform = wlr_color_transform_ref(options->color_transform);
@@ -1322,5 +1321,44 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	pass->render_setup = render_setup;
 	pass->command_buffer = cb;
 	pass->timer = timer;
+	return pass;
+}
+
+static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
+	struct wlr_vk_render_rect_pass *vk_pass =
+		wlr_vk_render_rect_pass_from_pass(pass);
+	free(vk_pass);
+}
+
+static const struct wlr_render_rect_pass_impl render_rect_pass_impl = {
+	.destroy = render_rect_pass_destroy,
+	.render = render_pass_add_rect,
+};
+
+struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(void) {
+	struct wlr_vk_render_rect_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_vk_render_rect_pass");
+		return NULL;
+	}
+
+	wlr_render_rect_pass_init(&pass->base, &render_rect_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_rect_pass_is_vk(const struct wlr_render_rect_pass *rect_pass) {
+	return rect_pass->impl == &render_rect_pass_impl;
+}
+
+struct wlr_vk_render_rect_pass *wlr_vk_render_rect_pass_from_pass(
+		struct wlr_render_rect_pass *rect_pass) {
+	if (!wlr_render_rect_pass_is_vk(rect_pass)) {
+		return NULL;
+	}
+
+	struct wlr_vk_render_rect_pass *pass =
+		wl_container_of(rect_pass, pass, base);
+
 	return pass;
 }
