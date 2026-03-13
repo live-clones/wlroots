@@ -50,6 +50,7 @@ void wlr_texture_init(struct wlr_texture *texture, struct wlr_renderer *rendener
 
 struct wlr_render_pass {
 	const struct wlr_render_pass_impl *impl;
+	struct wlr_renderer *renderer;
 };
 
 void wlr_render_pass_init(struct wlr_render_pass *pass,
@@ -59,9 +60,6 @@ struct wlr_render_pass_impl {
 	bool (*submit)(struct wlr_render_pass *pass);
 	void (*add_texture)(struct wlr_render_pass *pass,
 		const struct wlr_render_texture_options *options);
-	/* Implementers are also guaranteed that options->box is nonempty */
-	void (*add_rect)(struct wlr_render_pass *pass,
-		const struct wlr_render_rect_options *options);
 };
 
 struct wlr_render_timer {
@@ -86,5 +84,30 @@ void wlr_texture_read_pixels_options_get_src_box(
 	const struct wlr_texture *texture, struct wlr_box *box);
 void *wlr_texture_read_pixel_options_get_data(
 	const struct wlr_texture_read_pixels_options *options);
+
+struct wlr_render_rect_pass;
+
+struct wlr_render_rect_pass_impl {
+	void (*destroy)(struct wlr_render_rect_pass *pass);
+	void (*render)(struct wlr_render_pass *pass,
+		const struct wlr_render_rect_options *options);
+};
+
+struct wlr_render_rect_pass {
+	const struct wlr_render_rect_pass_impl *impl;
+	struct {
+		struct wl_signal destroy;
+	} events;
+};
+
+void wlr_render_rect_pass_init(struct wlr_render_rect_pass *pass,
+	const struct wlr_render_rect_pass_impl *impl);
+void wlr_render_rect_pass_destroy(struct wlr_render_rect_pass *pass);
+
+struct wlr_render_rect_pass *get_or_create_render_rect_pass(
+	struct wlr_renderer *renderer);
+struct wlr_render_rect_pass *wlr_pixman_render_rect_pass_create(void);
+struct wlr_render_rect_pass *wlr_gles2_render_rect_pass_create(void);
+struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(void);
 
 #endif
