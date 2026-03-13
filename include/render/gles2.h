@@ -189,4 +189,12 @@ bool wlr_render_texture_pass_is_gles2(const struct wlr_render_texture_pass *text
 struct wlr_gles2_render_texture_pass *wlr_gles2_render_texture_pass_from_pass(
 	struct wlr_render_texture_pass *texture_pass);
 
+struct wlr_gles2_render_submit_pass {
+	struct wlr_render_submit_pass base;
+};
+
+bool wlr_render_submit_pass_is_gles2(const struct wlr_render_submit_pass *submit_pass);
+struct wlr_gles2_render_submit_pass *wlr_gles2_render_submit_pass_from_pass(
+	struct wlr_render_submit_pass *submit_pass);
+
 #endif
