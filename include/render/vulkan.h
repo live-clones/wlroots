@@ -608,4 +608,12 @@ bool wlr_render_texture_pass_is_vk(const struct wlr_render_texture_pass *texture
 struct wlr_vk_render_texture_pass *wlr_vk_render_texture_pass_from_pass(
 	const struct wlr_render_texture_pass *texture_pass);
 
+struct wlr_vk_render_submit_pass {
+	struct wlr_render_submit_pass base;
+};
+
+bool wlr_render_submit_pass_is_vk(const struct wlr_render_submit_pass *submit_pass);
+struct wlr_vk_render_submit_pass *wlr_vk_render_submit_pass_from_pass(
+	struct wlr_render_submit_pass *submit_pass);
+
 #endif // RENDER_VULKAN_H
