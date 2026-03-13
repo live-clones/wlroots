@@ -58,8 +58,6 @@ void wlr_render_pass_init(struct wlr_render_pass *pass,
 
 struct wlr_render_pass_impl {
 	bool (*submit)(struct wlr_render_pass *pass);
-	void (*add_texture)(struct wlr_render_pass *pass,
-		const struct wlr_render_texture_options *options);
 };
 
 struct wlr_render_timer {
@@ -109,5 +107,30 @@ struct wlr_render_rect_pass *get_or_create_render_rect_pass(
 struct wlr_render_rect_pass *wlr_pixman_render_rect_pass_create(void);
 struct wlr_render_rect_pass *wlr_gles2_render_rect_pass_create(void);
 struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(void);
+
+struct wlr_render_texture_pass;
+
+struct wlr_render_texture_pass_impl {
+	void (*destroy)(struct wlr_render_texture_pass *pass);
+	void (*render)(struct wlr_render_pass *pass,
+		const struct wlr_render_texture_options *options);
+};
+
+struct wlr_render_texture_pass {
+	const struct wlr_render_texture_pass_impl *impl;
+	struct {
+		struct wl_signal destroy;
+	} events;
+};
+
+void wlr_render_texture_pass_init(struct wlr_render_texture_pass *pass,
+	const struct wlr_render_texture_pass_impl *impl);
+void wlr_render_texture_pass_destroy(struct wlr_render_texture_pass *pass);
+
+struct wlr_render_texture_pass *get_or_create_render_texture_pass(
+	struct wlr_renderer *renderer);
+struct wlr_render_texture_pass *wlr_pixman_render_texture_pass_create(void);
+struct wlr_render_texture_pass *wlr_gles2_render_texture_pass_create(void);
+struct wlr_render_texture_pass *wlr_vk_render_texture_pass_create(void);
 
 #endif

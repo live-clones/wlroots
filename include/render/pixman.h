@@ -69,4 +69,12 @@ bool wlr_render_rect_pass_is_pixman(const struct wlr_render_rect_pass *rect_pass
 struct wlr_pixman_render_rect_pass *wlr_pixman_render_rect_pass_from_pass(
 	struct wlr_render_rect_pass *rect_pass);
 
+struct wlr_pixman_render_texture_pass {
+	struct wlr_render_texture_pass base;
+};
+
+bool wlr_render_texture_pass_is_pixman(const struct wlr_render_texture_pass *texture_pass);
+struct wlr_pixman_render_texture_pass *wlr_pixman_render_texture_pass_from_pass(
+	struct wlr_render_texture_pass *texture_pass);
+
 #endif
