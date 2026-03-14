@@ -61,4 +61,28 @@ bool begin_pixman_data_ptr_access(struct wlr_buffer *buffer, pixman_image_t **im
 struct wlr_pixman_render_pass *begin_pixman_render_pass(
 	struct wlr_pixman_buffer *buffer);
 
+struct wlr_pixman_render_rect_pass {
+	struct wlr_render_rect_pass base;
+};
+
+bool wlr_render_rect_pass_is_pixman(const struct wlr_render_rect_pass *rect_pass);
+struct wlr_pixman_render_rect_pass *wlr_pixman_render_rect_pass_from_pass(
+	const struct wlr_render_rect_pass *rect_pass);
+
+struct wlr_pixman_render_texture_pass {
+	struct wlr_render_texture_pass base;
+};
+
+bool wlr_render_texture_pass_is_pixman(const struct wlr_render_texture_pass *texture_pass);
+struct wlr_pixman_render_texture_pass *wlr_pixman_render_texture_pass_from_pass(
+	const struct wlr_render_texture_pass *texture_pass);
+
+struct wlr_pixman_render_submit_pass {
+	struct wlr_render_submit_pass base;
+};
+
+bool wlr_render_submit_pass_is_pixman(const struct wlr_render_submit_pass *submit_pass);
+struct wlr_pixman_render_submit_pass *wlr_pixman_render_submit_pass_from_pass(
+	const struct wlr_render_submit_pass *submit_pass);
+
 #endif

@@ -981,12 +981,21 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	}
 }
 
-static const struct wlr_render_pass_impl render_pass_impl = {
-	.submit = render_pass_submit,
-	.add_rect = render_pass_add_rect,
-	.add_texture = render_pass_add_texture,
-};
+static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
+	(void)wlr_pass;
+}
 
+static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
+	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_renderer *renderer = pass->renderer;
+
+	return &renderer->wlr_renderer;
+}
+
+static const struct wlr_render_pass_impl render_pass_impl = {
+	.destroy = render_pass_destory,
+	.get_renderer = render_pass_get_renderer,
+};
 
 void vk_color_transform_destroy(struct wlr_addon *addon) {
 	struct wlr_vk_renderer *renderer = (struct wlr_vk_renderer *)addon->owner;
@@ -1354,4 +1363,117 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	pass->render_setup = render_setup;
 	pass->command_buffer = cb;
 	return pass;
+}
+
+static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
+	struct wlr_vk_render_rect_pass *vk_pass =
+		wlr_vk_render_rect_pass_from_pass(pass);
+	free(vk_pass);
+}
+
+static const struct wlr_render_rect_pass_impl render_rect_pass_impl = {
+	.destroy = render_rect_pass_destroy,
+	.render = render_pass_add_rect,
+};
+
+struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(void) {
+	struct wlr_vk_render_rect_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_vk_render_rect_pass");
+		return NULL;
+	}
+
+	wlr_render_rect_pass_init(&pass->base, &render_rect_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_rect_pass_is_vk(const struct wlr_render_rect_pass *rect_pass) {
+	return rect_pass->impl == &render_rect_pass_impl;
+}
+
+struct wlr_vk_render_rect_pass *wlr_vk_render_rect_pass_from_pass(
+		const struct wlr_render_rect_pass *rect_pass) {
+	if (!wlr_render_rect_pass_is_vk(rect_pass)) {
+		return NULL;
+	}
+
+	struct wlr_vk_render_rect_pass *vk_pass = wl_container_of(rect_pass, vk_pass, base);
+
+	return vk_pass;
+}
+
+static void render_texture_pass_destroy(struct wlr_render_texture_pass *pass) {
+	struct wlr_vk_render_texture_pass *vk_pass =
+		wlr_vk_render_texture_pass_fro_pass(pass);
+	free(vk_pass);
+}
+
+static const struct wlr_render_texture_pass_impl render_texture_pass_impl = {
+	.destroy = render_texture_pass_destroy,
+	.render = render_pass_add_texture,
+};
+
+struct wlr_render_texture_pass *wlr_vk_render_texture_pass_create(void) {
+	struct wlr_vk_render_texture_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_vk_render_texture_pass");
+		return NULL;
+	}
+
+	wlr_render_texture_pass_init(&pass->base, &render_texture_pass_impl);
+
+	return &pass->base;
+}
+bool wlr_render_texture_pass_is_vk(const struct wlr_render_texture_pass *texture_pass) {
+	return texture_pass->impl == &render_texture_pass_impl;
+}
+
+struct wlr_vk_render_texture_pass *wlr_vk_render_texture_pass_fro_pass(
+		const struct wlr_render_texture_pass *texture_pass) {
+	if (!wlr_render_texture_pass_is_vk(texture_pass)) {
+		return NULL;
+	}
+
+	struct wlr_vk_render_texture_pass *vk_pass = wl_container_of(texture_pass, vk_pass, base);
+
+	return vk_pass;
+}
+
+static void render_submit_pass_destroy(struct wlr_render_submit_pass *pass) {
+	struct wlr_vk_render_submit_pass *vk_pass =
+		wlr_vk_render_submit_pass_from_pass(pass);
+	free(vk_pass);
+}
+
+static const struct wlr_render_submit_pass_impl vk_render_submit_pass_impl = {
+	.destroy = render_submit_pass_destroy,
+	.render = render_pass_submit,
+};
+
+struct wlr_render_submit_pass *wlr_vk_render_submit_pass_create(void) {
+	struct wlr_vk_render_submit_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_vk_render_submit_pass");
+		return NULL;
+	}
+
+	wlr_render_submit_pass_init(&pass->base, &vk_render_submit_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_submit_pass_is_vk(const struct wlr_render_submit_pass *submit_pass) {
+	return submit_pass->impl == &vk_render_submit_pass_impl;
+}
+
+struct wlr_vk_render_submit_pass *wlr_vk_render_submit_pass_from_pass(
+		const struct wlr_render_submit_pass *submit_pass) {
+	if (!wlr_render_submit_pass_is_vk(submit_pass)) {
+		return NULL;
+	}
+
+	struct wlr_vk_render_submit_pass *vk_pass =
+		wl_container_of(submit_pass, vk_pass, base);
+	return vk_pass;
 }

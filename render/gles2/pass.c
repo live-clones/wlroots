@@ -284,10 +284,20 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	pop_gles2_debug(renderer);
 }
 
+static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
+	(void)wlr_pass;
+}
+
+static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
+	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
+
+	return &renderer->wlr_renderer;
+}
+
 static const struct wlr_render_pass_impl render_pass_impl = {
-	.submit = render_pass_submit,
-	.add_texture = render_pass_add_texture,
-	.add_rect = render_pass_add_rect,
+	.destroy = render_pass_destory,
+	.get_renderer = render_pass_get_renderer,
 };
 
 static const char *reset_status_str(GLenum status) {
@@ -350,4 +360,116 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 	pop_gles2_debug(renderer);
 
 	return pass;
+}
+
+static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
+	struct wlr_gles2_render_rect_pass *gles2_pass =
+		wlr_gles2_render_rect_pass_from_pass(pass);
+	free(gles2_pass);
+}
+
+static const struct wlr_render_rect_pass_impl render_rect_pass_impl = {
+	.destroy = render_rect_pass_destroy,
+	.render = render_pass_add_rect,
+};
+
+struct wlr_render_rect_pass *wlr_gles2_render_rect_pass_create(void) {
+	struct wlr_gles2_render_rect_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_gles2_render_rect_pass");
+		return NULL;
+	}
+
+	wlr_render_rect_pass_init(&pass->base, &render_rect_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_rect_pass_is_gles2(const struct wlr_render_rect_pass *rect_pass) {
+	return rect_pass != NULL && rect_pass->impl == &render_rect_pass_impl;
+}
+
+struct wlr_gles2_render_rect_pass *wlr_gles2_render_rect_pass_from_pass(
+		const struct wlr_render_rect_pass *rect_pass) {
+	if (!wlr_render_rect_pass_is_gles2(rect_pass)) {
+		return NULL;
+	}
+
+	return (struct wlr_gles2_render_rect_pass *)rect_pass;
+}
+
+static void render_texture_pass_destroy(struct wlr_render_texture_pass *pass) {
+	struct wlr_gles2_render_texture_pass *gles2_pass =
+		wlr_gles2_render_texture_pass_from_pass(pass);
+	free(gles2_pass);
+}
+
+static const struct wlr_render_texture_pass_impl render_texture_pass_impl = {
+	.destroy = render_texture_pass_destroy,
+	.render = render_pass_add_texture,
+};
+
+struct wlr_render_texture_pass *wlr_gles2_render_texture_pass_create(void) {
+	struct wlr_gles2_render_texture_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_gles2_render_texture_pass");
+		return NULL;
+	}
+
+	wlr_render_texture_pass_init(&pass->base, &render_texture_pass_impl);
+
+	return &pass->base;
+}
+bool wlr_render_texture_pass_is_gles2(const struct wlr_render_texture_pass *texture_pass) {
+	return texture_pass != NULL && texture_pass->impl == &render_texture_pass_impl;
+}
+
+struct wlr_gles2_render_texture_pass *wlr_gles2_render_texture_pass_from_pass(
+	const struct wlr_render_texture_pass *texture_pass) {
+	if (!wlr_render_texture_pass_is_gles2(texture_pass)) {
+		return NULL;
+	}
+
+	struct wlr_gles2_render_texture_pass *pass =
+		wl_container_of(texture_pass, pass, base);
+
+	return pass;
+}
+
+static void render_submit_pass_destroy(struct wlr_render_submit_pass *pass) {
+	struct wlr_gles2_render_submit_pass *gles2_pass =
+		wlr_gles2_render_submit_pass_from_pass(pass);
+	free(gles2_pass);
+}
+
+static const struct wlr_render_submit_pass_impl gles2_render_submit_pass_impl = {
+	.destroy = render_submit_pass_destroy,
+	.render = render_pass_submit,
+};
+
+struct wlr_render_submit_pass *wlr_gles2_render_submit_pass_create(void) {
+	struct wlr_gles2_render_submit_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_gles2_render_submit_pass");
+		return NULL;
+	}
+
+	wlr_render_submit_pass_init(&pass->base, &gles2_render_submit_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_submit_pass_is_gles2(const struct wlr_render_submit_pass *submit_pass) {
+	return submit_pass->impl == &gles2_render_submit_pass_impl;
+}
+
+struct wlr_gles2_render_submit_pass *wlr_gles2_render_submit_pass_from_pass(
+		const struct wlr_render_submit_pass *submit_pass) {
+	if (!wlr_render_submit_pass_is_gles2(submit_pass)) {
+		return NULL;
+	}
+
+	struct wlr_gles2_render_submit_pass *gles2_pass =
+		wl_container_of(submit_pass, gles2_pass, base);
+	return gles2_pass;
 }
