@@ -251,6 +251,8 @@ const struct wlr_vk_format *vulkan_get_format_from_drm(uint32_t drm_format) {
 
 const VkImageUsageFlags vulkan_render_usage =
 	VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+const VkImageUsageFlags vulkan_render_bridged_usage =
+	VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 const VkImageUsageFlags vulkan_shm_tex_usage =
 	VK_IMAGE_USAGE_SAMPLED_BIT |
 	VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -262,6 +264,8 @@ const VkImageUsageFlags vulkan_dma_tex_usage =
 static const VkFormatFeatureFlags render_features =
 	VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
 	VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
+static const VkFormatFeatureFlags render_bridged_features =
+	VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
 static const VkFormatFeatureFlags shm_tex_features =
 	VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
 	VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
@@ -446,6 +450,43 @@ static bool query_modifier_support(struct wlr_vk_device *dev,
 				supported = query_modifier_usage_support(dev, props->format.vk,
 					0, vulkan_render_usage, &m, &p, &errmsg);
 			}
+
+			if (supported) {
+				props->dmabuf.render_mods[props->dmabuf.render_mod_count++] = p;
+				wlr_drm_format_set_add(&dev->dmabuf_render_formats,
+					props->format.drm, m.drmFormatModifier);
+				found = true;
+			}
+		} else if ((m.drmFormatModifierTilingFeatures & render_bridged_features) == render_bridged_features &&
+				m.drmFormatModifier == DRM_FORMAT_MOD_LINEAR && !props->format.is_ycbcr) {
+			struct wlr_vk_format_modifier_props p = {0};
+			bool supported = false;
+			if (query_modifier_usage_support(dev, props->format.vk,
+					props->format.vk_srgb, vulkan_render_bridged_usage, &m, &p, &errmsg)) {
+				supported = true;
+				p.has_mutable_srgb = props->format.vk_srgb != 0;
+			}
+			if (!supported && props->format.vk_srgb) {
+				supported = query_modifier_usage_support(dev, props->format.vk,
+					0, vulkan_render_bridged_usage, &m, &p, &errmsg);
+			}
+
+			if (supported) {
+				struct wlr_vk_format_modifier_props bridge_format = {0};
+				supported = query_modifier_usage_support(dev, props->format.vk,
+					0, vulkan_render_usage, &m, &bridge_format, &errmsg);
+
+				if (supported) {
+					if (p.max_extent.width > bridge_format.max_extent.width) {
+						p.max_extent.width = bridge_format.max_extent.width;
+					}
+					if (p.max_extent.height > bridge_format.max_extent.height) {
+						p.max_extent.height = bridge_format.max_extent.height;
+					}
+				}
+			}
+
+			p.render_needs_bridge = true;
 
 			if (supported) {
 				props->dmabuf.render_mods[props->dmabuf.render_mod_count++] = p;
