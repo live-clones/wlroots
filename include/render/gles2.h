@@ -73,18 +73,6 @@ struct wlr_gles2_renderer {
 		PFNGLGETINTEGER64VEXTPROC glGetInteger64vEXT;
 	} procs;
 
-	struct {
-		struct {
-			GLuint program;
-			GLint proj;
-			GLint color;
-			GLint pos_attrib;
-		} quad;
-		struct wlr_gles2_tex_shader tex_rgba;
-		struct wlr_gles2_tex_shader tex_rgbx;
-		struct wlr_gles2_tex_shader tex_ext;
-	} shaders;
-
 	struct wl_list buffers; // wlr_gles2_buffer.link
 	struct wl_list textures; // wlr_gles2_texture.link
 };
@@ -175,6 +163,13 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 
 struct wlr_gles2_render_rect_pass {
 	struct wlr_render_rect_pass base;
+	struct wlr_gles2_renderer *renderer;
+	struct {
+		GLuint program;
+		GLint proj;
+		GLint color;
+		GLint pos_attrib;
+	} shader;
 };
 
 bool wlr_render_rect_pass_is_gles2(const struct wlr_render_rect_pass *rect_pass);
@@ -183,6 +178,12 @@ struct wlr_gles2_render_rect_pass *wlr_gles2_render_rect_pass_from_pass(
 
 struct wlr_gles2_render_texture_pass {
 	struct wlr_render_texture_pass base;
+	struct wlr_gles2_renderer *renderer;
+	struct {
+		struct wlr_gles2_tex_shader tex_rgba;
+		struct wlr_gles2_tex_shader tex_rgbx;
+		struct wlr_gles2_tex_shader tex_ext;
+	} shaders;
 };
 
 bool wlr_render_texture_pass_is_gles2(const struct wlr_render_texture_pass *texture_pass);
@@ -196,5 +197,8 @@ struct wlr_gles2_render_submit_pass {
 bool wlr_render_submit_pass_is_gles2(const struct wlr_render_submit_pass *submit_pass);
 struct wlr_gles2_render_submit_pass *wlr_gles2_render_submit_pass_from_pass(
 	struct wlr_render_submit_pass *submit_pass);
+
+GLuint gles2_link_program(struct wlr_gles2_renderer *renderer,
+	const GLchar *vert_src, const GLchar *frag_src);
 
 #endif
