@@ -23,8 +23,6 @@
 #include "render/pixel_format.h"
 #include "render/vulkan.h"
 #include "render/vulkan/shaders/common.vert.h"
-#include "render/vulkan/shaders/texture.frag.h"
-#include "render/vulkan/shaders/quad.frag.h"
 #include "render/vulkan/shaders/output.frag.h"
 #include "types/wlr_buffer.h"
 #include "util/time.h"
@@ -54,6 +52,23 @@ struct wlr_vk_renderer *vulkan_get_renderer(struct wlr_renderer *wlr_renderer) {
 	assert(wlr_renderer_is_vk(wlr_renderer));
 	struct wlr_vk_renderer *renderer = wl_container_of(wlr_renderer, renderer, wlr_renderer);
 	return renderer;
+}
+
+VkShaderModule vulkan_create_common_vert_module(struct wlr_vk_renderer *renderer) {
+	VkShaderModuleCreateInfo sinfo = {
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = sizeof(common_vert_data),
+		.pCode = common_vert_data,
+	};
+
+	VkShaderModule module = VK_NULL_HANDLE;
+	VkResult res = vkCreateShaderModule(renderer->dev->dev, &sinfo, NULL, &module);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("Failed to create vertex shader module", res);
+		return VK_NULL_HANDLE;
+	}
+
+	return module;
 }
 
 static struct wlr_vk_render_format_setup *find_or_create_render_setup(
@@ -152,9 +167,14 @@ struct wlr_vk_descriptor_pool *vulkan_alloc_texture_ds(
 
 struct wlr_vk_descriptor_pool *vulkan_alloc_blend_ds(
 	struct wlr_vk_renderer *renderer, VkDescriptorSet *ds) {
+	struct wlr_vk_render_submit_pass *submit_pass =
+		wlr_vk_render_submit_pass_from_pass(renderer->wlr_renderer.submit_pass);;
+	assert(submit_pass != NULL);
+
 	return alloc_ds(renderer, ds, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
-		&renderer->output_ds_srgb_layout, &renderer->output_descriptor_pools,
-		&renderer->last_output_pool_size);
+		&submit_pass->output.ds_srgb_layout,
+		&submit_pass->output.descriptor_pools,
+		&submit_pass->output.last_pool_size);
 }
 
 void vulkan_free_ds(struct wlr_vk_renderer *renderer,
@@ -1232,15 +1252,6 @@ static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 		vkDestroyDescriptorPool(dev->dev, pool->pool, NULL);
 		free(pool);
 	}
-	wl_list_for_each_safe(pool, tmp_pool, &renderer->output_descriptor_pools, link) {
-		vkDestroyDescriptorPool(dev->dev, pool->pool, NULL);
-		free(pool);
-	}
-
-	vkDestroyShaderModule(dev->dev, renderer->vert_module, NULL);
-	vkDestroyShaderModule(dev->dev, renderer->tex_frag_module, NULL);
-	vkDestroyShaderModule(dev->dev, renderer->quad_frag_module, NULL);
-	vkDestroyShaderModule(dev->dev, renderer->output_module, NULL);
 
 	struct wlr_vk_pipeline_layout *pipeline_layout, *pipeline_layout_tmp;
 	wl_list_for_each_safe(pipeline_layout, pipeline_layout_tmp,
@@ -1252,16 +1263,8 @@ static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 		free(pipeline_layout);
 	}
 
-	vkDestroyImageView(dev->dev, renderer->dummy3d_image_view, NULL);
-	vkDestroyImage(dev->dev, renderer->dummy3d_image, NULL);
-	vkFreeMemory(dev->dev, renderer->dummy3d_mem, NULL);
-
 	vkDestroySemaphore(dev->dev, renderer->timeline_semaphore, NULL);
-	vkDestroyPipelineLayout(dev->dev, renderer->output_pipe_layout, NULL);
-	vkDestroyDescriptorSetLayout(dev->dev, renderer->output_ds_srgb_layout, NULL);
-	vkDestroyDescriptorSetLayout(dev->dev, renderer->output_ds_lut3d_layout, NULL);
 	vkDestroyCommandPool(dev->dev, renderer->command_pool, NULL);
-	vkDestroySampler(dev->dev, renderer->output_sampler_lut3d, NULL);
 
 	if (renderer->read_pixels_cache.initialized) {
 		vkFreeMemory(dev->dev, renderer->read_pixels_cache.dst_img_memory, NULL);
@@ -1697,7 +1700,8 @@ static bool init_tex_layouts(struct wlr_vk_renderer *renderer,
 	return true;
 }
 
-static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
+static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer,
+		struct wlr_vk_render_submit_pass *submit_pass) {
 	VkResult res;
 	VkDevice dev = renderer->dev->dev;
 
@@ -1715,7 +1719,8 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 		.pBindings = &ds_binding_input,
 	};
 
-	res = vkCreateDescriptorSetLayout(dev, &ds_info, NULL, &renderer->output_ds_srgb_layout);
+	res = vkCreateDescriptorSetLayout(dev, &ds_info, NULL,
+		&submit_pass->output.ds_srgb_layout);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateDescriptorSetLayout", res);
 		return false;
@@ -1734,7 +1739,7 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 	};
 
 	res = vkCreateSampler(renderer->dev->dev, &sampler_create_info, NULL,
-		&renderer->output_sampler_lut3d);
+		&submit_pass->output.sampler_lut3d);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateSampler", res);
 		return false;
@@ -1745,7 +1750,7 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
 		.descriptorCount = 1,
 		.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-		.pImmutableSamplers = &renderer->output_sampler_lut3d,
+		.pImmutableSamplers = &submit_pass->output.sampler_lut3d,
 	};
 
 	VkDescriptorSetLayoutCreateInfo ds_lut3d_info = {
@@ -1755,7 +1760,7 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 	};
 
 	res = vkCreateDescriptorSetLayout(dev, &ds_lut3d_info, NULL,
-		&renderer->output_ds_lut3d_layout);
+		&submit_pass->output.ds_lut3d_layout);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateDescriptorSetLayout", res);
 		return false;
@@ -1776,8 +1781,8 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 	};
 
 	VkDescriptorSetLayout out_ds_layouts[] = {
-		renderer->output_ds_srgb_layout,
-		renderer->output_ds_lut3d_layout,
+		submit_pass->output.ds_srgb_layout,
+		submit_pass->output.ds_lut3d_layout,
 	};
 
 	VkPipelineLayoutCreateInfo pl_info = {
@@ -1788,7 +1793,8 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 		.pPushConstantRanges = pc_ranges,
 	};
 
-	res = vkCreatePipelineLayout(dev, &pl_info, NULL, &renderer->output_pipe_layout);
+	res = vkCreatePipelineLayout(dev, &pl_info, NULL,
+		&submit_pass->output.pipe_layout);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreatePipelineLayout", res);
 		return false;
@@ -1842,7 +1848,8 @@ static bool pipeline_key_equals(const struct wlr_vk_pipeline_key *a,
 // VkRenderPass and VkPipelineLayout.
 struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 		struct wlr_vk_render_format_setup *setup,
-		const struct wlr_vk_pipeline_key *key) {
+		const struct wlr_vk_pipeline_key *key,
+		VkShaderModule vert_module, VkShaderModule frag_module) {
 	struct wlr_vk_pipeline *pipeline;
 	wl_list_for_each(pipeline, &setup->pipelines, link) {
 		if (pipeline_key_equals(&pipeline->key, key)) {
@@ -1889,7 +1896,7 @@ struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 	stages[0] = (VkPipelineShaderStageCreateInfo) {
 		.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 		.stage = VK_SHADER_STAGE_VERTEX_BIT,
-		.module = renderer->vert_module,
+		.module = vert_module,
 		.pName = "main",
 	};
 
@@ -1898,7 +1905,7 @@ struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 		stages[1] = (VkPipelineShaderStageCreateInfo) {
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-			.module = renderer->quad_frag_module,
+			.module = frag_module,
 			.pName = "main",
 		};
 		break;
@@ -1906,7 +1913,7 @@ struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 		stages[1] = (VkPipelineShaderStageCreateInfo) {
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-			.module = renderer->tex_frag_module,
+			.module = frag_module,
 			.pName = "main",
 			.pSpecializationInfo = &specialization,
 		};
@@ -2003,6 +2010,7 @@ struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 }
 
 static bool init_blend_to_output_pipeline(struct wlr_vk_renderer *renderer,
+		struct wlr_vk_render_submit_pass *submit_pass,
 		VkRenderPass rp, VkPipelineLayout pipe_layout, VkPipeline *pipe,
 		enum wlr_vk_output_transform transform) {
 	VkResult res;
@@ -2025,13 +2033,13 @@ static bool init_blend_to_output_pipeline(struct wlr_vk_renderer *renderer,
 		{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage = VK_SHADER_STAGE_VERTEX_BIT,
-			.module = renderer->vert_module,
+			.module = submit_pass->output.vert_module,
 			.pName = "main",
 		},
 		{
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
 			.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-			.module = renderer->output_module,
+			.module = submit_pass->output.frag_module,
 			.pName = "main",
 			.pSpecializationInfo = &specialization,
 		},
@@ -2235,7 +2243,8 @@ struct wlr_vk_pipeline_layout *get_or_create_pipeline_layout(
  * the sampler, a valid descriptor set should be bound. Create that here, linked to
  * a 1x1x1 image.
  */
-static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
+static bool init_dummy_images(struct wlr_vk_renderer *renderer,
+		struct wlr_vk_render_submit_pass *submit_pass) {
 	VkResult res;
 	VkDevice dev = renderer->dev->dev;
 
@@ -2254,14 +2263,14 @@ static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
 		.usage = VK_IMAGE_USAGE_SAMPLED_BIT,
 	};
-	res = vkCreateImage(dev, &img_info, NULL, &renderer->dummy3d_image);
+	res = vkCreateImage(dev, &img_info, NULL, &submit_pass->output.dummy3d_image);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImage failed", res);
 		return false;
 	}
 
 	VkMemoryRequirements mem_reqs = {0};
-	vkGetImageMemoryRequirements(dev, renderer->dummy3d_image, &mem_reqs);
+	vkGetImageMemoryRequirements(dev, submit_pass->output.dummy3d_image, &mem_reqs);
 	int mem_type_index = vulkan_find_mem_type(renderer->dev,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mem_reqs.memoryTypeBits);
 	if (mem_type_index == -1) {
@@ -2273,12 +2282,13 @@ static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
 		.allocationSize = mem_reqs.size,
 		.memoryTypeIndex = mem_type_index,
 	};
-	res = vkAllocateMemory(dev, &mem_info, NULL, &renderer->dummy3d_mem);
+	res = vkAllocateMemory(dev, &mem_info, NULL, &submit_pass->output.dummy3d_mem);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkAllocateMemory failed", res);
 		return false;
 	}
-	res = vkBindImageMemory(dev, renderer->dummy3d_image, renderer->dummy3d_mem, 0);
+	res = vkBindImageMemory(dev, submit_pass->output.dummy3d_image,
+		submit_pass->output.dummy3d_mem, 0);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkBindMemory failed", res);
 		return false;
@@ -2299,29 +2309,31 @@ static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
 			.baseArrayLayer = 0,
 			.layerCount = 1,
 		},
-		.image = renderer->dummy3d_image,
+		.image = submit_pass->output.dummy3d_image,
 	};
-	res = vkCreateImageView(dev, &view_info, NULL, &renderer->dummy3d_image_view);
+	res = vkCreateImageView(dev, &view_info, NULL,
+		&submit_pass->output.dummy3d_image_view);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImageView failed", res);
 		return false;
 	}
 
-	renderer->output_ds_lut3d_dummy_pool = vulkan_alloc_texture_ds(renderer,
-		renderer->output_ds_lut3d_layout, &renderer->output_ds_lut3d_dummy);
-	if (!renderer->output_ds_lut3d_dummy_pool) {
+	submit_pass->output.ds_lut3d_dummy_pool = vulkan_alloc_texture_ds(renderer,
+		submit_pass->output.ds_lut3d_layout,
+		&submit_pass->output.ds_lut3d_dummy);
+	if (!submit_pass->output.ds_lut3d_dummy_pool) {
 		wlr_log(WLR_ERROR, "Failed to allocate descriptor");
 		return false;
 	}
 	VkDescriptorImageInfo ds_img_info = {
-		.imageView = renderer->dummy3d_image_view,
+		.imageView = submit_pass->output.dummy3d_image_view,
 		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 	VkWriteDescriptorSet ds_write = {
 		.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
 		.descriptorCount = 1,
 		.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		.dstSet = renderer->output_ds_lut3d_dummy,
+		.dstSet = submit_pass->output.ds_lut3d_dummy,
 		.pImageInfo = &ds_img_info,
 	};
 	vkUpdateDescriptorSets(dev, 1, &ds_write, 0, NULL);
@@ -2329,53 +2341,30 @@ static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
 	return true;
 }
 
-// Creates static render data, such as sampler, layouts and shader modules
-// for the given renderer.
-// Cleanup is done by destroying the renderer.
-static bool init_static_render_data(struct wlr_vk_renderer *renderer) {
+// Creates static blend->output render data for the given submit pass.
+// Cleanup is done by destroying the submit pass.
+bool vulkan_init_submit_pass_output(struct wlr_vk_renderer *renderer,
+		struct wlr_vk_render_submit_pass *submit_pass) {
+
 	VkResult res;
 	VkDevice dev = renderer->dev->dev;
 
-	if (!init_blend_to_output_layouts(renderer)) {
+	if (!init_blend_to_output_layouts(renderer, submit_pass)) {
 		return false;
 	}
 
-	if (!init_dummy_images(renderer)) {
+	if (!init_dummy_images(renderer, submit_pass)) {
 		return false;
 	}
 
-	// load vert module and tex frag module since they are needed to
-	// initialize the tex pipeline
 	VkShaderModuleCreateInfo sinfo = {
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
 		.codeSize = sizeof(common_vert_data),
 		.pCode = common_vert_data,
 	};
-	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->vert_module);
+	res = vkCreateShaderModule(dev, &sinfo, NULL, &submit_pass->output.vert_module);
 	if (res != VK_SUCCESS) {
-		wlr_vk_error("Failed to create vertex shader module", res);
-		return false;
-	}
-
-	sinfo = (VkShaderModuleCreateInfo){
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = sizeof(texture_frag_data),
-		.pCode = texture_frag_data,
-	};
-	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->tex_frag_module);
-	if (res != VK_SUCCESS) {
-		wlr_vk_error("Failed to create tex fragment shader module", res);
-		return false;
-	}
-
-	sinfo = (VkShaderModuleCreateInfo){
-		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-		.codeSize = sizeof(quad_frag_data),
-		.pCode = quad_frag_data,
-	};
-	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->quad_frag_module);
-	if (res != VK_SUCCESS) {
-		wlr_vk_error("Failed to create quad fragment shader module", res);
+		wlr_vk_error("Failed to create blend->output vertex shader module", res);
 		return false;
 	}
 
@@ -2384,7 +2373,7 @@ static bool init_static_render_data(struct wlr_vk_renderer *renderer) {
 		.codeSize = sizeof(output_frag_data),
 		.pCode = output_frag_data,
 	};
-	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->output_module);
+	res = vkCreateShaderModule(dev, &sinfo, NULL, &submit_pass->output.frag_module);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("Failed to create blend->output fragment shader module", res);
 		return false;
@@ -2421,6 +2410,12 @@ static struct wlr_vk_render_format_setup *find_or_create_render_setup(
 	VkResult res;
 
 	if (use_blending_buffer) {
+		struct wlr_vk_render_submit_pass *submit_pass =
+			wlr_vk_render_submit_pass_from_pass(renderer->wlr_renderer.submit_pass);;
+		if (submit_pass == NULL) {
+			goto error;
+		}
+
 		VkAttachmentDescription attachments[] = {
 			{
 				.format = VK_FORMAT_R16G16B16A16_SFLOAT,
@@ -2532,32 +2527,38 @@ static struct wlr_vk_render_format_setup *find_or_create_render_setup(
 
 		// this is only well defined if render pass has a 2nd subpass
 		if (!init_blend_to_output_pipeline(
-				renderer, setup->render_pass, renderer->output_pipe_layout,
+				renderer, submit_pass, setup->render_pass,
+				submit_pass->output.pipe_layout,
 				&setup->output_pipe_identity, WLR_VK_OUTPUT_TRANSFORM_IDENTITY)) {
 			goto error;
 		}
 		if (!init_blend_to_output_pipeline(
-				renderer, setup->render_pass, renderer->output_pipe_layout,
+				renderer, submit_pass, setup->render_pass,
+				submit_pass->output.pipe_layout,
 				&setup->output_pipe_lut3d, WLR_VK_OUTPUT_TRANSFORM_LUT3D)) {
 			goto error;
 		}
 		if (!init_blend_to_output_pipeline(
-				renderer, setup->render_pass, renderer->output_pipe_layout,
+				renderer, submit_pass, setup->render_pass,
+				submit_pass->output.pipe_layout,
 				&setup->output_pipe_srgb, WLR_VK_OUTPUT_TRANSFORM_INVERSE_SRGB)) {
 			goto error;
 		}
 		if (!init_blend_to_output_pipeline(
-				renderer, setup->render_pass, renderer->output_pipe_layout,
+				renderer, submit_pass, setup->render_pass,
+				submit_pass->output.pipe_layout,
 				&setup->output_pipe_pq, WLR_VK_OUTPUT_TRANSFORM_INVERSE_ST2084_PQ)) {
 			goto error;
 		}
 		if (!init_blend_to_output_pipeline(
-				renderer, setup->render_pass, renderer->output_pipe_layout,
+				renderer, submit_pass, setup->render_pass,
+				submit_pass->output.pipe_layout,
 				&setup->output_pipe_gamma22, WLR_VK_OUTPUT_TRANSFORM_INVERSE_GAMMA22)) {
 			goto error;
 		}
 		if (!init_blend_to_output_pipeline(
-			renderer, setup->render_pass, renderer->output_pipe_layout,
+			renderer, submit_pass, setup->render_pass,
+			submit_pass->output.pipe_layout,
 			&setup->output_pipe_bt1886, WLR_VK_OUTPUT_TRANSFORM_INVERSE_BT1886)) {
 			goto error;
 		}
@@ -2634,29 +2635,6 @@ static struct wlr_vk_render_format_setup *find_or_create_render_setup(
 		}
 	}
 
-	if (!setup_get_or_create_pipeline(setup, &(struct wlr_vk_pipeline_key){
-		.source = WLR_VK_SHADER_SOURCE_SINGLE_COLOR,
-		.layout = {0},
-	})) {
-		goto error;
-	}
-
-	if (!setup_get_or_create_pipeline(setup, &(struct wlr_vk_pipeline_key){
-		.source = WLR_VK_SHADER_SOURCE_TEXTURE,
-		.texture_transform = WLR_VK_TEXTURE_TRANSFORM_IDENTITY,
-		.layout = {0},
-	})) {
-		goto error;
-	}
-
-	if (!setup_get_or_create_pipeline(setup, &(struct wlr_vk_pipeline_key){
-		.source = WLR_VK_SHADER_SOURCE_TEXTURE,
-		.texture_transform = WLR_VK_TEXTURE_TRANSFORM_SRGB,
-		.layout = {0},
-	})) {
-		goto error;
-	}
-
 	wl_list_insert(&renderer->render_format_setups, &setup->link);
 	return setup;
 
@@ -2681,7 +2659,6 @@ struct wlr_renderer *vulkan_renderer_create_for_device(struct wlr_vk_device *dev
 	wl_list_init(&renderer->foreign_textures);
 	wl_list_init(&renderer->textures);
 	wl_list_init(&renderer->descriptor_pools);
-	wl_list_init(&renderer->output_descriptor_pools);
 	wl_list_init(&renderer->render_format_setups);
 	wl_list_init(&renderer->render_buffers);
 	wl_list_init(&renderer->color_transforms);
@@ -2695,10 +2672,6 @@ struct wlr_renderer *vulkan_renderer_create_for_device(struct wlr_vk_device *dev
 	uint64_t cap_syncobj_timeline;
 	if (dev->drm_fd >= 0 && drmGetCap(dev->drm_fd, DRM_CAP_SYNCOBJ_TIMELINE, &cap_syncobj_timeline) == 0) {
 		renderer->wlr_renderer.features.timeline = dev->sync_file_import_export && cap_syncobj_timeline != 0;
-	}
-
-	if (!init_static_render_data(renderer)) {
-		goto error;
 	}
 
 	VkCommandPoolCreateInfo cpool_info = {
