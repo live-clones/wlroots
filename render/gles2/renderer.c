@@ -17,9 +17,9 @@
 #include <xf86drm.h>
 #include "render/egl.h"
 #include "render/gles2.h"
-#include "render/pixel_format.h"
 #include "util/time.h"
 
+#include "blur_frag_src.h"
 #include "common_vert_src.h"
 #include "quad_frag_src.h"
 #include "tex_rgba_frag_src.h"
@@ -219,6 +219,11 @@ static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
 	glDeleteProgram(renderer->shaders.tex_rgba.program);
 	glDeleteProgram(renderer->shaders.tex_rgbx.program);
 	glDeleteProgram(renderer->shaders.tex_ext.program);
+	glDeleteProgram(renderer->shaders.blur.program);
+	if (renderer->blur_scratch.tex[0]) {
+		glDeleteFramebuffers(2, renderer->blur_scratch.fbo);
+		glDeleteTextures(2, renderer->blur_scratch.tex);
+	}
 	pop_gles2_debug(renderer);
 
 	if (renderer->exts.KHR_debug) {
@@ -677,6 +682,17 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 		renderer->shaders.tex_ext.pos_attrib = glGetAttribLocation(prog, "pos");
 	}
 
+	renderer->shaders.blur.program = prog =
+		link_program(renderer, common_vert_src, blur_frag_src);
+	if (!renderer->shaders.blur.program) {
+		goto error;
+	}
+	renderer->shaders.blur.proj = glGetUniformLocation(prog, "proj");
+	renderer->shaders.blur.tex_proj = glGetUniformLocation(prog, "tex_proj");
+	renderer->shaders.blur.tex = glGetUniformLocation(prog, "tex");
+	renderer->shaders.blur.pos_attrib = glGetAttribLocation(prog, "pos");
+	renderer->shaders.blur.texel_step = glGetUniformLocation(prog, "texel_step");
+
 	pop_gles2_debug(renderer);
 
 	wlr_egl_unset_current(renderer->egl);
@@ -697,6 +713,7 @@ error:
 	glDeleteProgram(renderer->shaders.tex_rgba.program);
 	glDeleteProgram(renderer->shaders.tex_rgbx.program);
 	glDeleteProgram(renderer->shaders.tex_ext.program);
+	glDeleteProgram(renderer->shaders.blur.program);
 
 	pop_gles2_debug(renderer);
 

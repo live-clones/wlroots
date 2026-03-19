@@ -26,7 +26,7 @@
 #include "render/vulkan/shaders/texture.frag.h"
 #include "render/vulkan/shaders/quad.frag.h"
 #include "render/vulkan/shaders/output.frag.h"
-#include "types/wlr_buffer.h"
+#include "render/vulkan/shaders/blur.frag.h"
 #include "util/time.h"
 
 // TODO:
@@ -708,7 +708,8 @@ bool vulkan_setup_two_pass_framebuffer(struct wlr_vk_render_buffer *buffer,
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 		.extent = (VkExtent3D) { dmabuf->width, dmabuf->height, 1 },
-		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
+		.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
+			VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 	};
 
 	res = vkCreateImage(dev, &img_info, NULL, &buffer->two_pass.blend_image);
@@ -1109,6 +1110,8 @@ static const struct wlr_drm_format_set *vulkan_get_render_formats(
 	return &renderer->dev->dmabuf_render_formats;
 }
 
+static void vulkan_blur_destroy_scratch(struct wlr_vk_renderer *renderer);
+
 static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 	struct wlr_vk_renderer *renderer = vulkan_get_renderer(wlr_renderer);
 	struct wlr_vk_device *dev = renderer->dev;
@@ -1166,6 +1169,14 @@ static void vulkan_destroy(struct wlr_renderer *wlr_renderer) {
 			&renderer->render_format_setups, link) {
 		destroy_render_format_setup(renderer, setup);
 	}
+
+	vulkan_blur_destroy_scratch(renderer);
+	vkDestroyPipeline(dev->dev, renderer->blur.pipeline, NULL);
+	vkDestroyRenderPass(dev->dev, renderer->blur.render_pass, NULL);
+	vkDestroyShaderModule(dev->dev, renderer->blur.frag_module, NULL);
+	vkDestroyPipelineLayout(dev->dev, renderer->blur.pipe_layout, NULL);
+	vkDestroyDescriptorSetLayout(dev->dev, renderer->blur.ds_layout, NULL);
+	vkDestroySampler(dev->dev, renderer->blur.sampler, NULL);
 
 	struct wlr_vk_descriptor_pool *pool, *tmp_pool;
 	wl_list_for_each_safe(pool, tmp_pool, &renderer->descriptor_pools, link) {
@@ -2183,8 +2194,152 @@ static bool init_dummy_images(struct wlr_vk_renderer *renderer) {
 	return true;
 }
 
-// Creates static render data, such as sampler, layouts and shader modules
-// for the given renderer.
+static void vulkan_blur_destroy_scratch(struct wlr_vk_renderer *renderer) {
+	VkDevice dev = renderer->dev->dev;
+
+	for (int i = 0; i < 2; i++) {
+		if (renderer->blur.ds[i] && renderer->blur.ds_pool[i]) {
+			vulkan_free_ds(renderer, renderer->blur.ds_pool[i], renderer->blur.ds[i]);
+			renderer->blur.ds[i] = VK_NULL_HANDLE;
+			renderer->blur.ds_pool[i] = NULL;
+		}
+		vkDestroyFramebuffer(dev, renderer->blur.fb[i], NULL);
+		vkDestroyImageView(dev, renderer->blur.view[i], NULL);
+		vkDestroyImage(dev, renderer->blur.image[i], NULL);
+		vkFreeMemory(dev, renderer->blur.memory[i], NULL);
+
+		renderer->blur.fb[i] = VK_NULL_HANDLE;
+		renderer->blur.view[i] = VK_NULL_HANDLE;
+		renderer->blur.image[i] = VK_NULL_HANDLE;
+		renderer->blur.memory[i] = VK_NULL_HANDLE;
+		renderer->blur.transitioned[i] = false;
+	}
+
+	renderer->blur.width = 0;
+	renderer->blur.height = 0;
+}
+
+bool vulkan_blur_ensure_scratch(struct wlr_vk_renderer *renderer,
+		uint32_t bw, uint32_t bh) {
+	if (renderer->blur.width == bw && renderer->blur.height == bh) {
+		return true;
+	}
+
+	VkDevice dev = renderer->dev->dev;
+	VkResult res;
+
+	if (renderer->blur.image[0] != VK_NULL_HANDLE) {
+		vkDeviceWaitIdle(dev);
+		vulkan_blur_destroy_scratch(renderer);
+	}
+
+	for (int i = 0; i < 2; i++) {
+		VkImageCreateInfo img_info = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+			.imageType = VK_IMAGE_TYPE_2D,
+			.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+			.extent = { bw, bh, 1 },
+			.mipLevels = 1,
+			.arrayLayers = 1,
+			.samples = VK_SAMPLE_COUNT_1_BIT,
+			.tiling = VK_IMAGE_TILING_OPTIMAL,
+			.usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+				VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+		};
+		res = vkCreateImage(dev, &img_info, NULL, &renderer->blur.image[i]);
+		if (res != VK_SUCCESS) {
+			wlr_vk_error("blur scratch vkCreateImage", res);
+			return false;
+		}
+
+		VkMemoryRequirements mem_reqs;
+		vkGetImageMemoryRequirements(dev, renderer->blur.image[i], &mem_reqs);
+
+		int mem_type = vulkan_find_mem_type(renderer->dev,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, mem_reqs.memoryTypeBits);
+
+		if (mem_type < 0) {
+			wlr_log(WLR_ERROR, "blur: no suitable memory type for scratch image");
+			return false;
+		}
+
+		VkMemoryAllocateInfo mem_info = {
+			.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+			.allocationSize = mem_reqs.size,
+			.memoryTypeIndex = mem_type,
+		};
+		res = vkAllocateMemory(dev, &mem_info, NULL, &renderer->blur.memory[i]);
+		if (res != VK_SUCCESS) {
+			wlr_vk_error("blur scratch vkAllocateMemory", res);
+			return false;
+		}
+		res = vkBindImageMemory(dev, renderer->blur.image[i], renderer->blur.memory[i], 0);
+		if (res != VK_SUCCESS) {
+			wlr_vk_error("blur scratch vkBindImageMemory", res);
+			return false;
+		}
+
+		VkImageViewCreateInfo view_info = {
+			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+			.image = renderer->blur.image[i],
+			.viewType = VK_IMAGE_VIEW_TYPE_2D,
+			.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = 1,
+				.layerCount = 1,
+			},
+		};
+		res = vkCreateImageView(dev, &view_info, NULL, &renderer->blur.view[i]);
+		if (res != VK_SUCCESS) {
+			wlr_vk_error("blur scratch vkCreateImageView", res);
+			return false;
+		}
+
+		VkFramebufferCreateInfo fb_info = {
+			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+			.renderPass = renderer->blur.render_pass,
+			.attachmentCount = 1,
+			.pAttachments = &renderer->blur.view[i],
+			.width = bw,
+			.height = bh,
+			.layers = 1,
+		};
+		res = vkCreateFramebuffer(dev, &fb_info, NULL, &renderer->blur.fb[i]);
+		if (res != VK_SUCCESS) {
+			wlr_vk_error("blur scratch vkCreateFramebuffer", res);
+			return false;
+		}
+
+		renderer->blur.ds_pool[i] = vulkan_alloc_texture_ds(renderer,
+			renderer->blur.ds_layout, &renderer->blur.ds[i]);
+		if (!renderer->blur.ds_pool[i]) {
+			wlr_log(WLR_ERROR, "blur: failed to allocate scratch descriptor set");
+			return false;
+		}
+		VkWriteDescriptorSet write = {
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = renderer->blur.ds[i],
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.pImageInfo = &(VkDescriptorImageInfo) {
+				.imageView = renderer->blur.view[i],
+				.imageLayout = VK_IMAGE_LAYOUT_GENERAL,
+			},
+		};
+		vkUpdateDescriptorSets(dev, 1, &write, 0, NULL);
+
+		renderer->blur.transitioned[i] = false;
+	}
+
+	renderer->blur.width = bw;
+	renderer->blur.height = bh;
+
+	return true;
+}
+
 // Cleanup is done by destroying the renderer.
 static bool init_static_render_data(struct wlr_vk_renderer *renderer) {
 	VkResult res;
@@ -2241,6 +2396,193 @@ static bool init_static_render_data(struct wlr_vk_renderer *renderer) {
 	res = vkCreateShaderModule(dev, &sinfo, NULL, &renderer->output_module);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("Failed to create blend->output fragment shader module", res);
+		return false;
+	}
+
+	VkSamplerCreateInfo sainfo = {
+		.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+		.magFilter = VK_FILTER_LINEAR,
+		.minFilter = VK_FILTER_LINEAR,
+		.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST,
+		.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+		.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+	};
+	res = vkCreateSampler(dev, &sainfo, NULL, &renderer->blur.sampler);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("blur vkCreateSampler", res);
+		return false;
+	}
+
+	VkDescriptorSetLayoutCreateInfo ds_layout_info = {
+		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+		.bindingCount = 1,
+		.pBindings = &(VkDescriptorSetLayoutBinding) {
+			.binding = 0,
+			.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			.descriptorCount = 1,
+			.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+			.pImmutableSamplers = &renderer->blur.sampler,
+		},
+	};
+	res = vkCreateDescriptorSetLayout(dev, &ds_layout_info, NULL,
+		&renderer->blur.ds_layout);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("blur vkCreateDescriptorSetLayout", res);
+		return false;
+	}
+
+	VkPipelineLayoutCreateInfo pl_info = {
+		.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		.setLayoutCount = 1,
+		.pSetLayouts = &renderer->blur.ds_layout,
+		.pushConstantRangeCount = 2,
+		.pPushConstantRanges = (VkPushConstantRange[]) {
+			{
+				.offset = 0,
+				.size = sizeof(struct wlr_vk_vert_pcr_data),
+				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+			},
+			{
+				.offset = sizeof(struct wlr_vk_vert_pcr_data),
+				.size = sizeof(float[2]),
+				.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+			}
+		},
+	};
+	res = vkCreatePipelineLayout(dev, &pl_info, NULL, &renderer->blur.pipe_layout);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("blur vkCreatePipelineLayout", res);
+		return false;
+	}
+
+	VkRenderPassCreateInfo rp_info = {
+		.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+		.attachmentCount = 1,
+		.pAttachments = &(VkAttachmentDescription) {
+			.format = VK_FORMAT_R16G16B16A16_SFLOAT,
+			.samples = VK_SAMPLE_COUNT_1_BIT,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+			.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.initialLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.finalLayout = VK_IMAGE_LAYOUT_GENERAL,
+		},
+		.subpassCount = 1,
+		.pSubpasses = &(VkSubpassDescription) {
+			.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+			.colorAttachmentCount = 1,
+			.pColorAttachments = &(VkAttachmentReference) {
+				.attachment = 0,
+				.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			},
+		},
+		.dependencyCount = 2,
+		.pDependencies = (VkSubpassDependency[]) {
+			{
+				.srcSubpass = VK_SUBPASS_EXTERNAL,
+				.dstSubpass = 0,
+				.srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT |
+					VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+				.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+				.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT |
+					VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				.dstAccessMask = VK_ACCESS_SHADER_READ_BIT,
+			},
+			{
+				.srcSubpass = 0,
+				.dstSubpass = VK_SUBPASS_EXTERNAL,
+				.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+				.dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT |
+					VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+				.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT,
+			}
+		},
+	};
+	res = vkCreateRenderPass(dev, &rp_info, NULL, &renderer->blur.render_pass);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("blur vkCreateRenderPass", res);
+		return false;
+	}
+
+	VkShaderModuleCreateInfo shader_info = {
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = sizeof(blur_frag_data),
+		.pCode = blur_frag_data,
+	};
+	res = vkCreateShaderModule(dev, &shader_info, NULL, &renderer->blur.frag_module);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("blur vkCreateShaderModule", res);
+		return false;
+	}
+
+	VkGraphicsPipelineCreateInfo pinfo = {
+		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+		.layout = renderer->blur.pipe_layout,
+		.renderPass = renderer->blur.render_pass,
+		.subpass = 0,
+		.stageCount = 2,
+		.pStages = (VkPipelineShaderStageCreateInfo[]) {
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_VERTEX_BIT,
+				.module = renderer->vert_module,
+				.pName = "main",
+			},
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+				.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+				.module = renderer->blur.frag_module,
+				.pName = "main",
+			},
+		},
+		.pInputAssemblyState = &(VkPipelineInputAssemblyStateCreateInfo) {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+			.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+		},
+		.pRasterizationState = &(VkPipelineRasterizationStateCreateInfo) {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+			.polygonMode = VK_POLYGON_MODE_FILL,
+			.cullMode = VK_CULL_MODE_NONE,
+			.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
+			.lineWidth = 1.f,
+		},
+		.pColorBlendState = &(VkPipelineColorBlendStateCreateInfo) {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+			.attachmentCount = 1,
+			.pAttachments = &(VkPipelineColorBlendAttachmentState) {
+				.blendEnable = false,
+				.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+					VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+			},
+		},
+		.pMultisampleState = &(VkPipelineMultisampleStateCreateInfo) {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+			.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+		},
+		.pViewportState = &(VkPipelineViewportStateCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+			.viewportCount = 1,
+			.scissorCount = 1,
+		},
+		.pDynamicState = &(VkPipelineDynamicStateCreateInfo) {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+			.pDynamicStates = (VkDynamicState[]) {
+				VK_DYNAMIC_STATE_VIEWPORT,
+				VK_DYNAMIC_STATE_SCISSOR
+			},
+			.dynamicStateCount = 2,
+		},
+		.pVertexInputState = &(VkPipelineVertexInputStateCreateInfo) {
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+		},
+	};
+	res = vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &pinfo, NULL,
+		&renderer->blur.pipeline);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("blur vkCreateGraphicsPipelines", res);
 		return false;
 	}
 

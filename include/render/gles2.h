@@ -83,7 +83,21 @@ struct wlr_gles2_renderer {
 		struct wlr_gles2_tex_shader tex_rgba;
 		struct wlr_gles2_tex_shader tex_rgbx;
 		struct wlr_gles2_tex_shader tex_ext;
+		struct {
+			GLuint program;
+			GLint proj;
+			GLint tex_proj;
+			GLint tex;
+			GLint pos_attrib;
+			GLint texel_step;
+		} blur;
 	} shaders;
+
+	struct {
+		GLuint tex[2];
+		GLuint fbo[2];
+		int width, height;
+	} blur_scratch;
 
 	struct wl_list buffers; // wlr_gles2_buffer.link
 	struct wl_list textures; // wlr_gles2_texture.link

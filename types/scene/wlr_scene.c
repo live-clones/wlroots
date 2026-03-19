@@ -7,6 +7,7 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_ext_background_effect_v1.h>
 #include <wlr/types/wlr_damage_ring.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
@@ -1476,6 +1477,40 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 				.clip = &render_region,
 			});
 			break;
+		}
+
+		struct wlr_scene_surface *scene_surface =
+			wlr_scene_surface_try_from_buffer(scene_buffer);
+
+		if (scene_surface != NULL) {
+			const struct wlr_ext_background_effect_surface_v1_state *blur_state =
+				wlr_ext_background_effect_v1_get_surface_state(scene_surface->surface);
+
+			if (blur_state != NULL &&
+					!pixman_region32_empty(&blur_state->blur_region)) {
+				pixman_region32_t blur_region;
+				pixman_region32_init(&blur_region);
+				pixman_region32_copy(&blur_region, &blur_state->blur_region);
+				pixman_region32_translate(&blur_region, x - scene_surface->clip.x,
+					y - scene_surface->clip.y);
+				logical_to_buffer_coords(&blur_region, data, false);
+				pixman_region32_intersect(&blur_region, &blur_region, &render_region);
+
+				if (!pixman_region32_empty(&blur_region)) {
+					const pixman_box32_t *ext = pixman_region32_extents(&blur_region);
+					wlr_render_pass_add_blur(data->render_pass,
+						&(struct wlr_render_blur_options){
+							.box = {
+								.x = ext->x1,
+								.y = ext->y1,
+								.width = ext->x2 - ext->x1,
+								.height = ext->y2 - ext->y1,
+							},
+							.clip = &blur_region,
+						});
+				}
+				pixman_region32_fini(&blur_region);
+			}
 		}
 
 		struct wlr_texture *texture = scene_buffer_get_texture(scene_buffer,

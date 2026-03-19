@@ -34,6 +34,15 @@ void wlr_render_pass_add_rect(struct wlr_render_pass *render_pass,
 	render_pass->impl->add_rect(render_pass, options);
 }
 
+void wlr_render_pass_add_blur(struct wlr_render_pass *render_pass,
+		const struct wlr_render_blur_options *options) {
+	if (render_pass->impl->add_blur == NULL) {
+		return;
+	}
+
+	render_pass->impl->add_blur(render_pass, options);
+}
+
 void wlr_render_texture_options_get_src_box(const struct wlr_render_texture_options *options,
 		struct wlr_fbox *box) {
 	*box = options->src_box;

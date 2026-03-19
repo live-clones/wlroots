@@ -62,6 +62,9 @@ struct wlr_render_pass_impl {
 	/* Implementers are also guaranteed that options->box is nonempty */
 	void (*add_rect)(struct wlr_render_pass *pass,
 		const struct wlr_render_rect_options *options);
+	/* Apply a background blur in-place over the given region */
+	void (*add_blur)(struct wlr_render_pass *pass,
+		const struct wlr_render_blur_options *options);
 };
 
 struct wlr_render_timer {
