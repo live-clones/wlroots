@@ -154,7 +154,7 @@ struct wlr_render_rect_pass *get_or_create_render_rect_pass(
 
 #if WLR_HAS_VULKAN_RENDERER
 		else if (wlr_renderer_is_vk(renderer)) {
-			pass = wlr_vk_render_rect_pass_create();
+			pass = wlr_vk_render_rect_pass_create(renderer);
 		}
 #endif
 
@@ -206,7 +206,7 @@ struct wlr_render_texture_pass *get_or_create_render_texture_pass(
 
 #if WLR_HAS_VULKAN_RENDERER
 		else if (wlr_renderer_is_vk(renderer)) {
-			pass = wlr_vk_render_texture_pass_create();
+			pass = wlr_vk_render_texture_pass_create(renderer);
 		}
 #endif
 
@@ -259,7 +259,7 @@ struct wlr_render_submit_pass *get_or_create_render_submit_pass(
 
 #if WLR_HAS_VULKAN_RENDERER
 		else if (wlr_renderer_is_vk(renderer)) {
-			pass = wlr_vk_render_submit_pass_create();
+			pass = wlr_vk_render_submit_pass_create(renderer);
 		}
 #endif
 

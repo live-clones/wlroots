@@ -112,7 +112,8 @@ struct wlr_render_rect_pass *get_or_create_render_rect_pass(
 struct wlr_render_rect_pass *wlr_pixman_render_rect_pass_create(void);
 struct wlr_render_rect_pass *wlr_gles2_render_rect_pass_create(
 	struct wlr_renderer *wlr_renderer);
-struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(void);
+struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(
+	struct wlr_renderer *wlr_renderer);
 
 struct wlr_render_texture_pass;
 
@@ -138,7 +139,8 @@ struct wlr_render_texture_pass *get_or_create_render_texture_pass(
 struct wlr_render_texture_pass *wlr_pixman_render_texture_pass_create(void);
 struct wlr_render_texture_pass *wlr_gles2_render_texture_pass_create(
 	struct wlr_renderer *wlr_renderer);
-struct wlr_render_texture_pass *wlr_vk_render_texture_pass_create(void);
+struct wlr_render_texture_pass *wlr_vk_render_texture_pass_create(
+	struct wlr_renderer *wlr_renderer);
 
 struct wlr_render_submit_pass;
 
@@ -161,6 +163,7 @@ struct wlr_render_submit_pass *get_or_create_render_submit_pass(
 	struct wlr_renderer *renderer);
 struct wlr_render_submit_pass *wlr_pixman_render_submit_pass_create(void);
 struct wlr_render_submit_pass *wlr_gles2_render_submit_pass_create(void);
-struct wlr_render_submit_pass *wlr_vk_render_submit_pass_create(void);
+struct wlr_render_submit_pass *wlr_vk_render_submit_pass_create(
+	struct wlr_renderer *wlr_renderer);
 
 #endif
