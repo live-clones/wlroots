@@ -7,6 +7,7 @@
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
@@ -89,7 +90,8 @@ static void output_cursor_get_box(struct wlr_output_cursor *cursor,
 }
 
 void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
-		struct wlr_render_pass *render_pass, const pixman_region32_t *damage) {
+		struct wlr_render_pass *render_pass, const pixman_region32_t *damage,
+		struct wlr_drm_syncobj_timeline *release_timeline, uint64_t release_point) {
 	int width, height;
 	wlr_output_transformed_resolution(output, &width, &height);
 
@@ -122,13 +124,24 @@ void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
 			continue;
 		}
 
-		wlr_render_pass_add_texture(render_pass, &(struct wlr_render_texture_options) {
+		struct wlr_render_texture_options options = {
 			.texture = texture,
 			.src_box = cursor->src_box,
 			.dst_box = box,
 			.clip = &cursor_damage,
 			.transform = output->transform,
-		});
+		};
+		if (cursor->surface != NULL && release_timeline != NULL) {
+			struct wlr_linux_drm_syncobj_surface_v1_state *syncobj_surface_state =
+				wlr_linux_drm_syncobj_v1_get_surface_state(cursor->surface);
+			if (syncobj_surface_state != NULL) {
+				options.wait_timeline = syncobj_surface_state->acquire_timeline;
+				options.wait_point = syncobj_surface_state->acquire_point;
+				wlr_linux_drm_syncobj_v1_state_add_release_point(syncobj_surface_state,
+					release_timeline, release_point, output->event_loop);
+			}
+		}
+		wlr_render_pass_add_texture(render_pass, &options);
 
 		pixman_region32_fini(&cursor_damage);
 	}
@@ -271,14 +284,25 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 		.box = { .width = buffer->width, .height = buffer->height },
 		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
 	});
-	wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options){
+
+	struct wlr_render_texture_options texture_options = {
 		.texture = texture,
 		.src_box = cursor->src_box,
 		.dst_box = dst_box,
 		.transform = transform,
-		.wait_timeline = cursor->wait_timeline,
-		.wait_point = cursor->wait_point,
-	});
+	};
+	if (cursor->surface != NULL) {
+		struct wlr_linux_drm_syncobj_surface_v1_state *syncobj_surface_state =
+			wlr_linux_drm_syncobj_v1_get_surface_state(cursor->surface);
+		if (syncobj_surface_state != NULL) {
+			texture_options.wait_timeline = syncobj_surface_state->acquire_timeline;
+			texture_options.wait_point = syncobj_surface_state->acquire_point;
+			wlr_linux_drm_syncobj_v1_state_add_release_from_implicit_sync(
+				syncobj_surface_state, buffer,
+				WLR_LINUX_DRM_SYNCOBJ_V1_IMPLICIT_SYNC_READ, output->event_loop);
+		}
+	}
+	wlr_render_pass_add_texture(pass, &texture_options);
 
 	if (!wlr_render_pass_submit(pass)) {
 		wlr_buffer_unlock(buffer);
@@ -354,21 +378,21 @@ bool wlr_output_cursor_set_buffer(struct wlr_output_cursor *cursor,
 
 	return output_cursor_set_texture(cursor, texture, true, &src_box,
 		dst_width, dst_height, WL_OUTPUT_TRANSFORM_NORMAL, hotspot_x, hotspot_y,
-		NULL, 0);
+		NULL);
 }
 
 static void output_cursor_handle_renderer_destroy(struct wl_listener *listener,
 		void *data) {
 	struct wlr_output_cursor *cursor = wl_container_of(listener, cursor, renderer_destroy);
 	output_cursor_set_texture(cursor, NULL, false, NULL, 0, 0,
-		WL_OUTPUT_TRANSFORM_NORMAL, 0, 0, NULL, 0);
+		WL_OUTPUT_TRANSFORM_NORMAL, 0, 0, NULL);
 }
 
 bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 		struct wlr_texture *texture, bool own_texture, const struct wlr_fbox *src_box,
 		int dst_width, int dst_height, enum wl_output_transform transform,
 		int32_t hotspot_x, int32_t hotspot_y,
-		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
+		struct wlr_surface *surface) {
 	if (texture == NULL && !cursor->enabled) {
 		// Cursor is still disabled, do nothing
 		return true;
@@ -402,14 +426,7 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 	cursor->texture = texture;
 	cursor->own_texture = own_texture;
 
-	wlr_drm_syncobj_timeline_unref(cursor->wait_timeline);
-	if (wait_timeline != NULL) {
-		cursor->wait_timeline = wlr_drm_syncobj_timeline_ref(wait_timeline);
-		cursor->wait_point = wait_point;
-	} else {
-		cursor->wait_timeline = NULL;
-		cursor->wait_point = 0;
-	}
+	cursor->surface = surface;
 
 	wl_list_remove(&cursor->renderer_destroy.link);
 	if (texture != NULL) {
@@ -491,7 +508,6 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	if (cursor->own_texture) {
 		wlr_texture_destroy(cursor->texture);
 	}
-	wlr_drm_syncobj_timeline_unref(cursor->wait_timeline);
 	wl_list_remove(&cursor->link);
 	wlr_color_transform_unref(cursor->color_transform);
 	free(cursor);

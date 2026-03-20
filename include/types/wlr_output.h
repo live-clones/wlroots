@@ -2,6 +2,7 @@
 #define TYPES_WLR_OUTPUT_H
 
 #include <wlr/render/drm_format_set.h>
+#include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_output.h>
 
 void output_pending_resolution(struct wlr_output *output,
@@ -20,8 +21,7 @@ bool output_ensure_buffer(struct wlr_output *output,
 bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 	struct wlr_texture *texture, bool own_texture, const struct wlr_fbox *src_box,
 	int dst_width, int dst_height, enum wl_output_transform transform,
-	int32_t hotspot_x, int32_t hotspot_y, struct wlr_drm_syncobj_timeline *wait_timeline,
-	uint64_t wait_point);
+	int32_t hotspot_x, int32_t hotspot_y, struct wlr_surface *surface);
 bool output_cursor_refresh_color_transform(struct wlr_output_cursor *cursor,
 	const struct wlr_output_image_description *img_desc);
 
