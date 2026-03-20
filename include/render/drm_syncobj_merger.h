@@ -41,4 +41,12 @@ bool wlr_drm_syncobj_merger_add(struct wlr_drm_syncobj_merger *merger,
 	struct wlr_drm_syncobj_timeline *dst_timeline, uint64_t dst_point,
 	struct wl_event_loop *loop);
 
+/**
+ * Add a new sync file to wait for.
+ *
+ * Ownership of fd is transferred to the merger.
+ */
+bool wlr_drm_syncobj_merger_add_sync_file(struct wlr_drm_syncobj_merger *merger,
+	int fd);
+
 #endif

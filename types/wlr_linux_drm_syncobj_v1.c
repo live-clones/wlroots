@@ -12,6 +12,7 @@
 #include <xf86drm.h>
 #include "config.h"
 #include "linux-drm-syncobj-v1-protocol.h"
+#include "render/dmabuf.h"
 #include "render/drm_syncobj_merger.h"
 
 #define LINUX_DRM_SYNCOBJ_V1_VERSION 1
@@ -539,4 +540,77 @@ bool wlr_linux_drm_syncobj_v1_state_add_release_point(
 	}
 	return wlr_drm_syncobj_merger_add(state->release_merger,
 		release_timeline, release_point, event_loop);
+}
+
+static bool has_dmabuf_sync_export = false;
+static bool has_dmabuf_sync_export_known = false;
+
+struct poll_waiter {
+	struct wl_event_source *event_source;
+	struct wlr_drm_syncobj_merger *merger;
+};
+
+static int poll_waiter_handle_done(int fd, uint32_t mask, void *data) {
+	struct poll_waiter *waiter = data;
+	wlr_drm_syncobj_merger_unref(waiter->merger);
+	wl_event_source_remove(waiter->event_source);
+	free(waiter);
+	return 0;
+}
+
+bool wlr_linux_drm_syncobj_v1_state_add_release_from_implicit_sync(
+		struct wlr_linux_drm_syncobj_surface_v1_state *state,
+		struct wlr_buffer *buffer, uint32_t flags, struct wl_event_loop *event_loop) {
+
+	struct wlr_dmabuf_attributes dmabuf_attributes;
+	if (!wlr_buffer_get_dmabuf(buffer, &dmabuf_attributes)) {
+		return true;
+	}
+
+	if (!has_dmabuf_sync_export_known) {
+		has_dmabuf_sync_export = dmabuf_check_sync_file_import_export();
+		has_dmabuf_sync_export_known = true;
+	}
+
+	bool res = true;
+	if (!has_dmabuf_sync_export) {
+		uint32_t mask = WL_EVENT_ERROR | WL_EVENT_HANGUP;
+		if (flags & WLR_LINUX_DRM_SYNCOBJ_V1_IMPLICIT_SYNC_READ) {
+			mask |= WL_EVENT_READABLE;
+		}
+		if (flags & WLR_LINUX_DRM_SYNCOBJ_V1_IMPLICIT_SYNC_WRITE) {
+			mask |= WL_EVENT_WRITABLE;
+		}
+
+		for (int i = 0; i < dmabuf_attributes.n_planes; ++i) {
+			struct poll_waiter *waiter = calloc(1, sizeof(*waiter));
+			if (waiter == NULL) {
+				return false;
+			}
+			waiter->merger = wlr_drm_syncobj_merger_ref(state->release_merger);
+			waiter->event_source = wl_event_loop_add_fd(event_loop,
+				dmabuf_attributes.fd[i], mask, poll_waiter_handle_done, waiter);
+			if (waiter->event_source == NULL) {
+				wlr_drm_syncobj_merger_unref(waiter->merger);
+				free(waiter);
+				return false;
+			}
+		}
+		return res;
+	}
+
+	int export_flags = 0;
+	if (flags & WLR_LINUX_DRM_SYNCOBJ_V1_IMPLICIT_SYNC_READ) {
+		export_flags |= DMA_BUF_SYNC_READ;
+	}
+	if (flags & WLR_LINUX_DRM_SYNCOBJ_V1_IMPLICIT_SYNC_WRITE) {
+		export_flags |= DMA_BUF_SYNC_WRITE;
+	}
+	for (int i = 0; i < dmabuf_attributes.n_planes; ++i) {
+		int sync_fd = dmabuf_export_sync_file(dmabuf_attributes.fd[i], export_flags);
+		if (!wlr_drm_syncobj_merger_add_sync_file(state->release_merger, sync_fd)) {
+			return false;
+		}
+	}
+	return true;
 }
