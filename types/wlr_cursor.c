@@ -63,6 +63,7 @@ struct wlr_cursor_output_cursor {
 
 	// only when using a surface as the cursor image
 	struct wl_listener output_commit;
+	struct wl_listener texture_sample;
 
 	// only when using an XCursor as the cursor image
 	struct wlr_xcursor *xcursor;
@@ -160,6 +161,7 @@ static void output_cursor_destroy(struct wlr_cursor_output_cursor *output_cursor
 	wl_list_remove(&output_cursor->layout_output_destroy.link);
 	wl_list_remove(&output_cursor->link);
 	wl_list_remove(&output_cursor->output_commit.link);
+	wl_list_remove(&output_cursor->texture_sample.link);
 	wlr_output_cursor_destroy(output_cursor->output_cursor);
 	free(output_cursor);
 }
@@ -579,13 +581,6 @@ static void cursor_output_cursor_update(struct wlr_cursor_output_cursor *output_
 			&src_box, dst_width, dst_height, surface->current.transform,
 			hotspot_x, hotspot_y, wait_timeline, wait_point);
 
-		if (syncobj_surface_state != NULL &&
-				surface->buffer != NULL && surface->buffer->source != NULL &&
-				(surface->current.committed & WLR_SURFACE_STATE_BUFFER)) {
-			wlr_linux_drm_syncobj_v1_state_signal_release_with_buffer(syncobj_surface_state,
-				surface->buffer->source);
-		}
-
 		if (output_cursor->output_cursor->visible) {
 			wlr_surface_send_enter(surface, output);
 		} else {
@@ -642,6 +637,29 @@ static void output_cursor_output_handle_output_commit(
 	if (surface && output_cursor->output_cursor->visible &&
 			(event->state->committed & WLR_OUTPUT_STATE_BUFFER)) {
 		wlr_surface_send_frame_done(surface, &event->when);
+	}
+}
+
+static void output_cursor_output_handle_texture_sample(
+		struct wl_listener *listener, void *data) {
+	struct wlr_cursor_output_cursor *output_cursor =
+		wl_container_of(listener, output_cursor, texture_sample);
+	const struct wlr_output_cursor_texture_sample_event *event = data;
+
+	struct wlr_surface *surface = output_cursor->cursor->state->surface;
+	struct wlr_linux_drm_syncobj_surface_v1_state *syncobj_state = NULL;
+	if (surface != NULL) {
+		syncobj_state = wlr_linux_drm_syncobj_v1_get_surface_state(surface);
+	}
+	if (syncobj_state != NULL) {
+		struct wl_event_loop *event_loop = output_cursor->output_cursor->output->event_loop;
+		if (event->release_timeline != NULL) {
+			wlr_linux_drm_syncobj_v1_state_add_release_point(syncobj_state,
+				event->release_timeline, event->release_point, event_loop);
+		} else if (surface->buffer != NULL && surface->buffer->source != NULL) {
+			wlr_linux_drm_syncobj_v1_state_add_release_from_implicit_sync(syncobj_state,
+				surface->buffer->source, event_loop);
+		}
 	}
 }
 
@@ -1167,6 +1185,9 @@ static void layout_add(struct wlr_cursor_state *state,
 	wl_signal_add(&output_cursor->output_cursor->output->events.commit,
 		&output_cursor->output_commit);
 	output_cursor->output_commit.notify = output_cursor_output_handle_output_commit;
+	wl_signal_add(&output_cursor->output_cursor->events.texture_sample,
+		&output_cursor->texture_sample);
+	output_cursor->texture_sample.notify = output_cursor_output_handle_texture_sample;
 
 	output_cursor_move(output_cursor);
 	cursor_output_cursor_update(output_cursor);

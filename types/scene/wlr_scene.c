@@ -2581,7 +2581,8 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		}
 	}
 
-	wlr_output_add_software_cursors_to_render_pass(output, render_pass, &render_data.damage);
+	wlr_output_add_software_cursors_to_render_pass(output, render_pass,
+		&render_data.damage, scene_output->in_timeline, scene_output->in_point);
 	pixman_region32_fini(&render_data.damage);
 
 	if (!wlr_render_pass_submit(render_pass)) {
