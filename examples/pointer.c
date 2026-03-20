@@ -111,7 +111,7 @@ static void output_frame_notify(struct wl_listener *listener, void *data) {
 			state->clear_color[3],
 		},
 	});
-	wlr_output_add_software_cursors_to_render_pass(wlr_output, pass, NULL);
+	wlr_output_add_software_cursors_to_render_pass(wlr_output, pass, NULL, NULL, 0);
 	wlr_render_pass_submit(pass);
 	wlr_output_commit_state(wlr_output, &output_state);
 	wlr_output_state_finish(&output_state);
