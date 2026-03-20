@@ -177,7 +177,7 @@ static void surface_synced_move_state(void *_dst, void *_src) {
 static void surface_synced_commit(struct wlr_surface_synced *synced) {
 	struct wlr_linux_drm_syncobj_surface_v1 *surface = wl_container_of(synced, surface, synced);
 
-	if (surface->current.release_merger != NULL) {
+	if (surface->current.acquire_timeline == NULL) {
 		// ignore commits that did not attach a buffer
 		return;
 	}
