@@ -117,6 +117,11 @@ void wlr_renderer_destroy(struct wlr_renderer *renderer);
 struct wlr_render_timer *wlr_render_timer_create(struct wlr_renderer *renderer);
 
 /**
+ * Verify if the timer measure is done and the render duration can be retrieved.
+ */
+bool wlr_render_timer_available(struct wlr_render_timer *timer);
+
+/**
  * Get the render duration in nanoseconds from the timer.
  *
  * Returns -1 if the duration is unavailable.

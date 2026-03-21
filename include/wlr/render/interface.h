@@ -69,6 +69,7 @@ struct wlr_render_timer {
 };
 
 struct wlr_render_timer_impl {
+	bool (*available)(struct wlr_render_timer *timer);
 	int (*get_duration_ns)(struct wlr_render_timer *timer);
 	void (*destroy)(struct wlr_render_timer *timer);
 };
