@@ -14,6 +14,11 @@
 #include "types/wlr_buffer.h"
 #include "types/wlr_output.h"
 
+// Maximum of hardware cursor renders per frame.
+// Many clients don't regroup the buffer commit and the hotspot change in a
+// single message : typical burst of 2 must still be processed without delay
+#define MAX_UPLOADS_PER_FRAME 2
+
 static bool output_set_hardware_cursor(struct wlr_output *output,
 		struct wlr_buffer *buffer, int hotspot_x, int hotspot_y) {
 	if (!output->impl->set_cursor) {
@@ -55,6 +60,7 @@ static void output_disable_hardware_cursor(struct wlr_output *output) {
 	output_set_hardware_cursor(output, NULL, 0, 0);
 	output_cursor_damage_whole(output->hardware_cursor);
 	output->hardware_cursor = NULL;
+	output->cursor_pending_upload = NULL;
 }
 
 void wlr_output_lock_software_cursors(struct wlr_output *output, bool lock) {
@@ -288,7 +294,7 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 	return buffer;
 }
 
-static bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
+bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
 	struct wlr_output *output = cursor->output;
 
 	if (!output->impl->set_cursor || output->software_cursor_locks > 0) {
@@ -296,6 +302,11 @@ static bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
 	}
 
 	struct wlr_texture *texture = cursor->texture;
+
+	if (texture != NULL && output->cursor_uploaded_this_frame >= MAX_UPLOADS_PER_FRAME) {
+		output->cursor_pending_upload = cursor;
+		return true;
+	}
 
 	// If the cursor was hidden or was a software cursor, the hardware
 	// cursor position is outdated
@@ -308,6 +319,7 @@ static bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
 			wlr_log(WLR_DEBUG, "Failed to render cursor buffer");
 			return false;
 		}
+		output->cursor_uploaded_this_frame++;
 	}
 
 	struct wlr_box hotspot = {
