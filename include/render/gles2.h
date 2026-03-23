@@ -139,7 +139,7 @@ void get_gles2_shm_formats(const struct wlr_gles2_renderer *renderer,
 
 GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer);
 
-struct wlr_gles2_renderer *gles2_get_renderer(
+struct wlr_gles2_renderer *wlr_gles2_renderer_from_renderer(
 	struct wlr_renderer *wlr_renderer);
 struct wlr_gles2_render_timer *gles2_get_render_timer(
 	struct wlr_render_timer *timer);
@@ -152,10 +152,10 @@ struct wlr_texture *gles2_texture_from_buffer(struct wlr_renderer *wlr_renderer,
 	struct wlr_buffer *buffer);
 void gles2_texture_destroy(struct wlr_gles2_texture *texture);
 
-void push_gles2_debug_(struct wlr_gles2_renderer *renderer,
+void wlr_gles2_push_debug_(struct wlr_gles2_renderer *renderer,
 	const char *file, const char *func);
-#define push_gles2_debug(renderer) push_gles2_debug_(renderer, _WLR_FILENAME, __func__)
-void pop_gles2_debug(struct wlr_gles2_renderer *renderer);
+#define wlr_gles2_push_debug(renderer) wlr_gles2_push_debug_(renderer, _WLR_FILENAME, __func__)
+void wlr_gles2_pop_debug(struct wlr_gles2_renderer *renderer);
 
 struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *buffer,
 	struct wlr_egl_context *prev_ctx, struct wlr_gles2_render_timer *timer,
@@ -198,7 +198,11 @@ bool wlr_render_submit_pass_is_gles2(const struct wlr_render_submit_pass *submit
 struct wlr_gles2_render_submit_pass *wlr_gles2_render_submit_pass_from_pass(
 	struct wlr_render_submit_pass *submit_pass);
 
-GLuint gles2_link_program(struct wlr_gles2_renderer *renderer,
+GLuint wlr_gles2_link_program(struct wlr_gles2_renderer *renderer,
 	const GLchar *vert_src, const GLchar *frag_src);
+
+struct wlr_gles2_render_pass *wlr_gles2_render_pass_from_render_pass(
+	struct wlr_render_pass *wlr_pass);
+void wlr_gles_set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box);
 
 #endif
