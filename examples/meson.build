@@ -49,6 +49,8 @@ compositors = {
 	},
 }
 
+subdir('render-pass-ext')
+
 foreach name, info : compositors
 	extra_src = []
 	foreach p : info.get('proto', [])
