@@ -32,7 +32,8 @@ static bool create_shader_module(VkDevice dev, const uint32_t *code,
 	return true;
 }
 
-static struct wlr_vk_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
+struct wlr_vk_render_pass *wlr_vk_render_pass_from_render_pass(
+		struct wlr_render_pass *wlr_pass) {
 	assert(wlr_pass->impl == &render_pass_impl);
 	struct wlr_vk_render_pass *pass = wl_container_of(wlr_pass, pass, base);
 	return pass;
@@ -240,7 +241,7 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 }
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
 	struct wlr_vk_render_submit_pass *submit_pass =
 		wlr_vk_render_submit_pass_from_pass(renderer->wlr_renderer.submit_pass);
@@ -705,7 +706,7 @@ static void render_pass_mark_box_updated(struct wlr_vk_render_pass *pass,
 
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_render_rect_pass *rect_pass =
 		wlr_vk_render_rect_pass_from_pass(pass->renderer->wlr_renderer.rect_pass);
 	assert(rect_pass != NULL);
@@ -812,7 +813,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
 	struct wlr_vk_render_texture_pass *texture_pass =
 		wlr_vk_render_texture_pass_from_pass(renderer->wlr_renderer.texture_pass);
@@ -1018,7 +1019,7 @@ static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
 }
 
 static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
 
 	return &renderer->wlr_renderer;

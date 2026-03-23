@@ -69,7 +69,7 @@ static bool gles2_texture_update_from_buffer(struct wlr_texture *wlr_texture,
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(texture->renderer->egl, &prev_ctx);
 
-	push_gles2_debug(texture->renderer);
+	 wlr_gles2_push_debug(texture->renderer);
 
 	glBindTexture(GL_TEXTURE_2D, texture->tex);
 
@@ -95,7 +95,7 @@ static bool gles2_texture_update_from_buffer(struct wlr_texture *wlr_texture,
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-	pop_gles2_debug(texture->renderer);
+	wlr_gles2_pop_debug(texture->renderer);
 
 	wlr_egl_restore_context(&prev_ctx);
 
@@ -112,12 +112,12 @@ void gles2_texture_destroy(struct wlr_gles2_texture *texture) {
 		struct wlr_egl_context prev_ctx;
 		wlr_egl_make_current(texture->renderer->egl, &prev_ctx);
 
-		push_gles2_debug(texture->renderer);
+		 wlr_gles2_push_debug(texture->renderer);
 
 		glDeleteTextures(1, &texture->tex);
 		glDeleteFramebuffers(1, &texture->fbo);
 
-		pop_gles2_debug(texture->renderer);
+		wlr_gles2_pop_debug(texture->renderer);
 
 		wlr_egl_restore_context(&prev_ctx);
 	}
@@ -191,7 +191,7 @@ static bool gles2_texture_read_pixels(struct wlr_texture *wlr_texture,
 		return false;
 	}
 
-	push_gles2_debug(texture->renderer);
+	 wlr_gles2_push_debug(texture->renderer);
 	struct wlr_egl_context prev_ctx;
 	if (!wlr_egl_make_current(texture->renderer->egl, &prev_ctx)) {
 		return false;
@@ -226,7 +226,7 @@ static bool gles2_texture_read_pixels(struct wlr_texture *wlr_texture,
 	}
 
 	wlr_egl_restore_context(&prev_ctx);
-	pop_gles2_debug(texture->renderer);
+	wlr_gles2_pop_debug(texture->renderer);
 
 	return glGetError() == GL_NO_ERROR;
 }
@@ -234,7 +234,7 @@ static bool gles2_texture_read_pixels(struct wlr_texture *wlr_texture,
 static uint32_t gles2_texture_preferred_read_format(struct wlr_texture *wlr_texture) {
 	struct wlr_gles2_texture *texture = gles2_get_texture(wlr_texture);
 
-	push_gles2_debug(texture->renderer);
+	 wlr_gles2_push_debug(texture->renderer);
 
 	uint32_t fmt = DRM_FORMAT_INVALID;
 
@@ -253,7 +253,7 @@ static uint32_t gles2_texture_preferred_read_format(struct wlr_texture *wlr_text
 	glGetIntegerv(GL_ALPHA_BITS, &alpha_size);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	pop_gles2_debug(texture->renderer);
+	wlr_gles2_pop_debug(texture->renderer);
 
 	const struct wlr_gles2_pixel_format *pix_fmt =
 		get_gles2_format_from_gl(gl_format, gl_type, alpha_size > 0);
@@ -297,7 +297,7 @@ static struct wlr_texture *gles2_texture_from_pixels(
 		struct wlr_renderer *wlr_renderer,
 		uint32_t drm_format, uint32_t stride, uint32_t width,
 		uint32_t height, const void *data) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 
 	const struct wlr_gles2_pixel_format *fmt =
 		get_gles2_format_from_drm(drm_format);
@@ -335,7 +335,7 @@ static struct wlr_texture *gles2_texture_from_pixels(
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(renderer->egl, &prev_ctx);
 
-	push_gles2_debug(renderer);
+	 wlr_gles2_push_debug(renderer);
 
 	glGenTextures(1, &texture->tex);
 	glBindTexture(GL_TEXTURE_2D, texture->tex);
@@ -349,7 +349,7 @@ static struct wlr_texture *gles2_texture_from_pixels(
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
 
 	wlr_egl_restore_context(&prev_ctx);
 
@@ -381,7 +381,7 @@ static struct wlr_texture *gles2_texture_from_dmabuf(
 
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(renderer->egl, &prev_ctx);
-	push_gles2_debug(texture->renderer);
+	 wlr_gles2_push_debug(texture->renderer);
 
 	bool invalid;
 	if (!buffer->tex) {
@@ -400,7 +400,7 @@ static struct wlr_texture *gles2_texture_from_dmabuf(
 		glBindTexture(texture->target, 0);
 	}
 
-	pop_gles2_debug(texture->renderer);
+	wlr_gles2_pop_debug(texture->renderer);
 	wlr_egl_restore_context(&prev_ctx);
 
 	texture->tex = buffer->tex;
@@ -410,7 +410,7 @@ static struct wlr_texture *gles2_texture_from_dmabuf(
 
 struct wlr_texture *gles2_texture_from_buffer(struct wlr_renderer *wlr_renderer,
 		struct wlr_buffer *buffer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 
 	void *data;
 	uint32_t format;

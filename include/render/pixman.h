@@ -84,5 +84,7 @@ struct wlr_pixman_render_submit_pass {
 bool wlr_render_submit_pass_is_pixman(const struct wlr_render_submit_pass *submit_pass);
 struct wlr_pixman_render_submit_pass *wlr_pixman_render_submit_pass_from_pass(
 	struct wlr_render_submit_pass *submit_pass);
+struct wlr_pixman_render_pass *wlr_pixman_render_pass_from_render_pass(
+	struct wlr_render_pass *wlr_pass);
 
 #endif

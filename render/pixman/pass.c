@@ -7,7 +7,8 @@
 
 static const struct wlr_render_pass_impl render_pass_impl;
 
-static struct wlr_pixman_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
+struct wlr_pixman_render_pass *wlr_pixman_render_pass_from_render_pass(
+		struct wlr_render_pass *wlr_pass) {
 	assert(wlr_pass->impl == &render_pass_impl);
 	struct wlr_pixman_render_pass *pass = wl_container_of(wlr_pass, pass, base);
 	return pass;
@@ -20,7 +21,7 @@ static struct wlr_pixman_texture *get_texture(struct wlr_texture *wlr_texture) {
 }
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
-	struct wlr_pixman_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_pixman_render_pass *pass = wlr_pixman_render_pass_from_render_pass(wlr_pass);
 
 	wlr_buffer_end_data_ptr_access(pass->buffer->buffer);
 	wlr_buffer_unlock(pass->buffer->buffer);
@@ -41,7 +42,7 @@ static pixman_op_t get_pixman_blending(enum wlr_render_blend_mode mode) {
 
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
-	struct wlr_pixman_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_pixman_render_pass *pass = wlr_pixman_render_pass_from_render_pass(wlr_pass);
 	struct wlr_pixman_texture *texture = get_texture(options->texture);
 	struct wlr_pixman_buffer *buffer = pass->buffer;
 
@@ -203,7 +204,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
-	struct wlr_pixman_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_pixman_render_pass *pass = wlr_pixman_render_pass_from_render_pass(wlr_pass);
 	struct wlr_pixman_buffer *buffer = pass->buffer;
 	struct wlr_box box;
 	wlr_render_rect_options_get_box(options, pass->buffer->buffer, &box);
@@ -233,7 +234,7 @@ static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
 }
 
 static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
-	struct wlr_pixman_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_pixman_render_pass *pass = wlr_pixman_render_pass_from_render_pass(wlr_pass);
 	struct wlr_pixman_renderer *renderer = pass->buffer->renderer;
 
 	return &renderer->wlr_renderer;

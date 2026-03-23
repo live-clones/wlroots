@@ -165,5 +165,7 @@ struct wlr_render_submit_pass *wlr_pixman_render_submit_pass_create(void);
 struct wlr_render_submit_pass *wlr_gles2_render_submit_pass_create(void);
 struct wlr_render_submit_pass *wlr_vk_render_submit_pass_create(
 	struct wlr_renderer *wlr_renderer);
+struct wlr_vk_render_pass *wlr_vk_render_pass_from_render_pass(
+	struct wlr_render_pass *wlr_pass);
 
 #endif
