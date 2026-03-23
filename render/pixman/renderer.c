@@ -344,6 +344,14 @@ struct wlr_renderer *wlr_pixman_renderer_create(void) {
 	return &renderer->wlr_renderer;
 }
 
+struct wlr_pixman_renderer *wlr_pixman_renderer_from_renderer(
+		struct wlr_renderer *wlr_renderer) {
+	assert(wlr_renderer->impl == &renderer_impl);
+
+	struct wlr_pixman_renderer *renderer = wl_container_of(wlr_renderer, renderer, wlr_renderer);
+	return renderer;
+}
+
 pixman_image_t *wlr_pixman_renderer_get_buffer_image(
 		struct wlr_renderer *wlr_renderer, struct wlr_buffer *wlr_buffer) {
 	struct wlr_pixman_renderer *renderer = get_renderer(wlr_renderer);

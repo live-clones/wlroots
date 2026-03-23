@@ -1844,6 +1844,14 @@ static bool pipeline_key_equals(const struct wlr_vk_pipeline_key *a,
 	return true;
 }
 
+struct wlr_vk_renderer *wlr_vk_renderer_from_renderer(
+		struct wlr_renderer *wlr_renderer) {
+	assert(wlr_renderer->impl == &renderer_impl);
+
+	struct wlr_vk_renderer *renderer = wl_container_of(wlr_renderer, renderer, wlr_renderer);
+	return renderer;
+}
+
 // Initializes the pipeline for rendering textures and using the given
 // VkRenderPass and VkPipelineLayout.
 struct wlr_vk_pipeline *setup_get_or_create_pipeline(

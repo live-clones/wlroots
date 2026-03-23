@@ -14,7 +14,7 @@
 static const struct wlr_render_pass_impl render_pass_impl;
 static const struct wlr_addon_interface vk_color_transform_impl;
 
-static bool create_shader_module(VkDevice dev, const uint32_t *code,
+bool wlr_vk_create_shader_module(VkDevice dev, const uint32_t *code,
 		size_t code_size, const char *name, VkShaderModule *out) {
 	VkShaderModuleCreateInfo sinfo = {
 		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -32,7 +32,8 @@ static bool create_shader_module(VkDevice dev, const uint32_t *code,
 	return true;
 }
 
-static struct wlr_vk_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
+struct wlr_vk_render_pass *wlr_vk_render_pass_from_render_pass(
+		struct wlr_render_pass *wlr_pass) {
 	assert(wlr_pass->impl == &render_pass_impl);
 	struct wlr_vk_render_pass *pass = wl_container_of(wlr_pass, pass, base);
 	return pass;
@@ -79,11 +80,11 @@ static float color_to_linear(float non_linear) {
 	return pow(non_linear, 2.2);
 }
 
-static float color_to_linear_premult(float non_linear, float alpha) {
+float wlr_color_to_linear_premult(float non_linear, float alpha) {
 	return (alpha == 0) ? 0 : color_to_linear(non_linear / alpha) * alpha;
 }
 
-static void encode_proj_matrix(const float mat3[9], float mat4[4][4]) {
+void wlr_encode_proj_matrix(const float mat3[9], float mat4[4][4]) {
 	float result[4][4] = {
 		{ mat3[0], mat3[1], 0, mat3[2] },
 		{ mat3[3], mat3[4], 0, mat3[5] },
@@ -94,7 +95,7 @@ static void encode_proj_matrix(const float mat3[9], float mat4[4][4]) {
 	memcpy(mat4, result, sizeof(result));
 }
 
-static void encode_color_matrix(const float mat3[9], float mat4[4][4]) {
+void wlr_encode_color_matrix(const float mat3[9], float mat4[4][4]) {
 	float result[4][4] = {
 		{ mat3[0], mat3[1], mat3[2], 0 },
 		{ mat3[3], mat3[4], mat3[5], 0 },
@@ -194,7 +195,7 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 }
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
 	struct wlr_vk_render_submit_pass *submit_pass =
 		wlr_vk_render_submit_pass_from_pass(renderer->wlr_renderer.submit_pass);
@@ -233,7 +234,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
 		};
-		encode_proj_matrix(final_matrix, vert_pcr_data.mat4);
+		wlr_encode_proj_matrix(final_matrix, vert_pcr_data.mat4);
 
 		float matrix[9];
 		enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
@@ -257,7 +258,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			.lut_3d_scale = (float)(dim - 1) / dim,
 		};
 
-		encode_color_matrix(matrix, frag_pcr_data.matrix);
+		wlr_encode_color_matrix(matrix, frag_pcr_data.matrix);
 
 		VkPipeline pipeline = VK_NULL_HANDLE;
 		if (need_lut) {
@@ -665,7 +666,7 @@ static void render_pass_mark_box_updated(struct wlr_vk_render_pass *pass,
 
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_render_rect_pass *rect_pass =
 		wlr_vk_render_rect_pass_from_pass(pass->renderer->wlr_renderer.rect_pass);
 	assert(rect_pass != NULL);
@@ -677,9 +678,9 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	// colors in linear space as well (and vulkan then automatically
 	// does the conversion for out sRGB render targets).
 	float linear_color[] = {
-		color_to_linear_premult(options->color.r, options->color.a),
-		color_to_linear_premult(options->color.g, options->color.a),
-		color_to_linear_premult(options->color.b, options->color.a),
+		wlr_color_to_linear_premult(options->color.r, options->color.a),
+		wlr_color_to_linear_premult(options->color.g, options->color.a),
+		wlr_color_to_linear_premult(options->color.b, options->color.a),
 		options->color.a, // no conversion for alpha
 	};
 
@@ -730,7 +731,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
 		};
-		encode_proj_matrix(matrix, vert_pcr_data.mat4);
+		wlr_encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
 		bind_pipeline(pass, pipe->vk);
 		vkCmdPushConstants(cb, pipe->layout->vk,
@@ -772,7 +773,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
 	struct wlr_vk_render_texture_pass *texture_pass =
 		wlr_vk_render_texture_pass_from_pass(renderer->wlr_renderer.texture_pass);
@@ -816,7 +817,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 			src_box.height / options->texture->height,
 		},
 	};
-	encode_proj_matrix(matrix, vert_pcr_data.mat4);
+	wlr_encode_proj_matrix(matrix, vert_pcr_data.mat4);
 
 	enum wlr_color_transfer_function tf = options->transfer_function;
 	if (tf == 0) {
@@ -909,7 +910,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		.alpha = alpha,
 		.luminance_multiplier = luminance_multiplier,
 	};
-	encode_color_matrix(color_matrix, frag_pcr_data.matrix);
+	wlr_encode_color_matrix(color_matrix, frag_pcr_data.matrix);
 
 	bind_pipeline(pass, pipe->vk);
 
@@ -978,7 +979,7 @@ static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
 }
 
 static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
 
 	return &renderer->wlr_renderer;
@@ -1412,7 +1413,7 @@ struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(
 	}
 
 	VkDevice dev = renderer->dev->dev;
-	if (!create_shader_module(dev, quad_frag_data, sizeof(quad_frag_data),
+	if (!wlr_vk_create_shader_module(dev, quad_frag_data, sizeof(quad_frag_data),
 			"quad fragment", &pass->shader.frag_module)) {
 		render_rect_pass_destroy(&pass->base);
 		return NULL;
@@ -1474,7 +1475,7 @@ struct wlr_render_texture_pass *wlr_vk_render_texture_pass_create(
 	}
 
 	VkDevice dev = renderer->dev->dev;
-	if (!create_shader_module(dev, texture_frag_data, sizeof(texture_frag_data),
+	if (!wlr_vk_create_shader_module(dev, texture_frag_data, sizeof(texture_frag_data),
 			"texture fragment", &pass->shader.frag_module)) {
 		render_texture_pass_destroy(&pass->base);
 		return NULL;

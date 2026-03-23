@@ -369,7 +369,13 @@ struct wlr_vk_texture_view {
 	VkImageView image_view;
 	struct wlr_vk_descriptor_pool *ds_pool;
 };
-
+struct wlr_vk_renderer *wlr_vk_renderer_from_renderer(
+	struct wlr_renderer *wlr_renderer);
+bool wlr_vk_create_shader_module(VkDevice dev, const uint32_t *code,
+	size_t code_size, const char *name, VkShaderModule *out);
+float wlr_color_to_linear_premult(float non_linear, float alpha);
+void wlr_encode_proj_matrix(const float mat3[9], float mat4[4][4]);
+void wlr_encode_color_matrix(const float mat3[9], float mat4[4][4]);
 struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 	struct wlr_vk_render_format_setup *setup,
 	const struct wlr_vk_pipeline_key *key,
