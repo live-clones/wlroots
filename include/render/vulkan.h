@@ -359,24 +359,6 @@ struct wlr_vk_renderer {
 		VkImage dst_image;
 		VkDeviceMemory dst_img_memory;
 	} read_pixels_cache;
-
-	struct {
-		VkShaderModule frag_module;
-		VkPipelineLayout pipe_layout;
-		VkDescriptorSetLayout ds_layout;
-		VkSampler sampler;
-		VkRenderPass render_pass;
-		VkPipeline pipeline;
-
-		uint32_t width, height;
-		VkImage image[2];
-		VkDeviceMemory memory[2];
-		VkImageView view[2];
-		VkFramebuffer fb[2];
-		VkDescriptorSet ds[2];
-		struct wlr_vk_descriptor_pool *ds_pool[2];
-		bool transitioned[2];
-	} blur;
 };
 
 // vertex shader push constant range data
@@ -459,9 +441,6 @@ struct wlr_vk_render_pass {
 
 struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *renderer,
 	struct wlr_vk_render_buffer *buffer, const struct wlr_buffer_pass_options *options);
-
-bool vulkan_blur_ensure_scratch(struct wlr_vk_renderer *renderer,
-	uint32_t bw, uint32_t bh);
 
 // Suballocates a buffer span with the given size that can be mapped
 // and used as staging buffer. The allocation is implicitly released when the

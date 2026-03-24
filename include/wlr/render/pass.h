@@ -157,23 +157,4 @@ struct wlr_render_rect_options {
 void wlr_render_pass_add_rect(struct wlr_render_pass *render_pass,
 	const struct wlr_render_rect_options *options);
 
-struct wlr_render_blur_options {
-	/* Bounding box of the blur region in buffer coordinates */
-	struct wlr_box box;
-	/* Clip region within box, leave NULL to blur the entire box. */
-	const pixman_region32_t *clip;
-};
-
-/**
- * Apply a background blur in-place over the given region.
- *
- * This samples the already-rendered content behind the region, blurs it, and
- * writes the result back. Intended to be called just before rendering a
- * translucent surface so that the surface composites over a blurred background.
- *
- * If the renderer does not support blur this is a no-op.
- */
-void wlr_render_pass_add_blur(struct wlr_render_pass *render_pass,
-	const struct wlr_render_blur_options *options);
-
 #endif

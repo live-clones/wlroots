@@ -225,67 +225,10 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	pixman_image_unref(fill);
 }
 
-static void render_pass_add_blur(struct wlr_render_pass *wlr_pass,
-		const struct wlr_render_blur_options *options) {
-	struct wlr_pixman_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_pixman_buffer *buffer = pass->buffer;
-
-	int bx = options->box.x;
-	int by = options->box.y;
-	int bw = options->box.width;
-	int bh = options->box.height;
-
-	if (bw <= 0 || bh <= 0) {
-		return;
-	}
-
-	static const pixman_fixed_t h_params[] = {
-		pixman_int_to_fixed(9), pixman_int_to_fixed(1),
-		496, 2364, 7183, 13993, 17464, 13993, 7183, 2364, 496,
-	};
-	static const pixman_fixed_t v_params[] = {
-		pixman_int_to_fixed(1), pixman_int_to_fixed(9),
-		496, 2364, 7183, 13993, 17464, 13993, 7183, 2364, 496,
-	};
-
-	pixman_image_t *scratch[2] = { NULL, NULL };
-	for (int i = 0; i < 2; i++) {
-		scratch[i] = pixman_image_create_bits(PIXMAN_a8r8g8b8, bw, bh, NULL, 0);
-	}
-
-	pixman_image_composite32(PIXMAN_OP_SRC, buffer->image, NULL, scratch[0],
-		bx, by, 0, 0, 0, 0, bw, bh);
-
-	pixman_image_set_repeat(scratch[0], PIXMAN_REPEAT_PAD);
-	pixman_image_set_filter(scratch[0], PIXMAN_FILTER_CONVOLUTION,
-		h_params, sizeof(h_params) / sizeof(h_params[0]));
-	pixman_image_composite32(PIXMAN_OP_SRC, scratch[0], NULL, scratch[1],
-		0, 0, 0, 0, 0, 0, bw, bh);
-	pixman_image_set_filter(scratch[0], PIXMAN_FILTER_NEAREST, NULL, 0);
-	pixman_image_set_repeat(scratch[0], PIXMAN_REPEAT_NONE);
-
-	pixman_image_set_repeat(scratch[1], PIXMAN_REPEAT_PAD);
-	pixman_image_set_filter(scratch[1], PIXMAN_FILTER_CONVOLUTION,
-		v_params, sizeof(v_params) / sizeof(v_params[0]));
-	pixman_image_composite32(PIXMAN_OP_SRC, scratch[1], NULL, scratch[0],
-		0, 0, 0, 0, 0, 0, bw, bh);
-	pixman_image_set_filter(scratch[1], PIXMAN_FILTER_NEAREST, NULL, 0);
-	pixman_image_set_repeat(scratch[1], PIXMAN_REPEAT_NONE);
-
-	pixman_image_set_clip_region32(buffer->image, options->clip);
-	pixman_image_composite32(PIXMAN_OP_SRC, scratch[0], NULL, buffer->image,
-		0, 0, 0, 0, bx, by, bw, bh);
-	pixman_image_set_clip_region32(buffer->image, NULL);
-
-	pixman_image_unref(scratch[0]);
-	pixman_image_unref(scratch[1]);
-}
-
 static const struct wlr_render_pass_impl render_pass_impl = {
 	.submit = render_pass_submit,
 	.add_texture = render_pass_add_texture,
 	.add_rect = render_pass_add_rect,
-	.add_blur = render_pass_add_blur,
 };
 
 struct wlr_pixman_render_pass *begin_pixman_render_pass(

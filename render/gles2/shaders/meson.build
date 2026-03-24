@@ -2,7 +2,6 @@ check = find_program('./check.sh', native: true)
 embed = find_program('./embed.sh', native: true)
 
 shaders = [
-	'blur.frag',
 	'common.vert',
 	'quad.frag',
 	'tex_rgba.frag',

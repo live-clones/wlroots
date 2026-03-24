@@ -12,6 +12,8 @@
 #include <pixman.h>
 #include <wayland-server-core.h>
 #include <wayland-protocols/ext-background-effect-v1-enum.h>
+#include <wlr/util/addon.h>
+#include <wlr/types/wlr_compositor.h>
 
 struct wlr_surface;
 
@@ -19,11 +21,32 @@ struct wlr_ext_background_effect_surface_v1_state {
 	pixman_region32_t blur_region;
 };
 
+struct wlr_ext_background_effect_surface_v1 {
+	struct wl_resource *resource;
+	struct wlr_surface *surface;
+	struct wlr_ext_background_effect_surface_v1_state current;
+
+	struct {
+		struct wl_signal commit;
+		struct wl_signal destroy;
+	} events;
+
+	void *data;
+
+	struct {
+		struct wlr_addon addon;
+		struct wlr_surface_synced synced;
+		struct wlr_ext_background_effect_surface_v1_state pending;
+		struct wl_listener surface_commit;
+	} WLR_PRIVATE;
+};
+
 struct wlr_ext_background_effect_manager_v1 {
 	struct wl_global *global;
 	uint32_t capabilities; // bitmask of enum ext_background_effect_manager_v1_capability
 
 	struct {
+		struct wl_signal new_surface; // struct wlr_ext_background_effect_surface_v1 *
 		struct wl_signal destroy;
 	} events;
 

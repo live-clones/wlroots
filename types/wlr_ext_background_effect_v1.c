@@ -13,14 +13,6 @@ struct wlr_ext_background_effect_manager_client {
 	struct wl_list link; // wlr_ext_background_effect_manager_v1.resources
 };
 
-struct wlr_ext_background_effect_surface_v1 {
-	struct wl_resource *resource;
-	struct wlr_surface *surface;
-	struct wlr_addon addon;
-	struct wlr_surface_synced synced;
-	struct wlr_ext_background_effect_surface_v1_state pending, current;
-};
-
 static const struct ext_background_effect_surface_v1_interface surface_impl;
 static const struct ext_background_effect_manager_v1_interface manager_impl;
 
@@ -40,11 +32,20 @@ static struct wlr_ext_background_effect_surface_v1 *surface_from_resource(
 	return wl_resource_get_user_data(resource);
 }
 
+static void surface_handle_commit(struct wl_listener *listener, void *data) {
+	struct wlr_ext_background_effect_surface_v1 *surface =
+		wl_container_of(listener, surface, surface_commit);
+
+	wl_signal_emit_mutable(&surface->events.commit, surface);
+}
+
 static void surface_destroy(struct wlr_ext_background_effect_surface_v1 *surface) {
 	if (surface == NULL) {
 		return;
 	}
 
+	wl_signal_emit_mutable(&surface->events.destroy, surface);
+	wl_list_remove(&surface->surface_commit.link);
 	wlr_surface_synced_finish(&surface->synced);
 	wlr_addon_finish(&surface->addon);
 	wl_resource_set_user_data(surface->resource, NULL);
@@ -174,8 +175,18 @@ static void manager_handle_get_background_effect(struct wl_client *client,
 	wl_resource_set_implementation(surface->resource, &surface_impl, surface,
 		surface_handle_resource_destroy);
 
+	wl_signal_init(&surface->events.commit);
+	wl_signal_init(&surface->events.destroy);
+
 	surface->surface = wlr_surface;
 	wlr_addon_init(&surface->addon, &wlr_surface->addons, NULL, &surface_addon_impl);
+
+	surface->surface_commit.notify = surface_handle_commit;
+	wl_signal_add(&wlr_surface->events.commit, &surface->surface_commit);
+
+	struct wlr_ext_background_effect_manager_client *manager_client =
+		manager_client_from_resource(manager_resource);
+	wl_signal_emit_mutable(&manager_client->manager->events.new_surface, surface);
 }
 
 static const struct ext_background_effect_manager_v1_interface manager_impl = {
@@ -243,6 +254,7 @@ struct wlr_ext_background_effect_manager_v1 *wlr_ext_background_effect_manager_v
 		return NULL;
 	}
 
+	wl_signal_init(&manager->events.new_surface);
 	wl_signal_init(&manager->events.destroy);
 	wl_list_init(&manager->resources);
 
