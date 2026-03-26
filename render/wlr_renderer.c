@@ -321,6 +321,13 @@ struct wlr_render_timer *wlr_render_timer_create(struct wlr_renderer *renderer) 
 	return renderer->impl->render_timer_create(renderer);
 }
 
+bool wlr_render_timer_available(struct wlr_render_timer *timer) {
+	if (!timer->impl->available) {
+		return false;
+	}
+	return timer->impl->available(timer);
+}
+
 int wlr_render_timer_get_duration_ns(struct wlr_render_timer *timer) {
 	if (!timer->impl->get_duration_ns) {
 		return -1;

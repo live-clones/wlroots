@@ -307,6 +307,22 @@ static struct wlr_render_timer *gles2_render_timer_create(struct wlr_renderer *w
 	return &timer->base;
 }
 
+static bool gles2_render_timer_available(struct wlr_render_timer *wlr_timer) {
+	struct wlr_gles2_render_timer *timer = gles2_get_render_timer(wlr_timer);
+	struct wlr_gles2_renderer *renderer = timer->renderer;
+
+	struct wlr_egl_context prev_ctx;
+	wlr_egl_make_current(renderer->egl, &prev_ctx);
+
+	GLint available;
+	renderer->procs.glGetQueryObjectivEXT(timer->id,
+		GL_QUERY_RESULT_AVAILABLE_EXT, &available);
+
+	wlr_egl_restore_context(&prev_ctx);
+
+	return available;
+}
+
 static int gles2_get_render_time(struct wlr_render_timer *wlr_timer) {
 	struct wlr_gles2_render_timer *timer = gles2_get_render_timer(wlr_timer);
 	struct wlr_gles2_renderer *renderer = timer->renderer;
@@ -322,10 +338,7 @@ static int gles2_get_render_time(struct wlr_render_timer *wlr_timer) {
 		return -1;
 	}
 
-	GLint available;
-	renderer->procs.glGetQueryObjectivEXT(timer->id,
-		GL_QUERY_RESULT_AVAILABLE_EXT, &available);
-	if (!available) {
+	if (!gles2_render_timer_available(wlr_timer)) {
 		wlr_log(WLR_ERROR, "timer was read too early, gpu isn't done!");
 		wlr_egl_restore_context(&prev_ctx);
 		return -1;
@@ -363,6 +376,7 @@ static const struct wlr_renderer_impl renderer_impl = {
 };
 
 static const struct wlr_render_timer_impl render_timer_impl = {
+	.available = gles2_render_timer_available,
 	.get_duration_ns = gles2_get_render_time,
 	.destroy = gles2_render_timer_destroy,
 };
