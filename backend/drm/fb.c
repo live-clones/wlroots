@@ -196,6 +196,7 @@ static struct wlr_drm_fb *drm_fb_create(struct wlr_drm_backend *drm,
 
 	fb->backend = drm;
 	fb->wlr_buf = buf;
+	fb->has_alpha = pixel_format_has_alpha(attribs.format);
 
 	wlr_addon_init(&fb->addon, &buf->addons, drm, &fb_addon_impl);
 	wl_list_insert(&drm->fbs, &fb->link);
