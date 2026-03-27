@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <wlr/interfaces/wlr_ext_image_capture_source_v1.h>
 #include <wlr/interfaces/wlr_output.h>
+#include <wlr/render/drm_syncobj.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_ext_image_capture_source_v1.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
@@ -30,6 +31,13 @@ struct wlr_ext_output_image_capture_source_v1 {
 	struct wlr_output *output;
 
 	struct wl_listener output_commit;
+	bool has_commit_waiter;
+	struct wlr_drm_syncobj_timeline_waiter commit_waiter;
+	struct {
+		pixman_region32_t damage;
+		struct wlr_buffer *buffer;
+		struct timespec when;
+	} next_event;
 
 	struct output_cursor_source cursor;
 
@@ -122,6 +130,28 @@ static void source_update_buffer_constraints(struct wlr_ext_output_image_capture
 		output->swapchain, output->renderer);
 }
 
+static void source_send_frame_event(
+		struct wlr_ext_output_image_capture_source_v1 *source) {
+	struct wlr_ext_output_image_capture_source_v1_frame_event frame_event = {
+		.base = {
+			.damage = &source->next_event.damage,
+		},
+		.buffer = source->next_event.buffer,
+		.when = source->next_event.when,
+	};
+	wl_signal_emit_mutable(&source->base.events.frame, &frame_event);
+	wlr_buffer_unlock(source->next_event.buffer);
+	source->next_event.buffer = NULL;
+}
+
+static void source_handle_commit_ready(
+		struct wlr_drm_syncobj_timeline_waiter *waiter) {
+	struct wlr_ext_output_image_capture_source_v1 *source = wl_container_of(waiter, source, commit_waiter);
+	source_send_frame_event(source);
+	source->has_commit_waiter = false;
+	wlr_drm_syncobj_timeline_waiter_finish(waiter);
+}
+
 static void source_handle_output_commit(struct wl_listener *listener,
 		void *data) {
 	struct wlr_ext_output_image_capture_source_v1 *source = wl_container_of(listener, source, output_commit);
@@ -132,29 +162,35 @@ static void source_handle_output_commit(struct wl_listener *listener,
 		source_update_buffer_constraints(source);
 	}
 
+	if (source->num_started == 0) {
+		return;
+	}
+
 	if (event->state->committed & WLR_OUTPUT_STATE_BUFFER) {
 		struct wlr_buffer *buffer = event->state->buffer;
 
-		pixman_region32_t full_damage;
-		pixman_region32_init_rect(&full_damage, 0, 0, buffer->width, buffer->height);
+		wlr_buffer_unlock(source->next_event.buffer);
+		source->next_event.buffer = wlr_buffer_lock(buffer);
+		source->next_event.when = event->when; // TODO: predict next presentation time instead
 
-		const pixman_region32_t *damage;
 		if (event->state->committed & WLR_OUTPUT_STATE_DAMAGE) {
-			damage = &event->state->damage;
+			pixman_region32_copy(&source->next_event.damage, &event->state->damage);
 		} else {
-			damage = &full_damage;
+			pixman_region32_clear(&source->next_event.damage);
+			pixman_region32_union_rect(&source->next_event.damage,
+				&source->next_event.damage, 0, 0, buffer->width, buffer->height);
 		}
 
-		struct wlr_ext_output_image_capture_source_v1_frame_event frame_event = {
-			.base = {
-				.damage = damage,
-			},
-			.buffer = buffer,
-			.when = event->when, // TODO: predict next presentation time instead
-		};
-		wl_signal_emit_mutable(&source->base.events.frame, &frame_event);
-
-		pixman_region32_fini(&full_damage);
+		if (event->state->committed & WLR_OUTPUT_STATE_WAIT_TIMELINE) {
+			if (source->has_commit_waiter) {
+				wlr_drm_syncobj_timeline_waiter_finish(&source->commit_waiter);
+			}
+			source->has_commit_waiter = wlr_drm_syncobj_timeline_waiter_init(
+				&source->commit_waiter, event->state->wait_timeline, event->state->wait_point,
+				0, event->output->event_loop, source_handle_commit_ready);
+		} else {
+			source_send_frame_event(source);
+		}
 	}
 }
 
@@ -168,6 +204,11 @@ static void output_addon_destroy(struct wlr_addon *addon) {
 	output_cursor_source_finish(&source->cursor);
 	wl_list_remove(&source->output_commit.link);
 	wlr_addon_finish(&source->addon);
+	if (source->has_commit_waiter) {
+		wlr_drm_syncobj_timeline_waiter_finish(&source->commit_waiter);
+	}
+	pixman_region32_fini(&source->next_event.damage);
+	wlr_buffer_unlock(source->next_event.buffer);
 	free(source);
 }
 
@@ -206,6 +247,7 @@ static void output_manager_handle_create_source(struct wl_client *client,
 		source_update_buffer_constraints(source);
 
 		output_cursor_source_init(&source->cursor, output);
+		pixman_region32_init(&source->next_event.damage);
 	}
 
 	if (!wlr_ext_image_capture_source_v1_create_resource(&source->base, client, new_id)) {
