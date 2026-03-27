@@ -15,6 +15,7 @@
 #include <time.h>
 
 struct wlr_renderer;
+struct wlr_drm_syncobj_timeline;
 
 struct wlr_ext_image_copy_capture_manager_v1 {
 	struct wl_global *global;
@@ -82,6 +83,7 @@ void wlr_ext_image_copy_capture_frame_v1_fail(struct wlr_ext_image_copy_capture_
  * Copy a struct wlr_buffer into the client-provided buffer for the frame.
  */
 bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_capture_frame_v1 *frame,
-	struct wlr_buffer *src, struct wlr_renderer *renderer);
+	struct wlr_buffer *src, struct wlr_renderer *renderer,
+	struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point);
 
 #endif
