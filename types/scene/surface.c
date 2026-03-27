@@ -97,39 +97,19 @@ static void handle_scene_buffer_outputs_update(
 	struct wlr_scene_outputs_update_event *event = data;
 	struct wlr_scene *scene = scene_node_get_root(&surface->buffer->node);
 
+	struct wlr_scene_output *scene_output;
+	wl_list_for_each(scene_output, &scene->outputs, link) {
+		wlr_surface_queue_lazy_leave(surface->surface, scene_output->output);
+	}
+	for (size_t i = 0; i < event->size; i++) {
+		wlr_surface_send_enter(surface->surface, event->active[i]->output);
+	}
+	wlr_surface_process_lazy_leaves(surface->surface);
+
 	// If the surface is no longer visible on any output, keep the last sent
 	// preferred configuration to avoid unnecessary redraws
 	if (event->size == 0) {
 		return;
-	}
-
-	// To avoid sending redundant leave/enter events when a surface is hidden and then shown
-	// without moving to a different output the following policy is implemented:
-	//
-	// 1. When a surface transitions from being visible on >0 outputs to being visible on 0 outputs
-	//    don't send any leave events.
-	//
-	// 2. When a surface transitions from being visible on 0 outputs to being visible on >0 outputs
-	//    send leave events for all entered outputs on which the surface is no longer visible as
-	//    well as enter events for any outputs not already entered.
-	struct wlr_surface_output *entered_output, *tmp;
-	wl_list_for_each_safe(entered_output, tmp, &surface->surface->current_outputs, link) {
-		bool active = false;
-		for (size_t i = 0; i < event->size; i++) {
-			if (entered_output->output == event->active[i]->output) {
-				active = true;
-				break;
-			}
-		}
-		if (!active) {
-			wlr_surface_send_leave(surface->surface, entered_output->output);
-		}
-	}
-
-	for (size_t i = 0; i < event->size; i++) {
-		// This function internally checks if an enter event was already sent for the output
-		// to avoid sending redundant events.
-		wlr_surface_send_enter(surface->surface, event->active[i]->output);
 	}
 
 	double scale = get_surface_preferred_buffer_scale(surface->surface);
