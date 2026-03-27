@@ -111,6 +111,15 @@ bool wlr_box_intersects(const struct wlr_box *a, const struct wlr_box *b) {
 		a->y < b->y + b->height && b->y < a->y + a->height;
 }
 
+bool wlr_fbox_intersects(const struct wlr_fbox *a, const struct wlr_fbox *b) {
+	if (wlr_fbox_empty(a) || wlr_fbox_empty(b)) {
+		return false;
+	}
+
+	return a->x < b->x + b->width && b->x < a->x + a->width &&
+		a->y < b->y + b->height && b->y < a->y + a->height;
+}
+
 void wlr_box_transform(struct wlr_box *dest, const struct wlr_box *box,
 		enum wl_output_transform transform, int width, int height) {
 	struct wlr_box src = {0};
