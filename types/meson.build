@@ -38,6 +38,7 @@ wlr_files += files(
 	'buffer/readonly_data.c',
 	'buffer/resource.c',
 	'wlr_alpha_modifier_v1.c',
+	'wlr_ext_background_effect_v1.c',
 	'wlr_color_management_v1.c',
 	'wlr_color_representation_v1.c',
 	'wlr_compositor.c',
