@@ -41,6 +41,8 @@ struct wlr_ext_output_image_capture_source_v1_frame_event {
 	struct wlr_ext_image_capture_source_v1_frame_event base;
 	struct wlr_buffer *buffer;
 	struct timespec when;
+	struct wlr_drm_syncobj_timeline *wait_timeline;
+	uint64_t wait_point;
 };
 
 static void output_source_start(struct wlr_ext_image_capture_source_v1 *base,
@@ -86,7 +88,8 @@ static void output_source_copy_frame(struct wlr_ext_image_capture_source_v1 *bas
 		wl_container_of(base_event, event, base);
 
 	if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
-			event->buffer, source->output->renderer)) {
+			event->buffer, source->output->renderer,
+			event->wait_timeline, event->wait_point)) {
 		wlr_ext_image_copy_capture_frame_v1_ready(frame,
 			source->output->transform, &event->when);
 	}
@@ -152,6 +155,10 @@ static void source_handle_output_commit(struct wl_listener *listener,
 			.buffer = buffer,
 			.when = event->when, // TODO: predict next presentation time instead
 		};
+		if (event->state->committed & WLR_OUTPUT_STATE_WAIT_TIMELINE) {
+			frame_event.wait_timeline = event->state->wait_timeline;
+			frame_event.wait_point = event->state->wait_point;
+		}
 		wl_signal_emit_mutable(&source->base.events.frame, &frame_event);
 
 		pixman_region32_fini(&full_damage);
@@ -279,6 +286,8 @@ static void output_cursor_source_copy_frame(struct wlr_ext_image_capture_source_
 		struct wlr_ext_image_copy_capture_frame_v1 *frame,
 		struct wlr_ext_image_capture_source_v1_frame_event *base_event) {
 	struct output_cursor_source *cursor_source = wl_container_of(base, cursor_source, base);
+	struct wlr_ext_output_image_capture_source_v1_frame_event *event =
+		wl_container_of(base_event, event, base);
 
 	struct wlr_buffer *src_buffer = cursor_source->output->cursor_front_buffer;
 	if (src_buffer == NULL) {
@@ -287,7 +296,8 @@ static void output_cursor_source_copy_frame(struct wlr_ext_image_capture_source_
 	}
 
 	if (!wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
-			src_buffer, cursor_source->output->renderer)) {
+			src_buffer, cursor_source->output->renderer,
+			event->wait_timeline, event->wait_point)) {
 		return;
 	}
 

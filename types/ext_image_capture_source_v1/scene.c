@@ -149,7 +149,7 @@ static void source_copy_frame(struct wlr_ext_image_capture_source_v1 *base,
 	struct scene_node_source_frame_event *event = wl_container_of(base_event, event, base);
 
 	if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
-			event->buffer, source->output.renderer)) {
+			event->buffer, source->output.renderer, NULL, 0)) {
 		wlr_ext_image_copy_capture_frame_v1_ready(frame,
 			source->output.transform, &event->when);
 	}
