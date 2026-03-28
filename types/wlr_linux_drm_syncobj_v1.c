@@ -232,15 +232,13 @@ static void surface_commit_handle_surface_destroy(struct wl_listener *listener,
 	surface_commit_destroy(commit);
 }
 
-// Block the surface commit until the fence materializes
+// Block the surface commit until the fence signals
 static bool lock_surface_commit(struct wlr_linux_drm_syncobj_surface_v1 *surface,
 		struct wlr_drm_syncobj_timeline *timeline, uint64_t point) {
-	uint32_t flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE;
-
-	bool already_materialized = false;
-	if (!wlr_drm_syncobj_timeline_check(timeline, point, flags, &already_materialized)) {
+	bool already_signaled = false;
+	if (!wlr_drm_syncobj_timeline_check(timeline, point, 0, &already_signaled)) {
 		return false;
-	} else if (already_materialized) {
+	} else if (already_signaled) {
 		return true;
 	}
 
@@ -253,7 +251,7 @@ static bool lock_surface_commit(struct wlr_linux_drm_syncobj_surface_v1 *surface
 	struct wl_display *display = wl_client_get_display(client);
 	struct wl_event_loop *loop = wl_display_get_event_loop(display);
 	if (!wlr_drm_syncobj_timeline_waiter_init(&commit->waiter, timeline, point,
-			flags, loop, surface_commit_handle_waiter_ready)) {
+			0, loop, surface_commit_handle_waiter_ready)) {
 		free(commit);
 		return false;
 	}
