@@ -43,6 +43,7 @@ protocols = {
 	'single-pixel-buffer-v1': wl_protocol_dir / 'staging/single-pixel-buffer/single-pixel-buffer-v1.xml',
 	'xdg-activation-v1': wl_protocol_dir / 'staging/xdg-activation/xdg-activation-v1.xml',
 	'xdg-dialog-v1': wl_protocol_dir / 'staging/xdg-dialog/xdg-dialog-v1.xml',
+	'xdg-session-management-v1': wl_protocol_dir / 'staging/xdg-session-management/xdg-session-management-v1.xml',
 	'xdg-system-bell-v1': wl_protocol_dir / 'staging/xdg-system-bell/xdg-system-bell-v1.xml',
 	'xdg-toplevel-icon-v1': wl_protocol_dir / 'staging/xdg-toplevel-icon/xdg-toplevel-icon-v1.xml',
 	'xdg-toplevel-tag-v1': wl_protocol_dir / 'staging/xdg-toplevel-tag/xdg-toplevel-tag-v1.xml',
