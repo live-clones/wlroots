@@ -20,6 +20,7 @@ struct scene_node_source {
 	struct wlr_scene_output *scene_output;
 
 	size_t num_started;
+	bool resizing;
 
 	struct wl_listener node_destroy;
 	struct wl_listener scene_output_destroy;
@@ -85,13 +86,25 @@ static void source_render(struct scene_node_source *source) {
 		return;
 	}
 
+	struct wlr_output_state state;
+	bool ok = true;
+	if (!source->output.enabled || source->output.current_mode == NULL
+			|| source->output.current_mode->width != extents.width
+			|| source->output.current_mode->height != extents.height) {
+		// Scene cannot attempt direct scanout on a commit that sets the mode
+		source->resizing = true;
+		wlr_output_state_init(&state);
+		wlr_output_state_set_enabled(&state, true);
+		wlr_output_state_set_custom_mode(&state, extents.width, extents.height, 0);
+		ok &= wlr_output_commit_state(scene_output->output, &state);
+		wlr_output_state_finish(&state);
+		source->resizing = false;
+	}
+
 	wlr_scene_output_set_position(scene_output, extents.x, extents.y);
 
-	struct wlr_output_state state;
 	wlr_output_state_init(&state);
-	wlr_output_state_set_enabled(&state, true);
-	wlr_output_state_set_custom_mode(&state, extents.width, extents.height, 0);
-	bool ok = wlr_scene_output_build_state(scene_output, &state, NULL) &&
+	ok &= wlr_scene_output_build_state(scene_output, &state, NULL) &&
 		wlr_output_commit_state(scene_output->output, &state);
 	wlr_output_state_finish(&state);
 
@@ -215,6 +228,10 @@ static bool output_commit(struct wlr_output *output, const struct wlr_output_sta
 
 	if (state->committed & WLR_OUTPUT_STATE_MODE) {
 		source_update_buffer_constraints(source, state);
+	}
+
+	if (source->resizing) {
+		return true;
 	}
 
 	if (!(state->committed & WLR_OUTPUT_STATE_BUFFER)) {
