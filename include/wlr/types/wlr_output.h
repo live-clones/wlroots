@@ -47,8 +47,7 @@ struct wlr_output_cursor {
 	int32_t hotspot_x, hotspot_y;
 	struct wlr_texture *texture;
 	bool own_texture;
-	struct wlr_drm_syncobj_timeline *wait_timeline;
-	uint64_t wait_point;
+	struct wlr_surface *surface;
 	struct wl_list link;
 
 	struct {
@@ -442,7 +441,8 @@ void wlr_output_lock_software_cursors(struct wlr_output *output, bool lock);
  * This is a utility function that can be called when compositors render.
  */
 void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
-	struct wlr_render_pass *render_pass, const pixman_region32_t *damage);
+	struct wlr_render_pass *render_pass, const pixman_region32_t *damage,
+	struct wlr_drm_syncobj_timeline *release_timeline, uint64_t release_point);
 /**
  * Get the set of DRM formats suitable for the primary buffer, assuming a
  * buffer with the specified capabilities.

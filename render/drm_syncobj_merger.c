@@ -79,14 +79,7 @@ void wlr_drm_syncobj_merger_unref(struct wlr_drm_syncobj_merger *merger) {
 static bool merger_add_exportable(struct wlr_drm_syncobj_merger *merger,
 		struct wlr_drm_syncobj_timeline *src_timeline, uint64_t src_point) {
 	int new_sync = wlr_drm_syncobj_timeline_export_sync_file(src_timeline, src_point);
-	if (merger->sync_fd != -1) {
-		int fd2 = new_sync;
-		new_sync = sync_file_merge(merger->sync_fd, fd2);
-		close(fd2);
-		close(merger->sync_fd);
-	}
-	merger->sync_fd = new_sync;
-	return true;
+	return wlr_drm_syncobj_merger_add_sync_file(merger, new_sync);
 }
 
 struct export_waiter {
@@ -130,4 +123,16 @@ bool wlr_drm_syncobj_merger_add(struct wlr_drm_syncobj_merger *merger,
 	add->src_point = src_point;
 	merger->n_ref++;
 	return true;
+}
+
+bool wlr_drm_syncobj_merger_add_sync_file(struct wlr_drm_syncobj_merger *merger,
+		int fd) {
+	int new_sync = fd;
+	if (merger->sync_fd != -1) {
+		new_sync = sync_file_merge(merger->sync_fd, fd);
+		close(fd);
+		close(merger->sync_fd);
+	}
+	merger->sync_fd = new_sync;
+	return merger->sync_fd != -1;
 }
