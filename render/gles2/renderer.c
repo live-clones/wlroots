@@ -20,12 +20,6 @@
 #include "render/pixel_format.h"
 #include "util/time.h"
 
-#include "common_vert_src.h"
-#include "quad_frag_src.h"
-#include "tex_rgba_frag_src.h"
-#include "tex_rgbx_frag_src.h"
-#include "tex_external_frag_src.h"
-
 static const struct wlr_renderer_impl renderer_impl;
 static const struct wlr_render_timer_impl render_timer_impl;
 
@@ -33,7 +27,7 @@ bool wlr_renderer_is_gles2(const struct wlr_renderer *wlr_renderer) {
 	return wlr_renderer->impl == &renderer_impl;
 }
 
-struct wlr_gles2_renderer *gles2_get_renderer(
+struct wlr_gles2_renderer *wlr_gles2_renderer_from_renderer(
 		struct wlr_renderer *wlr_renderer) {
 	assert(wlr_renderer_is_gles2(wlr_renderer));
 	struct wlr_gles2_renderer *renderer = wl_container_of(wlr_renderer, renderer, wlr_renderer);
@@ -57,13 +51,13 @@ static void destroy_buffer(struct wlr_gles2_buffer *buffer) {
 	struct wlr_egl_context prev_ctx;
 	wlr_egl_make_current(buffer->renderer->egl, &prev_ctx);
 
-	push_gles2_debug(buffer->renderer);
+	 wlr_gles2_push_debug(buffer->renderer);
 
 	glDeleteFramebuffers(1, &buffer->fbo);
 	glDeleteRenderbuffers(1, &buffer->rbo);
 	glDeleteTextures(1, &buffer->tex);
 
-	pop_gles2_debug(buffer->renderer);
+	wlr_gles2_pop_debug(buffer->renderer);
 
 	wlr_egl_destroy_image(buffer->renderer->egl, buffer->image);
 
@@ -93,7 +87,7 @@ GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer) {
 		return buffer->fbo;
 	}
 
-	push_gles2_debug(buffer->renderer);
+	 wlr_gles2_push_debug(buffer->renderer);
 
 	if (!buffer->rbo) {
 		glGenRenderbuffers(1, &buffer->rbo);
@@ -116,7 +110,7 @@ GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer) {
 		buffer->fbo = 0;
 	}
 
-	pop_gles2_debug(buffer->renderer);
+	wlr_gles2_pop_debug(buffer->renderer);
 
 	return buffer->fbo;
 }
@@ -166,7 +160,7 @@ error_buffer:
 
 static const struct wlr_drm_format_set *gles2_get_texture_formats(
 		struct wlr_renderer *wlr_renderer, uint32_t buffer_caps) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 	if (buffer_caps & WLR_BUFFER_CAP_DMABUF) {
 		return wlr_egl_get_dmabuf_texture_formats(renderer->egl);
 	} else if (buffer_caps & WLR_BUFFER_CAP_DATA_PTR) {
@@ -178,13 +172,13 @@ static const struct wlr_drm_format_set *gles2_get_texture_formats(
 
 static const struct wlr_drm_format_set *gles2_get_render_formats(
 		struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 	return wlr_egl_get_dmabuf_render_formats(renderer->egl);
 }
 
 static int gles2_get_drm_fd(struct wlr_renderer *wlr_renderer) {
 	struct wlr_gles2_renderer *renderer =
-		gles2_get_renderer(wlr_renderer);
+		wlr_gles2_renderer_from_renderer(wlr_renderer);
 
 	if (renderer->drm_fd < 0) {
 		renderer->drm_fd = wlr_egl_dup_drm_fd(renderer->egl);
@@ -195,12 +189,12 @@ static int gles2_get_drm_fd(struct wlr_renderer *wlr_renderer) {
 
 struct wlr_egl *wlr_gles2_renderer_get_egl(struct wlr_renderer *wlr_renderer) {
 	struct wlr_gles2_renderer *renderer =
-		gles2_get_renderer(wlr_renderer);
+		wlr_gles2_renderer_from_renderer(wlr_renderer);
 	return renderer->egl;
 }
 
 static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 
 	wlr_egl_make_current(renderer->egl, NULL);
 
@@ -213,13 +207,6 @@ static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
 	wl_list_for_each_safe(buffer, buffer_tmp, &renderer->buffers, link) {
 		destroy_buffer(buffer);
 	}
-
-	push_gles2_debug(renderer);
-	glDeleteProgram(renderer->shaders.quad.program);
-	glDeleteProgram(renderer->shaders.tex_rgba.program);
-	glDeleteProgram(renderer->shaders.tex_rgbx.program);
-	glDeleteProgram(renderer->shaders.tex_ext.program);
-	pop_gles2_debug(renderer);
 
 	if (renderer->exts.KHR_debug) {
 		glDisable(GL_DEBUG_OUTPUT_KHR);
@@ -240,7 +227,7 @@ static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
 
 static struct wlr_render_pass *gles2_begin_buffer_pass(struct wlr_renderer *wlr_renderer,
 		struct wlr_buffer *wlr_buffer, const struct wlr_buffer_pass_options *options) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 
 	struct wlr_egl_context prev_ctx = {0};
 	if (!wlr_egl_make_current(renderer->egl, &prev_ctx)) {
@@ -268,7 +255,7 @@ static struct wlr_render_pass *gles2_begin_buffer_pass(struct wlr_renderer *wlr_
 
 GLuint wlr_gles2_renderer_get_buffer_fbo(struct wlr_renderer *wlr_renderer,
 		struct wlr_buffer *wlr_buffer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 	GLuint fbo = 0;
 
 	struct wlr_egl_context prev_ctx = {0};
@@ -286,7 +273,7 @@ GLuint wlr_gles2_renderer_get_buffer_fbo(struct wlr_renderer *wlr_renderer,
 }
 
 static struct wlr_render_timer *gles2_render_timer_create(struct wlr_renderer *wlr_renderer) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 	if (!renderer->exts.EXT_disjoint_timer_query) {
 		wlr_log(WLR_ERROR, "can't create timer, EXT_disjoint_timer_query not available");
 		return NULL;
@@ -367,7 +354,7 @@ static const struct wlr_render_timer_impl render_timer_impl = {
 	.destroy = gles2_render_timer_destroy,
 };
 
-void push_gles2_debug_(struct wlr_gles2_renderer *renderer,
+void wlr_gles2_push_debug_(struct wlr_gles2_renderer *renderer,
 		const char *file, const char *func) {
 	if (!renderer->procs.glPushDebugGroupKHR) {
 		return;
@@ -379,7 +366,7 @@ void push_gles2_debug_(struct wlr_gles2_renderer *renderer,
 	renderer->procs.glPushDebugGroupKHR(GL_DEBUG_SOURCE_APPLICATION_KHR, 1, -1, str);
 }
 
-void pop_gles2_debug(struct wlr_gles2_renderer *renderer) {
+void wlr_gles2_pop_debug(struct wlr_gles2_renderer *renderer) {
 	if (renderer->procs.glPopDebugGroupKHR) {
 		renderer->procs.glPopDebugGroupKHR();
 	}
@@ -407,7 +394,7 @@ static void gles2_log(GLenum src, GLenum type, GLuint id, GLenum severity,
 
 static GLuint compile_shader(struct wlr_gles2_renderer *renderer,
 		GLenum type, const GLchar *src) {
-	push_gles2_debug(renderer);
+	 wlr_gles2_push_debug(renderer);
 
 	GLuint shader = glCreateShader(type);
 	glShaderSource(shader, 1, &src, NULL);
@@ -421,13 +408,13 @@ static GLuint compile_shader(struct wlr_gles2_renderer *renderer,
 		shader = 0;
 	}
 
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
 	return shader;
 }
 
-static GLuint link_program(struct wlr_gles2_renderer *renderer,
+GLuint wlr_gles2_link_program(struct wlr_gles2_renderer *renderer,
 		const GLchar *vert_src, const GLchar *frag_src) {
-	push_gles2_debug(renderer);
+	 wlr_gles2_push_debug(renderer);
 
 	GLuint vert = compile_shader(renderer, GL_VERTEX_SHADER, vert_src);
 	if (!vert) {
@@ -458,11 +445,11 @@ static GLuint link_program(struct wlr_gles2_renderer *renderer,
 		goto error;
 	}
 
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
 	return prog;
 
 error:
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
 	return 0;
 }
 
@@ -630,57 +617,6 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 			GL_DEBUG_TYPE_PUSH_GROUP_KHR, GL_DONT_CARE, 0, NULL, GL_FALSE);
 	}
 
-	push_gles2_debug(renderer);
-
-	GLuint prog;
-	renderer->shaders.quad.program = prog =
-		link_program(renderer, common_vert_src, quad_frag_src);
-	if (!renderer->shaders.quad.program) {
-		goto error;
-	}
-	renderer->shaders.quad.proj = glGetUniformLocation(prog, "proj");
-	renderer->shaders.quad.color = glGetUniformLocation(prog, "color");
-	renderer->shaders.quad.pos_attrib = glGetAttribLocation(prog, "pos");
-
-	renderer->shaders.tex_rgba.program = prog =
-		link_program(renderer, common_vert_src, tex_rgba_frag_src);
-	if (!renderer->shaders.tex_rgba.program) {
-		goto error;
-	}
-	renderer->shaders.tex_rgba.proj = glGetUniformLocation(prog, "proj");
-	renderer->shaders.tex_rgba.tex_proj = glGetUniformLocation(prog, "tex_proj");
-	renderer->shaders.tex_rgba.tex = glGetUniformLocation(prog, "tex");
-	renderer->shaders.tex_rgba.alpha = glGetUniformLocation(prog, "alpha");
-	renderer->shaders.tex_rgba.pos_attrib = glGetAttribLocation(prog, "pos");
-
-	renderer->shaders.tex_rgbx.program = prog =
-		link_program(renderer, common_vert_src, tex_rgbx_frag_src);
-	if (!renderer->shaders.tex_rgbx.program) {
-		goto error;
-	}
-	renderer->shaders.tex_rgbx.proj = glGetUniformLocation(prog, "proj");
-	renderer->shaders.tex_rgbx.tex_proj = glGetUniformLocation(prog, "tex_proj");
-	renderer->shaders.tex_rgbx.tex = glGetUniformLocation(prog, "tex");
-	renderer->shaders.tex_rgbx.alpha = glGetUniformLocation(prog, "alpha");
-	renderer->shaders.tex_rgbx.pos_attrib = glGetAttribLocation(prog, "pos");
-
-	if (renderer->exts.OES_egl_image_external) {
-		renderer->shaders.tex_ext.program = prog =
-			link_program(renderer, common_vert_src, tex_external_frag_src);
-		if (!renderer->shaders.tex_ext.program) {
-			goto error;
-		}
-		renderer->shaders.tex_ext.proj = glGetUniformLocation(prog, "proj");
-		renderer->shaders.tex_ext.tex_proj = glGetUniformLocation(prog, "tex_proj");
-		renderer->shaders.tex_ext.tex = glGetUniformLocation(prog, "tex");
-		renderer->shaders.tex_ext.alpha = glGetUniformLocation(prog, "alpha");
-		renderer->shaders.tex_ext.pos_attrib = glGetAttribLocation(prog, "pos");
-	}
-
-	pop_gles2_debug(renderer);
-
-	wlr_egl_unset_current(renderer->egl);
-
 	get_gles2_shm_formats(renderer, &renderer->shm_texture_formats);
 
 	int drm_fd = wlr_renderer_get_drm_fd(&renderer->wlr_renderer);
@@ -691,28 +627,10 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	}
 
 	return &renderer->wlr_renderer;
-
-error:
-	glDeleteProgram(renderer->shaders.quad.program);
-	glDeleteProgram(renderer->shaders.tex_rgba.program);
-	glDeleteProgram(renderer->shaders.tex_rgbx.program);
-	glDeleteProgram(renderer->shaders.tex_ext.program);
-
-	pop_gles2_debug(renderer);
-
-	if (renderer->exts.KHR_debug) {
-		glDisable(GL_DEBUG_OUTPUT_KHR);
-		renderer->procs.glDebugMessageCallbackKHR(NULL, NULL);
-	}
-
-	wlr_egl_unset_current(renderer->egl);
-
-	free(renderer);
-	return NULL;
 }
 
 bool wlr_gles2_renderer_check_ext(struct wlr_renderer *wlr_renderer,
 		const char *ext) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+	struct wlr_gles2_renderer *renderer = wlr_gles2_renderer_from_renderer(wlr_renderer);
 	return check_gl_ext(renderer->exts_str, ext);
 }

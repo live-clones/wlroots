@@ -1,8 +1,9 @@
 PKG_CONFIG?=pkg-config
 
 PKGS="wlroots-0.21" wayland-server xkbcommon
+CFLAGS_PIXMAN!=$(PKG_CONFIG) --cflags pixman-1
 CFLAGS_PKG_CONFIG!=$(PKG_CONFIG) --cflags $(PKGS)
-CFLAGS+=$(CFLAGS_PKG_CONFIG)
+CFLAGS+=$(CFLAGS_PIXMAN) $(CFLAGS_PKG_CONFIG)
 LIBS!=$(PKG_CONFIG) --libs $(PKGS)
 
 all: tinywl

@@ -5,6 +5,7 @@
 #include <wlr/render/allocator.h>
 #include <wlr/render/interface.h>
 #include <wlr/render/swapchain.h>
+#include <wlr/render/interface.h>
 #include <wlr/util/log.h>
 #include <xf86drm.h>
 #include "render/drm_format_set.h"
@@ -34,6 +35,12 @@ bool wlr_output_init_render(struct wlr_output *output,
 
 	output->allocator = allocator;
 	output->renderer = renderer;
+
+	get_or_create_render_rect_pass(renderer);
+	get_or_create_render_texture_pass(renderer);
+	get_or_create_render_submit_pass(renderer);
+
+	wl_signal_emit_mutable(&output->events.render_inited, output);
 
 	return true;
 }

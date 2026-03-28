@@ -3,17 +3,37 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <wlr/util/log.h>
-#include <wlr/render/color.h>
 #include <wlr/render/drm_syncobj.h>
 
 #include "render/color.h"
 #include "render/vulkan.h"
+#include "render/vulkan/shaders/quad.frag.h"
+#include "render/vulkan/shaders/texture.frag.h"
 #include "util/matrix.h"
 
 static const struct wlr_render_pass_impl render_pass_impl;
 static const struct wlr_addon_interface vk_color_transform_impl;
 
-static struct wlr_vk_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
+static bool create_shader_module(VkDevice dev, const uint32_t *code,
+		size_t code_size, const char *name, VkShaderModule *out) {
+	VkShaderModuleCreateInfo sinfo = {
+		.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+		.codeSize = code_size,
+		.pCode = code,
+	};
+
+	VkResult res = vkCreateShaderModule(dev, &sinfo, NULL, out);
+	if (res != VK_SUCCESS) {
+		wlr_log(WLR_ERROR, "Failed to create %s shader module: %s (%d)",
+			name, vulkan_strerror(res), res);
+		return false;
+	}
+
+	return true;
+}
+
+struct wlr_vk_render_pass *wlr_vk_render_pass_from_render_pass(
+		struct wlr_render_pass *wlr_pass) {
 	assert(wlr_pass->impl == &render_pass_impl);
 	struct wlr_vk_render_pass *pass = wl_container_of(wlr_pass, pass, base);
 	return pass;
@@ -175,8 +195,11 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 }
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
+	struct wlr_vk_render_submit_pass *submit_pass =
+		wlr_vk_render_submit_pass_from_pass(renderer->wlr_renderer.submit_pass);
+	assert(submit_pass != NULL);
 	struct wlr_vk_command_buffer *render_cb = pass->command_buffer;
 	struct wlr_vk_render_buffer *render_buffer = pass->render_buffer;
 	struct wlr_vk_command_buffer *stage_cb = NULL;
@@ -260,9 +283,9 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			}
 		}
 		bind_pipeline(pass, pipeline);
-		vkCmdPushConstants(render_cb->vk, renderer->output_pipe_layout,
+		vkCmdPushConstants(render_cb->vk, submit_pass->output.pipe_layout,
 			VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(vert_pcr_data), &vert_pcr_data);
-		vkCmdPushConstants(render_cb->vk, renderer->output_pipe_layout,
+		vkCmdPushConstants(render_cb->vk, submit_pass->output.pipe_layout,
 			VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data),
 			sizeof(frag_pcr_data), &frag_pcr_data);
 
@@ -270,7 +293,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		if (need_lut) {
 			lut_ds = transform->lut_3d.ds;
 		} else {
-			lut_ds = renderer->output_ds_lut3d_dummy;
+			lut_ds = submit_pass->output.ds_lut3d_dummy;
 		}
 		VkDescriptorSet ds[] = {
 			render_buffer->two_pass.blend_descriptor_set, // set 0
@@ -278,7 +301,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		};
 		size_t ds_len = sizeof(ds) / sizeof(ds[0]);
 		vkCmdBindDescriptorSets(render_cb->vk,
-			VK_PIPELINE_BIND_POINT_GRAPHICS, renderer->output_pipe_layout,
+			VK_PIPELINE_BIND_POINT_GRAPHICS, submit_pass->output.pipe_layout,
 			0, ds_len, ds, 0, NULL);
 
 		const pixman_region32_t *clip = rect_union_evaluate(&pass->updated_region);
@@ -638,7 +661,10 @@ static void render_pass_mark_box_updated(struct wlr_vk_render_pass *pass,
 
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
+	struct wlr_vk_render_rect_pass *rect_pass =
+		wlr_vk_render_rect_pass_from_pass(pass->renderer->wlr_renderer.rect_pass);
+	assert(rect_pass != NULL);
 	VkCommandBuffer cb = pass->command_buffer->vk;
 
 	// Input color values are given in sRGB space, shader expects
@@ -688,7 +714,9 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			&(struct wlr_vk_pipeline_key) {
 				.source = WLR_VK_SHADER_SOURCE_SINGLE_COLOR,
 				.layout = {0},
-			});
+			},
+			rect_pass->shader.vert_module,
+			rect_pass->shader.frag_module);
 		if (!pipe) {
 			pass->failed = true;
 			break;
@@ -740,8 +768,11 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
-	struct wlr_vk_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
 	struct wlr_vk_renderer *renderer = pass->renderer;
+	struct wlr_vk_render_texture_pass *texture_pass =
+		wlr_vk_render_texture_pass_from_pass(renderer->wlr_renderer.texture_pass);
+	assert(texture_pass != NULL);
 	VkCommandBuffer cb = pass->command_buffer->vk;
 
 	struct wlr_vk_texture *texture = vulkan_get_texture(options->texture);
@@ -839,7 +870,9 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 			.texture_transform = tex_transform,
 			.blend_mode = !texture->has_alpha && alpha == 1.0 ?
 				WLR_RENDER_BLEND_MODE_NONE : options->blend_mode,
-		});
+		},
+		texture_pass->shader.vert_module,
+		texture_pass->shader.frag_module);
 	if (!pipe) {
 		pass->failed = true;
 		return;
@@ -936,12 +969,21 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	}
 }
 
-static const struct wlr_render_pass_impl render_pass_impl = {
-	.submit = render_pass_submit,
-	.add_rect = render_pass_add_rect,
-	.add_texture = render_pass_add_texture,
-};
+static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
+	(void)wlr_pass;
+}
 
+static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
+	struct wlr_vk_render_pass *pass = wlr_vk_render_pass_from_render_pass(wlr_pass);
+	struct wlr_vk_renderer *renderer = pass->renderer;
+
+	return &renderer->wlr_renderer;
+}
+
+static const struct wlr_render_pass_impl render_pass_impl = {
+	.destroy = render_pass_destory,
+	.get_renderer = render_pass_get_renderer,
+};
 
 void vk_color_transform_destroy(struct wlr_addon *addon) {
 	struct wlr_vk_renderer *renderer = (struct wlr_vk_renderer *)addon->owner;
@@ -965,6 +1007,12 @@ static bool create_3d_lut_image(struct wlr_vk_renderer *renderer,
 		VkImage *image, VkImageView *image_view,
 		VkDeviceMemory *memory, VkDescriptorSet *ds,
 		struct wlr_vk_descriptor_pool **ds_pool) {
+	struct wlr_vk_render_submit_pass *submit_pass =
+		wlr_vk_render_submit_pass_from_pass(renderer->wlr_renderer.submit_pass);;
+	if (submit_pass == NULL) {
+		return false;
+	}
+
 	VkDevice dev = renderer->dev->dev;
 	VkResult res;
 
@@ -1103,7 +1151,7 @@ static bool create_3d_lut_image(struct wlr_vk_renderer *renderer,
 		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_SHADER_READ_BIT);
 
 	*ds_pool = vulkan_alloc_texture_ds(renderer,
-		renderer->output_ds_lut3d_layout, ds);
+		submit_pass->output.ds_lut3d_layout, ds);
 	if (!*ds_pool) {
 		wlr_log(WLR_ERROR, "Failed to allocate descriptor");
 		goto fail_imageview;
@@ -1272,9 +1320,12 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		return NULL;
 	}
 
-	if (!renderer->dummy3d_image_transitioned) {
-		renderer->dummy3d_image_transitioned = true;
-		vulkan_change_layout(cb->vk, renderer->dummy3d_image,
+	struct wlr_vk_render_submit_pass *submit_pass =
+		wlr_vk_render_submit_pass_from_pass(renderer->wlr_renderer.submit_pass);
+	assert(submit_pass != NULL);
+	if (!submit_pass->output.dummy3d_image_transitioned) {
+		submit_pass->output.dummy3d_image_transitioned = true;
+		vulkan_change_layout(cb->vk, submit_pass->output.dummy3d_image,
 			VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
 			0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, VK_ACCESS_SHADER_READ_BIT);
@@ -1308,5 +1359,192 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	pass->render_buffer_out = buffer_out;
 	pass->render_setup = render_setup;
 	pass->command_buffer = cb;
+	return pass;
+}
+
+static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
+	struct wlr_vk_render_rect_pass *vk_pass =
+		wlr_vk_render_rect_pass_from_pass(pass);
+	if (vk_pass->shader.vert_module != VK_NULL_HANDLE) {
+		vkDestroyShaderModule(vk_pass->renderer->dev->dev,
+			vk_pass->shader.vert_module, NULL);
+	}
+	if (vk_pass->shader.frag_module != VK_NULL_HANDLE) {
+		vkDestroyShaderModule(vk_pass->renderer->dev->dev,
+			vk_pass->shader.frag_module, NULL);
+	}
+	free(vk_pass);
+}
+
+static const struct wlr_render_rect_pass_impl render_rect_pass_impl = {
+	.destroy = render_rect_pass_destroy,
+	.render = render_pass_add_rect,
+};
+
+struct wlr_render_rect_pass *wlr_vk_render_rect_pass_create(
+		struct wlr_renderer *wlr_renderer) {
+	struct wlr_vk_render_rect_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_vk_render_rect_pass");
+		return NULL;
+	}
+	wlr_render_rect_pass_init(&pass->base, &render_rect_pass_impl);
+
+	struct wlr_vk_renderer *renderer = vulkan_get_renderer(wlr_renderer);
+	pass->renderer = renderer;
+	pass->shader.vert_module = vulkan_create_common_vert_module(renderer);
+	if (pass->shader.vert_module == VK_NULL_HANDLE) {
+		render_rect_pass_destroy(&pass->base);
+		return NULL;
+	}
+
+	VkDevice dev = renderer->dev->dev;
+	if (!create_shader_module(dev, quad_frag_data, sizeof(quad_frag_data),
+			"quad fragment", &pass->shader.frag_module)) {
+		render_rect_pass_destroy(&pass->base);
+		return NULL;
+	}
+
+	return &pass->base;
+}
+
+bool wlr_render_rect_pass_is_vk(const struct wlr_render_rect_pass *rect_pass) {
+	return rect_pass->impl == &render_rect_pass_impl;
+}
+
+struct wlr_vk_render_rect_pass *wlr_vk_render_rect_pass_from_pass(
+		struct wlr_render_rect_pass *rect_pass) {
+	if (!wlr_render_rect_pass_is_vk(rect_pass)) {
+		return NULL;
+	}
+
+	struct wlr_vk_render_rect_pass *pass =
+		wl_container_of(rect_pass, pass, base);
+
+	return pass;
+}
+
+static void render_texture_pass_destroy(struct wlr_render_texture_pass *pass) {
+	struct wlr_vk_render_texture_pass *vk_pass =
+		wlr_vk_render_texture_pass_from_pass(pass);
+	if (vk_pass->shader.vert_module != VK_NULL_HANDLE) {
+		vkDestroyShaderModule(vk_pass->renderer->dev->dev,
+			vk_pass->shader.vert_module, NULL);
+	}
+	if (vk_pass->shader.frag_module != VK_NULL_HANDLE) {
+		vkDestroyShaderModule(vk_pass->renderer->dev->dev,
+			vk_pass->shader.frag_module, NULL);
+	}
+	free(vk_pass);
+}
+
+static const struct wlr_render_texture_pass_impl render_texture_pass_impl = {
+	.destroy = render_texture_pass_destroy,
+	.render = render_pass_add_texture,
+};
+
+struct wlr_render_texture_pass *wlr_vk_render_texture_pass_create(
+		struct wlr_renderer *wlr_renderer) {
+	struct wlr_vk_render_texture_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_vk_render_texture_pass");
+		return NULL;
+	}
+	wlr_render_texture_pass_init(&pass->base, &render_texture_pass_impl);
+
+	struct wlr_vk_renderer *renderer = vulkan_get_renderer(wlr_renderer);
+	pass->renderer = renderer;
+	pass->shader.vert_module = vulkan_create_common_vert_module(renderer);
+	if (pass->shader.vert_module == VK_NULL_HANDLE) {
+		render_texture_pass_destroy(&pass->base);
+		return NULL;
+	}
+
+	VkDevice dev = renderer->dev->dev;
+	if (!create_shader_module(dev, texture_frag_data, sizeof(texture_frag_data),
+			"texture fragment", &pass->shader.frag_module)) {
+		render_texture_pass_destroy(&pass->base);
+		return NULL;
+	}
+
+	return &pass->base;
+}
+bool wlr_render_texture_pass_is_vk(const struct wlr_render_texture_pass *texture_pass) {
+	return texture_pass->impl == &render_texture_pass_impl;
+}
+
+struct wlr_vk_render_texture_pass *wlr_vk_render_texture_pass_from_pass(
+		const struct wlr_render_texture_pass *texture_pass) {
+	if (!wlr_render_texture_pass_is_vk(texture_pass)) {
+		return NULL;
+	}
+
+	struct wlr_vk_render_texture_pass *vk_pass = wl_container_of(texture_pass, vk_pass, base);
+
+	return vk_pass;
+}
+
+static void render_submit_pass_destroy(struct wlr_render_submit_pass *pass) {
+	struct wlr_vk_render_submit_pass *vk_pass =
+		wlr_vk_render_submit_pass_from_pass(pass);
+	VkDevice dev = vk_pass->renderer->dev->dev;
+
+	struct wlr_vk_descriptor_pool *pool, *tmp_pool;
+	wl_list_for_each_safe(pool, tmp_pool, &vk_pass->output.descriptor_pools, link) {
+		vkDestroyDescriptorPool(dev, pool->pool, NULL);
+		free(pool);
+	}
+
+	vkDestroyShaderModule(dev, vk_pass->output.vert_module, NULL);
+	vkDestroyShaderModule(dev, vk_pass->output.frag_module, NULL);
+	vkDestroyImageView(dev, vk_pass->output.dummy3d_image_view, NULL);
+	vkDestroyImage(dev, vk_pass->output.dummy3d_image, NULL);
+	vkFreeMemory(dev, vk_pass->output.dummy3d_mem, NULL);
+	vkDestroyPipelineLayout(dev, vk_pass->output.pipe_layout, NULL);
+	vkDestroyDescriptorSetLayout(dev, vk_pass->output.ds_srgb_layout, NULL);
+	vkDestroyDescriptorSetLayout(dev, vk_pass->output.ds_lut3d_layout, NULL);
+	vkDestroySampler(dev, vk_pass->output.sampler_lut3d, NULL);
+
+	free(vk_pass);
+}
+
+static const struct wlr_render_submit_pass_impl vk_render_submit_pass_impl = {
+	.destroy = render_submit_pass_destroy,
+	.render = render_pass_submit,
+};
+
+struct wlr_render_submit_pass *wlr_vk_render_submit_pass_create(
+		struct wlr_renderer *wlr_renderer) {
+	struct wlr_vk_render_submit_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_vk_render_submit_pass");
+		return NULL;
+	}
+
+	wlr_render_submit_pass_init(&pass->base, &vk_render_submit_pass_impl);
+	pass->renderer = vulkan_get_renderer(wlr_renderer);
+	wl_list_init(&pass->output.descriptor_pools);
+
+	if (!vulkan_init_submit_pass_output(pass->renderer, pass)) {
+		render_submit_pass_destroy(&pass->base);
+		return NULL;
+	}
+
+	return &pass->base;
+}
+
+bool wlr_render_submit_pass_is_vk(const struct wlr_render_submit_pass *submit_pass) {
+	return submit_pass->impl == &vk_render_submit_pass_impl;
+}
+
+struct wlr_vk_render_submit_pass *wlr_vk_render_submit_pass_from_pass(
+		struct wlr_render_submit_pass *submit_pass) {
+	if (!wlr_render_submit_pass_is_vk(submit_pass)) {
+		return NULL;
+	}
+
+	struct wlr_vk_render_submit_pass *pass =
+		wl_container_of(submit_pass, pass, base);
+
 	return pass;
 }
