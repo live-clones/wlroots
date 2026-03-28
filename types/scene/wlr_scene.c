@@ -1148,6 +1148,20 @@ void wlr_scene_buffer_set_color_range(struct wlr_scene_buffer *scene_buffer,
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
+void wlr_scene_buffer_set_luminances(struct wlr_scene_buffer *scene_buffer,
+		const struct wlr_color_luminances *lum) {
+	if (scene_buffer->has_luminances &&
+			scene_buffer->luminances.min == lum->min &&
+			scene_buffer->luminances.max == lum->max &&
+			scene_buffer->luminances.reference == lum->reference) {
+		return;
+	}
+
+	scene_buffer->has_luminances = true;
+	scene_buffer->luminances = *lum;
+	scene_node_update(&scene_buffer->node, NULL);
+}
+
 static struct wlr_texture *scene_buffer_get_texture(
 		struct wlr_scene_buffer *scene_buffer, struct wlr_renderer *renderer) {
 	if (scene_buffer->buffer == NULL || scene_buffer->texture != NULL) {
@@ -1495,8 +1509,12 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 		}
 
 		struct wlr_color_luminances src_lum, srgb_lum;
-		wlr_color_transfer_function_get_default_luminance(
-			scene_buffer->transfer_function, &src_lum);
+		if (scene_buffer->has_luminances) {
+			src_lum = scene_buffer->luminances;
+		} else {
+			wlr_color_transfer_function_get_default_luminance(
+				scene_buffer->transfer_function, &src_lum);
+		}
 		wlr_color_transfer_function_get_default_luminance(
 			WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
 		float luminance_multiplier = get_luminance_multiplier(&src_lum, &srgb_lum);
