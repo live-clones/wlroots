@@ -7,6 +7,8 @@
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/util/log.h>
 
+#include "render/dmabuf.h"
+#include "render/drm_syncobj_merger.h"
 #include "types/wlr_output.h"
 #include "types/wlr_scene.h"
 
@@ -30,6 +32,9 @@ struct scene_node_source_frame_event {
 	struct wlr_ext_image_capture_source_v1_frame_event base;
 	struct wlr_buffer *buffer;
 	struct timespec when;
+	struct wlr_drm_syncobj_timeline *wait_timeline;
+	uint64_t wait_point;
+	struct wlr_drm_syncobj_merger *release_merger;
 };
 
 static size_t last_output_num = 0;
@@ -149,9 +154,14 @@ static void source_copy_frame(struct wlr_ext_image_capture_source_v1 *base,
 	struct scene_node_source_frame_event *event = wl_container_of(base_event, event, base);
 
 	if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
-			event->buffer, source->output.renderer, NULL, 0)) {
+			event->buffer, source->output.renderer,
+			event->wait_timeline, event->wait_point)) {
 		wlr_ext_image_copy_capture_frame_v1_ready(frame,
 			source->output.transform, &event->when);
+		if (event->release_merger) {
+			wlr_drm_syncobj_merger_add_dmabuf(event->release_merger, frame->buffer,
+				source->output.event_loop);
+		}
 	}
 }
 
@@ -162,7 +172,14 @@ static const struct wlr_ext_image_capture_source_v1_interface source_impl = {
 	.copy_frame = source_copy_frame,
 };
 
-static const struct wlr_backend_impl backend_impl = {0};
+static int source_backend_get_drm_fd(struct wlr_backend *backend) {
+	struct scene_node_source *source = wl_container_of(backend, source, backend);
+	return wlr_renderer_get_drm_fd(source->output.renderer);
+}
+
+static const struct wlr_backend_impl backend_impl = {
+	.get_drm_fd = source_backend_get_drm_fd
+};
 
 static void source_update_buffer_constraints(struct scene_node_source *source,
 		const struct wlr_output_state *state) {
@@ -180,6 +197,8 @@ static bool output_test(struct wlr_output *output, const struct wlr_output_state
 	uint32_t supported =
 		WLR_OUTPUT_STATE_BACKEND_OPTIONAL |
 		WLR_OUTPUT_STATE_BUFFER |
+		WLR_OUTPUT_STATE_WAIT_TIMELINE |
+		WLR_OUTPUT_STATE_SIGNAL_TIMELINE |
 		WLR_OUTPUT_STATE_ENABLED |
 		WLR_OUTPUT_STATE_MODE;
 	if ((state->committed & ~supported) != 0) {
@@ -242,7 +261,16 @@ static bool output_commit(struct wlr_output *output, const struct wlr_output_sta
 		.buffer = buffer,
 		.when = now,
 	};
+	if (state->committed & WLR_OUTPUT_STATE_WAIT_TIMELINE) {
+		frame_event.wait_timeline = state->wait_timeline;
+		frame_event.wait_point = state->wait_point;
+	}
+	if (state->committed & WLR_OUTPUT_STATE_SIGNAL_TIMELINE) {
+		frame_event.release_merger = wlr_drm_syncobj_merger_create(
+			state->signal_timeline, state->signal_point);
+	}
 	wl_signal_emit_mutable(&source->base.events.frame, &frame_event.base);
+	wlr_drm_syncobj_merger_unref(frame_event.release_merger);
 
 	pixman_region32_fini(&full_damage);
 
@@ -311,6 +339,7 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 
 	wlr_backend_init(&source->backend, &backend_impl);
 	source->backend.buffer_caps = WLR_BUFFER_CAP_DMABUF | WLR_BUFFER_CAP_SHM;
+	source->backend.features.timeline = true;
 
 	wlr_output_init(&source->output, &source->backend, &output_impl, event_loop, NULL);
 
