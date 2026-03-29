@@ -97,6 +97,10 @@ static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 static void scene_buffer_set_texture(struct wlr_scene_buffer *scene_buffer,
 	struct wlr_texture *texture);
 
+static struct wlr_scene_color_transform_cache *scene_color_transform_cache_create(void);
+static void scene_color_transform_cache_destroy(
+	struct wlr_scene_color_transform_cache *cache);
+
 void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 	if (node == NULL) {
 		return;
@@ -135,6 +139,7 @@ void wlr_scene_node_destroy(struct wlr_scene_node *node) {
 			wl_list_remove(&scene->linux_dmabuf_v1_destroy.link);
 			wl_list_remove(&scene->gamma_control_manager_v1_destroy.link);
 			wl_list_remove(&scene->gamma_control_manager_v1_set_gamma.link);
+			scene_color_transform_cache_destroy(scene->color_transform_cache);
 		} else {
 			assert(node->parent);
 		}
@@ -163,6 +168,12 @@ static void scene_tree_init(struct wlr_scene_tree *tree,
 struct wlr_scene *wlr_scene_create(void) {
 	struct wlr_scene *scene = calloc(1, sizeof(*scene));
 	if (scene == NULL) {
+		return NULL;
+	}
+
+	scene->color_transform_cache = scene_color_transform_cache_create();
+	if (scene->color_transform_cache == NULL) {
+		free(scene);
 		return NULL;
 	}
 
@@ -1414,61 +1425,137 @@ static float get_luminance_multiplier(const struct wlr_color_luminances *src_lum
 	return (dst_lum->reference / src_lum->reference) * (src_lum->max / dst_lum->max);
 }
 
-static struct wlr_color_transform *scene_texture_to_blend_space(
-		struct wlr_scene_buffer *source, enum wlr_color_named_primaries dest_primaries,
-		const struct wlr_color_luminances *dest_luminance) {
-	struct wlr_color_transform *color_matrix = NULL;
-	struct wlr_color_transform *eotf = NULL;
-	struct wlr_color_transform *combined = NULL;
+struct scene_color_transform_cache_key {
+	enum wlr_color_transfer_function transfer_function;
+	enum wlr_color_named_primaries source_primaries;
+	enum wlr_color_named_primaries dest_primaries;
+	float luminance_multiplier;
+};
 
-	enum wlr_color_transfer_function source_tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
-	if (source->transfer_function != 0) {
-		source_tf = source->transfer_function;
+struct scene_color_transform_cache_entry {
+	bool has_value;
+	struct scene_color_transform_cache_key key;
+	struct wlr_color_transform *color_transform;
+};
+
+#define COLOR_TRANSFORM_CACHE_ENTRIES 8
+
+struct wlr_scene_color_transform_cache {
+	int insert_at;
+	struct scene_color_transform_cache_entry entries[COLOR_TRANSFORM_CACHE_ENTRIES];
+};
+
+static struct wlr_scene_color_transform_cache *scene_color_transform_cache_create(void) {
+	struct wlr_scene_color_transform_cache *result;
+	result = calloc(1, sizeof(*result));
+	return result;
+}
+
+static void scene_color_transform_cache_destroy(
+		struct wlr_scene_color_transform_cache *cache) {
+	for (int i = 0; i < COLOR_TRANSFORM_CACHE_ENTRIES; ++i) {
+		if (cache->entries[i].has_value) {
+			wlr_color_transform_unref(cache->entries[i].color_transform);
+		}
 	}
-	eotf = wlr_color_transform_init_eotf_to_linear(source_tf);
-	if (eotf == NULL) {
-		goto cleanup_transforms;
+	free(cache);
+}
+
+static struct wlr_color_transform *scene_color_transform_cache_get(
+		struct wlr_scene_color_transform_cache *cache,
+		struct scene_color_transform_cache_key *key) {
+	struct wlr_color_transform *result = NULL;
+
+	for (int i = 0; i < COLOR_TRANSFORM_CACHE_ENTRIES; ++i) {
+		struct scene_color_transform_cache_entry *entry = &cache->entries[i];
+		if (entry->has_value
+				&& entry->key.transfer_function == key->transfer_function
+				&& entry->key.source_primaries == key->source_primaries
+				&& entry->key.dest_primaries == key->dest_primaries
+				&& entry->key.luminance_multiplier == key->luminance_multiplier) {
+			result = wlr_color_transform_ref(entry->color_transform);
+			break;
+		}
+	}
+
+	if (result == NULL) {
+		struct scene_color_transform_cache_entry *entry = &cache->entries[cache->insert_at];
+		wlr_color_transform_unref(entry->color_transform);
+		entry->has_value = false;
+
+		struct wlr_color_transform *color_matrix = NULL;
+		struct wlr_color_transform *eotf = NULL;
+
+		eotf = wlr_color_transform_init_eotf_to_linear(key->transfer_function);
+		if (eotf == NULL) {
+			goto cleanup_transforms;
+		}
+
+		float matrix[9];
+		if (key->source_primaries != key->dest_primaries) {
+			struct wlr_color_primaries primaries;
+			wlr_color_primaries_from_named(&primaries, key->source_primaries);
+			struct wlr_color_primaries primaries_blend;
+			wlr_color_primaries_from_named(&primaries_blend, key->dest_primaries);
+			wlr_color_primaries_transform_absolute_colorimetric(&primaries, &primaries_blend, matrix);
+		} else {
+			wlr_matrix_identity(matrix);
+		}
+
+		for (int i = 0; i < 9; ++i) {
+			matrix[i] *= key->luminance_multiplier;
+		}
+		color_matrix = wlr_color_transform_init_matrix(matrix);
+		if (color_matrix == NULL) {
+			goto cleanup_transforms;
+		}
+
+		struct wlr_color_transform *transforms[] = {
+			eotf,
+			color_matrix,
+		};
+		const size_t transforms_len = sizeof(transforms) / sizeof(transforms[0]);
+		if (!color_transform_compose(&result, transforms, transforms_len)) {
+			goto cleanup_transforms;
+		}
+
+		entry->color_transform = result != NULL ? wlr_color_transform_ref(result) : NULL;
+		entry->key = *key;
+		entry->has_value = true;
+		cache->insert_at = (cache->insert_at + 1) % COLOR_TRANSFORM_CACHE_ENTRIES;
+
+cleanup_transforms:
+		wlr_color_transform_unref(eotf);
+		wlr_color_transform_unref(color_matrix);
+	}
+
+	return result;
+}
+
+static struct wlr_color_transform *scene_texture_to_blend_space(
+		struct wlr_scene_buffer *source, struct wlr_scene_output *scene_output,
+		enum wlr_color_named_primaries dest_primaries,
+		const struct wlr_color_luminances *dest_luminance) {
+
+	struct scene_color_transform_cache_key key = {
+		.transfer_function = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22,
+		.source_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB,
+		.dest_primaries = dest_primaries,
+	};
+
+	if (source->transfer_function != 0) {
+		key.transfer_function = source->transfer_function;
+	}
+	if (source->primaries != 0) {
+		key.source_primaries = source->primaries;
 	}
 
 	struct wlr_color_luminances source_lum;
-	wlr_color_transfer_function_get_default_luminance(source_tf, &source_lum);
-	float luminance_multiplier = get_luminance_multiplier(&source_lum, dest_luminance);
+	wlr_color_transfer_function_get_default_luminance(key.transfer_function, &source_lum);
+	key.luminance_multiplier = get_luminance_multiplier(&source_lum, dest_luminance);
 
-	float matrix[9];
-
-	enum wlr_color_named_primaries source_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
-	if (source->primaries != 0) {
-		source_primaries = source->primaries;
-	}
-	if (source_primaries != dest_primaries) {
-		struct wlr_color_primaries primaries;
-		wlr_color_primaries_from_named(&primaries, source_primaries);
-		struct wlr_color_primaries primaries_blend;
-		wlr_color_primaries_from_named(&primaries_blend, dest_primaries);
-		wlr_color_primaries_transform_absolute_colorimetric(&primaries, &primaries_blend, matrix);
-	} else {
-		wlr_matrix_identity(matrix);
-	}
-
-	for (int i = 0; i < 9; ++i) {
-		matrix[i] *= luminance_multiplier;
-	}
-	color_matrix = wlr_color_transform_init_matrix(matrix);
-	if (color_matrix == NULL) {
-		goto cleanup_transforms;
-	}
-
-	struct wlr_color_transform *transforms[] = {
-		eotf,
-		color_matrix,
-	};
-	const size_t transforms_len = sizeof(transforms) / sizeof(transforms[0]);
-	color_transform_compose(&combined, transforms, transforms_len);
-
-cleanup_transforms:
-	wlr_color_transform_unref(eotf);
-	wlr_color_transform_unref(color_matrix);
-	return combined;
+	struct wlr_scene *scene = scene_output->scene;
+	return scene_color_transform_cache_get(scene->color_transform_cache, &key);
 }
 
 static struct wlr_render_color scene_color_transform_premultiplied(
@@ -1574,8 +1661,8 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			struct wlr_color_luminances srgb_lum;
 			wlr_color_transfer_function_get_default_luminance(WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
 
-			source_to_blend = scene_texture_to_blend_space(
-				scene_buffer, WLR_COLOR_NAMED_PRIMARIES_SRGB, &srgb_lum);
+			source_to_blend = scene_texture_to_blend_space(scene_buffer, data->output,
+				WLR_COLOR_NAMED_PRIMARIES_SRGB, &srgb_lum);
 		}
 
 		wlr_render_pass_add_texture(data->render_pass, &(struct wlr_render_texture_options) {
@@ -2561,8 +2648,14 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 			}
 		}
 
-		render_data.default_color_transform = wlr_color_transform_init_eotf_to_linear(
-			WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+		render_data.default_color_transform = scene_color_transform_cache_get(
+			scene_output->scene->color_transform_cache,
+			&(struct scene_color_transform_cache_key) {
+				.transfer_function = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22,
+				.source_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB,
+				.dest_primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB,
+				.luminance_multiplier = 1.0,
+			});
 	}
 
 	scene_output->in_point++;
