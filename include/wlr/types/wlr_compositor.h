@@ -127,6 +127,8 @@ struct wlr_surface_output {
 	struct {
 		struct wl_listener bind;
 		struct wl_listener destroy;
+
+		bool lazy_leave;
 	} WLR_PRIVATE;
 };
 
@@ -398,6 +400,33 @@ void wlr_surface_send_enter(struct wlr_surface *surface,
  */
 void wlr_surface_send_leave(struct wlr_surface *surface,
 		struct wlr_output *output);
+
+/**
+ * Queue a lazy wl_surface.leave event to be sent in a future call to
+ * wlr_surface_process_lazy_leaves().
+ *
+ * If wlr_surface_send_enter() is called before wlr_surface_process_lazy_leaves()
+ * actually sends a leave event, the lazy leave mark is cleared.
+ */
+void wlr_surface_queue_lazy_leave(struct wlr_surface *surface, struct wlr_output *output);
+
+/**
+ * If at least one output would remain entered after all lazy leave events
+ * are sent, send all lazy leave events. Otherwise do nothing.
+ *
+ * This behavior helps the compositor implement the following recommended policy:
+ *
+ * 1. When a surface transitions from being visible on >0 outputs to being visible on 0 outputs
+ *    don't send any leave events.
+ *
+ * 2. When a surface transitions from being visible on 0 outputs to being visible on >0 outputs
+ *    send leave events for all entered outputs on which the surface is no longer visible as
+ *    well as enter events for any outputs not already entered.
+ *
+ * This policy avoids sending redundant enter/leave events when a surface is hidden and then shown
+ * again without any change to the set of intersected outputs.
+ */
+void wlr_surface_process_lazy_leaves(struct wlr_surface *surface);
 
 /**
  * Complete the queued frame callbacks for this surface.

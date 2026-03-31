@@ -1084,6 +1084,7 @@ void wlr_surface_send_enter(struct wlr_surface *surface,
 
 	wl_list_for_each(surface_output, &surface->current_outputs, link) {
 		if (surface_output->output == output) {
+			surface_output->lazy_leave = false;
 			return;
 		}
 	}
@@ -1124,6 +1125,45 @@ void wlr_surface_send_leave(struct wlr_surface *surface,
 					wl_surface_send_leave(surface->resource, resource);
 				}
 			}
+			break;
+		}
+	}
+}
+
+void wlr_surface_queue_lazy_leave(struct wlr_surface *surface, struct wlr_output *output) {
+	struct wlr_surface_output *surface_output;
+	wl_list_for_each(surface_output, &surface->current_outputs, link) {
+		if (surface_output->output == output) {
+			surface_output->lazy_leave = true;
+		}
+	}
+}
+
+void wlr_surface_process_lazy_leaves(struct wlr_surface *surface) {
+	// Only send leave events if at least one output would remain entered.
+	bool send_leave_events = false;
+	struct wlr_surface_output *surface_output;
+	wl_list_for_each(surface_output, &surface->current_outputs, link) {
+		if (!surface_output->lazy_leave) {
+			send_leave_events = true;
+		}
+	}
+
+	if (!send_leave_events) {
+		return;
+	}
+
+	struct wl_client *client = wl_resource_get_client(surface->resource);
+	struct wlr_surface_output *tmp;
+	wl_list_for_each_safe(surface_output, tmp, &surface->current_outputs, link) {
+		if (surface_output->lazy_leave) {
+			struct wl_resource *resource;
+			wl_resource_for_each(resource, &surface_output->output->resources) {
+				if (client == wl_resource_get_client(resource)) {
+					wl_surface_send_leave(surface->resource, resource);
+				}
+			}
+			surface_output_destroy(surface_output);
 			break;
 		}
 	}
