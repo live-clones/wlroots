@@ -27,14 +27,6 @@ struct wlr_linux_drm_syncobj_surface_v1 {
 	struct wl_listener client_commit;
 };
 
-struct wlr_linux_drm_syncobj_surface_v1_commit {
-	struct wlr_surface *surface;
-	struct wlr_drm_syncobj_timeline_waiter waiter;
-	uint32_t cached_seq;
-
-	struct wl_listener surface_destroy;
-};
-
 static const struct wp_linux_drm_syncobj_manager_v1_interface manager_impl;
 static const struct wp_linux_drm_syncobj_timeline_v1_interface timeline_impl;
 static const struct wp_linux_drm_syncobj_surface_v1_interface surface_impl;
@@ -212,61 +204,6 @@ static struct wlr_linux_drm_syncobj_surface_v1 *surface_from_wlr_surface(
 	return surface;
 }
 
-static void surface_commit_destroy(struct wlr_linux_drm_syncobj_surface_v1_commit *commit) {
-	wlr_surface_unlock_cached(commit->surface, commit->cached_seq);
-	wl_list_remove(&commit->surface_destroy.link);
-	wlr_drm_syncobj_timeline_waiter_finish(&commit->waiter);
-	free(commit);
-}
-
-static void surface_commit_handle_waiter_ready(struct wlr_drm_syncobj_timeline_waiter *waiter) {
-	struct wlr_linux_drm_syncobj_surface_v1_commit *commit =
-		wl_container_of(waiter, commit, waiter);
-	surface_commit_destroy(commit);
-}
-
-static void surface_commit_handle_surface_destroy(struct wl_listener *listener,
-		void *data) {
-	struct wlr_linux_drm_syncobj_surface_v1_commit *commit =
-		wl_container_of(listener, commit, surface_destroy);
-	surface_commit_destroy(commit);
-}
-
-// Block the surface commit until the fence materializes
-static bool lock_surface_commit(struct wlr_linux_drm_syncobj_surface_v1 *surface,
-		struct wlr_drm_syncobj_timeline *timeline, uint64_t point) {
-	uint32_t flags = DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE;
-
-	bool already_materialized = false;
-	if (!wlr_drm_syncobj_timeline_check(timeline, point, flags, &already_materialized)) {
-		return false;
-	} else if (already_materialized) {
-		return true;
-	}
-
-	struct wlr_linux_drm_syncobj_surface_v1_commit *commit = calloc(1, sizeof(*commit));
-	if (commit == NULL) {
-		return false;
-	}
-
-	struct wl_client *client = wl_resource_get_client(surface->resource);
-	struct wl_display *display = wl_client_get_display(client);
-	struct wl_event_loop *loop = wl_display_get_event_loop(display);
-	if (!wlr_drm_syncobj_timeline_waiter_init(&commit->waiter, timeline, point,
-			flags, loop, surface_commit_handle_waiter_ready)) {
-		free(commit);
-		return false;
-	}
-
-	commit->surface = surface->surface;
-	commit->cached_seq = wlr_surface_lock_pending(surface->surface);
-
-	commit->surface_destroy.notify = surface_commit_handle_surface_destroy;
-	wl_signal_add(&surface->surface->events.destroy, &commit->surface_destroy);
-
-	return true;
-}
-
 static void surface_handle_client_commit(struct wl_listener *listener,
 		void *data) {
 	struct wlr_linux_drm_syncobj_surface_v1 *surface =
@@ -309,12 +246,6 @@ static void surface_handle_client_commit(struct wl_listener *listener,
 		wlr_surface_reject_pending(surface->surface, surface->resource,
 			WP_LINUX_DRM_SYNCOBJ_SURFACE_V1_ERROR_CONFLICTING_POINTS,
 			"Acquire and release points conflict");
-		return;
-	}
-
-	if (surface->pending.acquire_timeline != NULL && !lock_surface_commit(
-			surface, surface->pending.acquire_timeline, surface->pending.acquire_point)) {
-		wl_resource_post_no_memory(surface->resource);
 		return;
 	}
 }
