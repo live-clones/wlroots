@@ -1790,6 +1790,15 @@ static void highlight_region_destroy(struct highlight_region *damage) {
 	free(damage);
 }
 
+void wlr_scene_output_set_frame_scheduler(struct wlr_scene_output *scene_output,
+		struct wlr_frame_scheduler *scheduler) {
+	wlr_frame_scheduler_destroy(scene_output->frame_scheduler);
+	scene_output->frame_scheduler = scheduler;
+	if (wlr_scene_output_needs_frame(scene_output)) {
+		wlr_frame_scheduler_schedule_frame(scheduler);
+	}
+}
+
 void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
 	if (scene_output == NULL) {
 		return;

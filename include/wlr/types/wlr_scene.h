@@ -592,6 +592,13 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output);
  */
 void wlr_scene_output_set_position(struct wlr_scene_output *scene_output,
 	int lx, int ly);
+/**
+ * Replace the frame scheduler for this scene output, destroying the previous
+ * scheduler. If scene output currently needs a new frame, a frame will be
+ * scheduled on the new frame scheduler.
+ */
+void wlr_scene_output_set_frame_scheduler(struct wlr_scene_output *scene_output,
+	struct wlr_frame_scheduler *scheduler);
 
 struct wlr_scene_output_state_options {
 	struct wlr_scene_timer *timer;
