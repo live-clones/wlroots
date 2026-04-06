@@ -10,9 +10,11 @@
 #define WLR_TYPES_WLR_FRAME_SCHEDULER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <wayland-server-core.h>
 
 struct wlr_frame_scheduler_impl;
+struct wlr_render_timer;
 
 struct wlr_frame_scheduler {
 	struct wlr_output *output;
@@ -64,5 +66,24 @@ void wlr_frame_scheduler_schedule_frame(struct wlr_frame_scheduler *scheduler);
  */
 void wlr_frame_scheduler_emit_frame(struct wlr_frame_scheduler *scheduler);
 void wlr_frame_scheduler_destroy(struct wlr_frame_scheduler *scheduler);
+
+/**
+ * The predictive scheduler maintains a render loop based on `wlr_output.events.present`, and
+ * schedules frame signals to arrive just before the estimated render deadline. It learns from
+ * historic render times provided via wlr_frame_scheduler_inform_render().
+ */
+struct wlr_frame_scheduler *wlr_predictive_frame_scheduler_create(struct wlr_output *output);
+/**
+ * Provide render timing feedback to the scheduler. Must be called after each output commit.
+ *
+ * pre_render_duration_ns is the wall time from the frame signal to the start of the render pass.
+ *
+ * render_timer is the GPU render timer for this frame. May be NULL if no rendering was performed
+ * (e.g. direct scanout), in which case GPU render time is assumed to be zero.
+ *
+ * This is a no-op for non-predictive schedulers.
+ */
+void wlr_frame_scheduler_inform_render(struct wlr_frame_scheduler *scheduler,
+	int64_t pre_render_duration_ns, struct wlr_render_timer *render_timer);
 
 #endif

@@ -268,12 +268,9 @@ struct wlr_scene_output {
 		uint64_t in_point;
 		struct wlr_drm_syncobj_timeline *out_timeline;
 		uint64_t out_point;
-	} WLR_PRIVATE;
-};
 
-struct wlr_scene_timer {
-	int64_t pre_render_duration;
-	struct wlr_render_timer *render_timer;
+		struct wlr_render_timer *render_timer;
+	} WLR_PRIVATE;
 };
 
 /** A layer shell scene helper */
@@ -601,8 +598,6 @@ void wlr_scene_output_set_frame_scheduler(struct wlr_scene_output *scene_output,
 	struct wlr_frame_scheduler *scheduler);
 
 struct wlr_scene_output_state_options {
-	struct wlr_scene_timer *timer;
-
 	/**
 	 * Color transform to apply before the output's color transform. Cannot be
 	 * used when the output has a non-NULL image description set.
@@ -628,15 +623,6 @@ bool wlr_scene_output_commit(struct wlr_scene_output *scene_output,
  */
 bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	struct wlr_output_state *state, const struct wlr_scene_output_state_options *options);
-
-/**
- * Retrieve the duration in nanoseconds between the last wlr_scene_output_commit() call and the end
- * of its operations, including those on the GPU that may have finished after the call returned.
- *
- * Returns -1 if the duration is unavailable.
- */
-int64_t wlr_scene_timer_get_duration_ns(struct wlr_scene_timer *timer);
-void wlr_scene_timer_finish(struct wlr_scene_timer *timer);
 
 /**
  * Call wlr_surface_send_frame_done() on all surfaces in the scene rendered by
