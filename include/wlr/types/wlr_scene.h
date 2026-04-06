@@ -618,12 +618,6 @@ struct wlr_scene_output_state_options {
 };
 
 /**
- * Returns true if scene wants to render a new frame. False, if no new frame
- * is needed and an output commit can be skipped for the current frame.
- */
-bool wlr_scene_output_needs_frame(struct wlr_scene_output *scene_output);
-
-/**
  * Render and commit an output.
  */
 bool wlr_scene_output_commit(struct wlr_scene_output *scene_output,

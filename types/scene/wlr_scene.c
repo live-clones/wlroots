@@ -1792,9 +1792,10 @@ static void highlight_region_destroy(struct highlight_region *damage) {
 
 void wlr_scene_output_set_frame_scheduler(struct wlr_scene_output *scene_output,
 		struct wlr_frame_scheduler *scheduler) {
+	bool needs_frame = scene_output->frame_scheduler->needs_frame;
 	wlr_frame_scheduler_destroy(scene_output->frame_scheduler);
 	scene_output->frame_scheduler = scheduler;
-	if (wlr_scene_output_needs_frame(scene_output)) {
+	if (needs_frame) {
 		wlr_frame_scheduler_schedule_frame(scheduler);
 	}
 }
@@ -2152,18 +2153,8 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 	return SCANOUT_SUCCESS;
 }
 
-bool wlr_scene_output_needs_frame(struct wlr_scene_output *scene_output) {
-	return scene_output->frame_scheduler->needs_frame ||
-		!pixman_region32_empty(&scene_output->pending_commit_damage) ||
-		scene_output->gamma_lut_changed;
-}
-
 bool wlr_scene_output_commit(struct wlr_scene_output *scene_output,
 		const struct wlr_scene_output_state_options *options) {
-	if (!wlr_scene_output_needs_frame(scene_output)) {
-		return true;
-	}
-
 	bool ok = false;
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
