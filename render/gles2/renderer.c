@@ -326,7 +326,6 @@ static int gles2_get_render_time(struct wlr_render_timer *wlr_timer) {
 	renderer->procs.glGetQueryObjectivEXT(timer->id,
 		GL_QUERY_RESULT_AVAILABLE_EXT, &available);
 	if (!available) {
-		wlr_log(WLR_ERROR, "timer was read too early, gpu isn't done!");
 		wlr_egl_restore_context(&prev_ctx);
 		return -1;
 	}
