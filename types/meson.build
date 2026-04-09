@@ -54,6 +54,7 @@ wlr_files += files(
 	'wlr_ext_workspace_v1.c',
 	'wlr_fixes.c',
 	'wlr_foreign_toplevel_management_v1.c',
+	'wlr_ext_virtual_keyboard_v1.c',
 	'wlr_fractional_scale_v1.c',
 	'wlr_gamma_control_v1.c',
 	'wlr_idle_inhibit_v1.c',
