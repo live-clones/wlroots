@@ -8,6 +8,7 @@
 #include <wlr/backend/session.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
+#include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
@@ -28,6 +29,7 @@ struct sample_state {
 struct sample_output {
 	struct sample_state *sample;
 	struct wlr_output *output;
+	struct wlr_frame_scheduler *frame_scheduler;
 	struct wl_listener frame;
 	struct wl_listener destroy;
 };
@@ -78,6 +80,8 @@ static void output_frame_notify(struct wl_listener *listener, void *data) {
 	wlr_output_commit_state(wlr_output, &state);
 	wlr_output_state_finish(&state);
 	sample->last_frame = now;
+
+	wlr_frame_scheduler_schedule_frame(sample_output->frame_scheduler);
 }
 
 static void output_remove_notify(struct wl_listener *listener, void *data) {
@@ -86,6 +90,7 @@ static void output_remove_notify(struct wl_listener *listener, void *data) {
 	wlr_log(WLR_DEBUG, "Output removed");
 	wl_list_remove(&sample_output->frame.link);
 	wl_list_remove(&sample_output->destroy.link);
+	wlr_frame_scheduler_destroy(sample_output->frame_scheduler);
 	free(sample_output);
 }
 
@@ -99,7 +104,9 @@ static void new_output_notify(struct wl_listener *listener, void *data) {
 	struct sample_output *sample_output = calloc(1, sizeof(*sample_output));
 	sample_output->output = output;
 	sample_output->sample = sample;
-	wl_signal_add(&output->events.frame, &sample_output->frame);
+
+	sample_output->frame_scheduler = wlr_frame_scheduler_autocreate(output);
+	wl_signal_add(&sample_output->frame_scheduler->events.frame, &sample_output->frame);
 	sample_output->frame.notify = output_frame_notify;
 	wl_signal_add(&output->events.destroy, &sample_output->destroy);
 	sample_output->destroy.notify = output_remove_notify;
@@ -113,6 +120,8 @@ static void new_output_notify(struct wl_listener *listener, void *data) {
 	}
 	wlr_output_commit_state(output, &state);
 	wlr_output_state_finish(&state);
+
+	wlr_frame_scheduler_schedule_frame(sample_output->frame_scheduler);
 }
 
 static void keyboard_key_notify(struct wl_listener *listener, void *data) {

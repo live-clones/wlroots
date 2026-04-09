@@ -5,6 +5,7 @@
 #include <wlr/interfaces/wlr_ext_image_capture_source_v1.h>
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
+#include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/util/log.h>
 
 #include "types/wlr_output.h"
@@ -134,11 +135,8 @@ static void source_stop(struct wlr_ext_image_capture_source_v1 *base) {
 static void source_request_frame(struct wlr_ext_image_capture_source_v1 *base,
 		bool schedule_frame) {
 	struct scene_node_source *source = wl_container_of(base, source, base);
-	if (source->output.frame_pending) {
-		wlr_output_send_frame(&source->output);
-	}
-	if (schedule_frame) {
-		wlr_output_update_needs_frame(&source->output);
+	if (schedule_frame && source->scene_output != NULL) {
+		wlr_frame_scheduler_schedule_frame(source->scene_output->frame_scheduler);
 	}
 }
 
@@ -246,6 +244,12 @@ static bool output_commit(struct wlr_output *output, const struct wlr_output_sta
 
 	pixman_region32_fini(&full_damage);
 
+	struct wlr_output_event_present present_event = {
+		.commit_seq = output->commit_seq + 1,
+		.presented = true,
+	};
+	output_defer_present(output, present_event);
+
 	return true;
 }
 
@@ -283,11 +287,7 @@ static void source_handle_output_frame(struct wl_listener *listener, void *data)
 		return;
 	}
 
-	if (!wlr_scene_output_needs_frame(source->scene_output)) {
-		return;
-	}
-
-	// We can only emit frames with damage
+	// Only render when there's actual damage to commit
 	if (!pixman_region32_empty(&source->scene_output->pending_commit_damage)) {
 		source_render(source);
 	}
@@ -331,7 +331,7 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 	wl_signal_add(&source->scene_output->events.destroy, &source->scene_output_destroy);
 
 	source->output_frame.notify = source_handle_output_frame;
-	wl_signal_add(&source->output.events.frame, &source->output_frame);
+	wl_signal_add(&source->scene_output->frame_scheduler->events.frame, &source->output_frame);
 
 	return &source->base;
 }

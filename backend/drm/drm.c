@@ -2081,10 +2081,6 @@ static void handle_page_flip(int fd, unsigned seq,
 		.flags = present_flags,
 	};
 	wlr_output_send_present(&conn->output, &present_event);
-
-	if (drm->session->active) {
-		wlr_output_send_frame(&conn->output);
-	}
 }
 
 int handle_drm_event(int fd, uint32_t mask, void *data) {

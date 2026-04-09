@@ -8,6 +8,7 @@
 #include <wlr/types/wlr_color_management_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_damage_ring.h>
+#include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -362,7 +363,7 @@ static void scene_output_damage(struct wlr_scene_output *scene_output,
 	pixman_region32_intersect_rect(&clipped, damage, 0, 0, output->width, output->height);
 
 	if (!pixman_region32_empty(&clipped)) {
-		wlr_output_schedule_frame(scene_output->output);
+		wlr_frame_scheduler_schedule_frame(scene_output->frame_scheduler);
 		wlr_damage_ring_add(&scene_output->damage_ring, &clipped);
 
 		pixman_region32_union(&scene_output->pending_commit_damage,
@@ -1576,7 +1577,7 @@ static void scene_handle_gamma_control_manager_v1_set_gamma(struct wl_listener *
 	output->gamma_lut = event->control;
 	wlr_color_transform_unref(output->gamma_lut_color_transform);
 	output->gamma_lut_color_transform = wlr_gamma_control_v1_get_color_transform(event->control);
-	wlr_output_schedule_frame(output->output);
+	wlr_frame_scheduler_schedule_frame(output->frame_scheduler);
 }
 
 static void scene_handle_gamma_control_manager_v1_destroy(struct wl_listener *listener,
@@ -1691,7 +1692,7 @@ static void scene_output_handle_commit(struct wl_listener *listener, void *data)
 
 	if (scene_output->scene->debug_damage_option == WLR_SCENE_DEBUG_DAMAGE_HIGHLIGHT &&
 			!wl_list_empty(&scene_output->damage_highlight_regions)) {
-		wlr_output_schedule_frame(scene_output->output);
+		wlr_frame_scheduler_schedule_frame(scene_output->frame_scheduler);
 	}
 
 	// Next time the output is enabled, try to re-apply the gamma LUT
@@ -1720,16 +1721,16 @@ static void scene_output_handle_damage(struct wl_listener *listener, void *data)
 	pixman_region32_fini(&damage);
 }
 
-static void scene_output_handle_needs_frame(struct wl_listener *listener, void *data) {
-	struct wlr_scene_output *scene_output = wl_container_of(listener,
-		scene_output, output_needs_frame);
-	wlr_output_schedule_frame(scene_output->output);
-}
-
 struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 		struct wlr_output *output) {
 	struct wlr_scene_output *scene_output = calloc(1, sizeof(*scene_output));
 	if (scene_output == NULL) {
+		return NULL;
+	}
+
+	scene_output->frame_scheduler = wlr_frame_scheduler_autocreate(output);
+	if (scene_output->frame_scheduler == NULL) {
+		free(scene_output);
 		return NULL;
 	}
 
@@ -1778,10 +1779,9 @@ struct wlr_scene_output *wlr_scene_output_create(struct wlr_scene *scene,
 	scene_output->output_damage.notify = scene_output_handle_damage;
 	wl_signal_add(&output->events.damage, &scene_output->output_damage);
 
-	scene_output->output_needs_frame.notify = scene_output_handle_needs_frame;
-	wl_signal_add(&output->events.needs_frame, &scene_output->output_needs_frame);
-
 	scene_output_update_geometry(scene_output, false);
+
+	scene_output->render_timer = wlr_render_timer_create(output->renderer);
 
 	return scene_output;
 }
@@ -1790,6 +1790,16 @@ static void highlight_region_destroy(struct highlight_region *damage) {
 	wl_list_remove(&damage->link);
 	pixman_region32_fini(&damage->region);
 	free(damage);
+}
+
+void wlr_scene_output_set_frame_scheduler(struct wlr_scene_output *scene_output,
+		struct wlr_frame_scheduler *scheduler) {
+	bool needs_frame = scene_output->frame_scheduler->needs_frame;
+	wlr_frame_scheduler_destroy(scene_output->frame_scheduler);
+	scene_output->frame_scheduler = scheduler;
+	if (needs_frame) {
+		wlr_frame_scheduler_schedule_frame(scheduler);
+	}
 }
 
 void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
@@ -1810,12 +1820,13 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output) {
 	}
 
 	wlr_addon_finish(&scene_output->addon);
+	wlr_render_timer_destroy(scene_output->render_timer);
+	wlr_frame_scheduler_destroy(scene_output->frame_scheduler);
 	wlr_damage_ring_finish(&scene_output->damage_ring);
 	pixman_region32_fini(&scene_output->pending_commit_damage);
 	wl_list_remove(&scene_output->link);
 	wl_list_remove(&scene_output->output_commit.link);
 	wl_list_remove(&scene_output->output_damage.link);
-	wl_list_remove(&scene_output->output_needs_frame.link);
 	if (scene_output->in_timeline != NULL) {
 		wlr_drm_syncobj_timeline_signal(scene_output->in_timeline, UINT64_MAX);
 		wlr_drm_syncobj_timeline_unref(scene_output->in_timeline);
@@ -2145,18 +2156,8 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 	return SCANOUT_SUCCESS;
 }
 
-bool wlr_scene_output_needs_frame(struct wlr_scene_output *scene_output) {
-	return scene_output->output->needs_frame ||
-		!pixman_region32_empty(&scene_output->pending_commit_damage) ||
-		scene_output->gamma_lut_changed;
-}
-
 bool wlr_scene_output_commit(struct wlr_scene_output *scene_output,
 		const struct wlr_scene_output_state_options *options) {
-	if (!wlr_scene_output_needs_frame(scene_output)) {
-		return true;
-	}
-
 	bool ok = false;
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
@@ -2281,13 +2282,8 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	if (!options) {
 		options = &default_options;
 	}
-	struct wlr_scene_timer *timer = options->timer;
 	struct timespec start_time;
-	if (timer) {
-		clock_gettime(CLOCK_MONOTONIC, &start_time);
-		wlr_scene_timer_finish(timer);
-		*timer = (struct wlr_scene_timer){0};
-	}
+	clock_gettime(CLOCK_MONOTONIC, &start_time);
 
 	if ((state->committed & WLR_OUTPUT_STATE_ENABLED) && !state->enabled) {
 		// if the state is being disabled, do nothing.
@@ -2434,12 +2430,11 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	if (scanout) {
 		scene_output_state_attempt_gamma(scene_output, state);
 
-		if (timer) {
-			struct timespec end_time, duration;
-			clock_gettime(CLOCK_MONOTONIC, &end_time);
-			timespec_sub(&duration, &end_time, &start_time);
-			timer->pre_render_duration = timespec_to_nsec(&duration);
-		}
+		struct timespec end_time, duration;
+		clock_gettime(CLOCK_MONOTONIC, &end_time);
+		timespec_sub(&duration, &end_time, &start_time);
+		wlr_frame_scheduler_inform_render(scene_output->frame_scheduler,
+			timespec_to_nsec(&duration), NULL);
 		return true;
 	}
 
@@ -2459,13 +2454,12 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	assert(buffer->width == resolution_width && buffer->height == resolution_height);
 
-	if (timer) {
-		timer->render_timer = wlr_render_timer_create(output->renderer);
-
+	int64_t pre_render_duration_ns;
+	{
 		struct timespec end_time, duration;
 		clock_gettime(CLOCK_MONOTONIC, &end_time);
 		timespec_sub(&duration, &end_time, &start_time);
-		timer->pre_render_duration = timespec_to_nsec(&duration);
+		pre_render_duration_ns = timespec_to_nsec(&duration);
 	}
 
 	if ((render_gamma_lut
@@ -2484,7 +2478,7 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 	scene_output->in_point++;
 	struct wlr_render_pass *render_pass = wlr_renderer_begin_buffer_pass(output->renderer, buffer,
 			&(struct wlr_buffer_pass_options){
-		.timer = timer ? timer->render_timer : NULL,
+		.timer = scene_output->render_timer,
 		.color_transform = scene_output->combined_color_transform,
 		.signal_timeline = scene_output->in_timeline,
 		.signal_point = scene_output->in_point,
@@ -2608,22 +2602,9 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 		scene_output_state_attempt_gamma(scene_output, state);
 	}
 
+	wlr_frame_scheduler_inform_render(scene_output->frame_scheduler,
+		pre_render_duration_ns, scene_output->render_timer);
 	return true;
-}
-
-int64_t wlr_scene_timer_get_duration_ns(struct wlr_scene_timer *timer) {
-	int64_t pre_render = timer->pre_render_duration;
-	if (!timer->render_timer) {
-		return pre_render;
-	}
-	int64_t render = wlr_render_timer_get_duration_ns(timer->render_timer);
-	return render != -1 ? pre_render + render : -1;
-}
-
-void wlr_scene_timer_finish(struct wlr_scene_timer *timer) {
-	if (timer->render_timer) {
-		wlr_render_timer_destroy(timer->render_timer);
-	}
 }
 
 static void scene_node_send_frame_done(struct wlr_scene_node *node,

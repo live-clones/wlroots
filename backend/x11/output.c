@@ -795,8 +795,6 @@ void handle_x11_present_event(struct wlr_x11_backend *x11,
 		};
 		timespec_from_nsec(&present_event.when, complete_notify->ust * 1000);
 		wlr_output_send_present(&output->wlr_output, &present_event);
-
-		wlr_output_send_frame(&output->wlr_output);
 		break;
 	default:
 		wlr_log(WLR_DEBUG, "Unhandled Present event %"PRIu16, event->event_type);

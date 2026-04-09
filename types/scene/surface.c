@@ -6,6 +6,7 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -364,7 +365,7 @@ static void handle_scene_surface_surface_commit(
 
 	if (!wl_list_empty(&surface->surface->current.frame_callback_list) &&
 			surface->buffer->primary_output != NULL && enabled) {
-		wlr_output_schedule_frame(surface->buffer->primary_output->output);
+		wlr_frame_scheduler_schedule_frame(surface->buffer->primary_output->frame_scheduler);
 	}
 }
 
