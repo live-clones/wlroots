@@ -222,7 +222,8 @@ static struct wlr_vk_stage_buffer *stage_buffer_create(
 		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		.size = bsize,
 		.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
 	};
 	res = vkCreateBuffer(r->dev->dev, &buf_info, NULL, &buf->buffer);
@@ -1881,6 +1882,25 @@ static bool pipeline_key_equals(const struct wlr_vk_pipeline_key *a,
 	return true;
 }
 
+static const VkVertexInputBindingDescription instance_vert_binding = {
+	.binding = 0,
+	.stride = sizeof(float) * 4,
+	.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE,
+};
+static const VkVertexInputAttributeDescription instance_vert_attr = {
+	.location = 0,
+	.binding = 0,
+	.format = VK_FORMAT_R32G32B32A32_SFLOAT,
+	.offset = 0,
+};
+static const VkPipelineVertexInputStateCreateInfo instance_vert_input = {
+	.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+	.vertexBindingDescriptionCount = 1,
+	.pVertexBindingDescriptions = &instance_vert_binding,
+	.vertexAttributeDescriptionCount = 1,
+	.pVertexAttributeDescriptions = &instance_vert_attr,
+};
+
 // Initializes the pipeline for rendering textures and using the given
 // VkRenderPass and VkPipelineLayout.
 struct wlr_vk_pipeline *setup_get_or_create_pipeline(
@@ -2012,10 +2032,6 @@ struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 		.dynamicStateCount = sizeof(dyn_states) / sizeof(dyn_states[0]),
 	};
 
-	VkPipelineVertexInputStateCreateInfo vertex = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-	};
-
 	VkGraphicsPipelineCreateInfo pinfo = {
 		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 		.layout = pipeline_layout->vk,
@@ -2030,7 +2046,7 @@ struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 		.pMultisampleState = &multisample,
 		.pViewportState = &viewport,
 		.pDynamicState = &dynamic,
-		.pVertexInputState = &vertex,
+		.pVertexInputState = &instance_vert_input,
 	};
 
 	VkPipelineCache cache = VK_NULL_HANDLE;
@@ -2129,10 +2145,6 @@ static bool init_blend_to_output_pipeline(struct wlr_vk_renderer *renderer,
 		.dynamicStateCount = sizeof(dyn_states) / sizeof(dyn_states[0]),
 	};
 
-	VkPipelineVertexInputStateCreateInfo vertex = {
-		.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-	};
-
 	VkGraphicsPipelineCreateInfo pinfo = {
 		.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 		.pNext = NULL,
@@ -2147,7 +2159,7 @@ static bool init_blend_to_output_pipeline(struct wlr_vk_renderer *renderer,
 		.pMultisampleState = &multisample,
 		.pViewportState = &viewport,
 		.pDynamicState = &dynamic,
-		.pVertexInputState = &vertex,
+		.pVertexInputState = &instance_vert_input,
 	};
 
 	VkPipelineCache cache = VK_NULL_HANDLE;

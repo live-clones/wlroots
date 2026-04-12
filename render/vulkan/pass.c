@@ -2,7 +2,9 @@
 #include <drm_fourcc.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <wlr/util/box.h>
 #include <wlr/util/log.h>
+#include <wlr/util/transform.h>
 #include <wlr/render/color.h>
 #include <wlr/render/drm_syncobj.h>
 
@@ -191,11 +193,13 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		int width = pass->render_buffer->wlr_buffer->width;
 		int height = pass->render_buffer->wlr_buffer->height;
 
-		float final_matrix[9] = {
-			width, 0, -1,
-			0, height, -1,
-			0, 0, 0,
-		};
+		struct wlr_box output_box = { 0, 0, width, height };
+		float proj[9], final_matrix[9];
+		wlr_matrix_identity(proj);
+		wlr_matrix_project_box(final_matrix, &output_box,
+			WL_OUTPUT_TRANSFORM_NORMAL, proj);
+		wlr_matrix_multiply(final_matrix, pass->projection, final_matrix);
+
 		struct wlr_vk_vert_pcr_data vert_pcr_data = {
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
@@ -274,11 +278,28 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		int clip_rects_len;
 		const pixman_box32_t *clip_rects = pixman_region32_rectangles(
 			clip, &clip_rects_len);
-		for (int i = 0; i < clip_rects_len; i++) {
-			VkRect2D rect;
-			convert_pixman_box_to_vk_rect(&clip_rects[i], &rect);
-			vkCmdSetScissor(render_cb->vk, 0, 1, &rect);
-			vkCmdDraw(render_cb->vk, 4, 1, 0, 0);
+
+		if (clip_rects_len > 0) {
+			const VkDeviceSize instance_size = 4 * sizeof(float);
+			struct wlr_vk_buffer_span span = vulkan_get_stage_span(renderer,
+				clip_rects_len * instance_size, 16);
+			if (!span.buffer) {
+				pass->failed = true;
+				goto error;
+			}
+
+			float *instance_data = (float *)((char *)span.buffer->cpu_mapping + span.offset);
+			for (int i = 0; i < clip_rects_len; i++) {
+				const pixman_box32_t *b = &clip_rects[i];
+				instance_data[i * 4 + 0] = (float)b->x1 / width;
+				instance_data[i * 4 + 1] = (float)b->y1 / height;
+				instance_data[i * 4 + 2] = (float)(b->x2 - b->x1) / width;
+				instance_data[i * 4 + 3] = (float)(b->y2 - b->y1) / height;
+			}
+
+			VkDeviceSize vb_offset = span.offset;
+			vkCmdBindVertexBuffers(render_cb->vk, 0, 1, &span.buffer->buffer, &vb_offset);
+			vkCmdDraw(render_cb->vk, 4, clip_rects_len, 0, 0);
 		}
 	}
 
@@ -653,11 +674,6 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		return;
 	}
 
-	// Record regions possibly updated for use in second subpass
-	for (int i = 0; i < clip_rects_len; i++) {
-		render_pass_mark_box_updated(pass, &clip_rects[i]);
-	}
-
 	switch (options->blend_mode) {
 	case WLR_RENDER_BLEND_MODE_PREMULTIPLIED:;
 		float proj[9], matrix[9];
@@ -676,6 +692,23 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			break;
 		}
 
+		const VkDeviceSize instance_size = 4 * sizeof(float);
+		struct wlr_vk_buffer_span span = vulkan_get_stage_span(pass->renderer,
+			clip_rects_len * instance_size, 16);
+		if (!span.buffer) {
+			pass->failed = true;
+			break;
+		}
+		float *instance_data = (float *)((char *)span.buffer->cpu_mapping + span.offset);
+		for (int i = 0; i < clip_rects_len; i++) {
+			const pixman_box32_t *rect = &clip_rects[i];
+			render_pass_mark_box_updated(pass, rect);
+			instance_data[i * 4 + 0] = (float)(rect->x1 - box.x) / box.width;
+			instance_data[i * 4 + 1] = (float)(rect->y1 - box.y) / box.height;
+			instance_data[i * 4 + 2] = (float)(rect->x2 - rect->x1) / box.width;
+			instance_data[i * 4 + 3] = (float)(rect->y2 - rect->y1) / box.height;
+		}
+
 		struct wlr_vk_vert_pcr_data vert_pcr_data = {
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
@@ -689,12 +722,9 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data), sizeof(float) * 4,
 			linear_color);
 
-		for (int i = 0; i < clip_rects_len; i++) {
-			VkRect2D rect;
-			convert_pixman_box_to_vk_rect(&clip_rects[i], &rect);
-			vkCmdSetScissor(cb, 0, 1, &rect);
-			vkCmdDraw(cb, 4, 1, 0, 0);
-		}
+		VkDeviceSize vb_offset = span.offset;
+		vkCmdBindVertexBuffers(cb, 0, 1, &span.buffer->buffer, &vb_offset);
+		vkCmdDraw(cb, 4, clip_rects_len, 0, 0);
 		break;
 	case WLR_RENDER_BLEND_MODE_NONE:;
 		VkClearAttachment clear_att = {
@@ -711,7 +741,9 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			.layerCount = 1,
 		};
 		for (int i = 0; i < clip_rects_len; i++) {
-			convert_pixman_box_to_vk_rect(&clip_rects[i], &clear_rect.rect);
+			const pixman_box32_t *rect = &clip_rects[i];
+			render_pass_mark_box_updated(pass, rect);
+			convert_pixman_box_to_vk_rect(rect, &clear_rect.rect);
 			vkCmdClearAttachments(cb, 1, &clear_att, 1, &clear_rect);
 		}
 		break;
@@ -766,6 +798,15 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	const pixman_box32_t *clip_rects = pixman_region32_rectangles(&clip, &clip_rects_len);
 	if (clip_rects_len == 0) {
 		pixman_region32_fini(&clip);
+		return;
+	}
+
+	const VkDeviceSize instance_size = 4 * sizeof(float);
+	struct wlr_vk_buffer_span span = vulkan_get_stage_span(renderer,
+		clip_rects_len * instance_size, 16);
+	if (!span.buffer) {
+		pixman_region32_fini(&clip);
+		pass->failed = true;
 		return;
 	}
 
@@ -885,17 +926,34 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(vert_pcr_data),
 		sizeof(frag_pcr_data), &frag_pcr_data);
 
+	float *instance_data = (float *)((char *)span.buffer->cpu_mapping + span.offset);
 	for (int i = 0; i < clip_rects_len; i++) {
-		VkRect2D rect;
-		convert_pixman_box_to_vk_rect(&clip_rects[i], &rect);
-		vkCmdSetScissor(cb, 0, 1, &rect);
-		vkCmdDraw(cb, 4, 1, 0, 0);
-		render_pass_mark_box_updated(pass, &clip_rects[i]);
+		const pixman_box32_t *rect = &clip_rects[i];
+		render_pass_mark_box_updated(pass, rect);
+
+		struct wlr_fbox norm = {
+			.x = (double)(rect->x1 - dst_box.x) / dst_box.width,
+			.y = (double)(rect->y1 - dst_box.y) / dst_box.height,
+			.width = (double)(rect->x2 - rect->x1) / dst_box.width,
+			.height = (double)(rect->y2 - rect->y1) / dst_box.height,
+		};
+
+		if (options->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
+			wlr_fbox_transform(&norm, &norm, options->transform, 1.0, 1.0);
+		}
+
+		instance_data[i * 4 + 0] = (float)norm.x;
+		instance_data[i * 4 + 1] = (float)norm.y;
+		instance_data[i * 4 + 2] = (float)norm.width;
+		instance_data[i * 4 + 3] = (float)norm.height;
 	}
 	pixman_region32_fini(&clip);
 
-	texture->last_used_cb = pass->command_buffer;
+	VkDeviceSize vb_offset = span.offset;
+	vkCmdBindVertexBuffers(cb, 0, 1, &span.buffer->buffer, &vb_offset);
+	vkCmdDraw(cb, 4, clip_rects_len, 0, 0);
 
+	texture->last_used_cb = pass->command_buffer;
 
 	if (texture->dmabuf_imported || (options != NULL && options->wait_timeline != NULL)) {
 		struct wlr_vk_render_pass_texture *pass_texture =
@@ -1290,6 +1348,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		.height = height,
 		.maxDepth = 1,
 	});
+	vkCmdSetScissor(cb->vk, 0, 1, &rect);
 
 	// matrix_projection() assumes a GL coordinate system so we need
 	// to pass WL_OUTPUT_TRANSFORM_FLIPPED_180 to adjust it for vulkan.
