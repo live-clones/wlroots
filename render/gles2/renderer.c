@@ -15,6 +15,7 @@
 #include <wlr/util/box.h>
 #include <wlr/util/log.h>
 #include <xf86drm.h>
+#include "render/drm_format_set.h"
 #include "render/egl.h"
 #include "render/gles2.h"
 #include "render/pixel_format.h"
@@ -215,7 +216,7 @@ static const struct wlr_drm_format_set *gles2_get_texture_formats(
 static const struct wlr_drm_format_set *gles2_get_render_formats(
 		struct wlr_renderer *wlr_renderer) {
 	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
-	return wlr_egl_get_dmabuf_render_formats(renderer->egl);
+	return &renderer->dmabuf_render_formats;
 }
 
 static int gles2_get_drm_fd(struct wlr_renderer *wlr_renderer) {
@@ -266,6 +267,7 @@ static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
 	wlr_egl_destroy(renderer->egl);
 
 	wlr_drm_format_set_finish(&renderer->shm_texture_formats);
+	wlr_drm_format_set_finish(&renderer->dmabuf_render_formats);
 
 	if (renderer->drm_fd >= 0) {
 		close(renderer->drm_fd);
@@ -722,6 +724,14 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	wlr_egl_unset_current(renderer->egl);
 
 	get_gles2_shm_formats(renderer, &renderer->shm_texture_formats);
+
+	wlr_drm_format_set_copy(&renderer->dmabuf_render_formats,
+			wlr_egl_get_dmabuf_render_formats(renderer->egl));
+
+	if (wlr_drm_format_set_has(&renderer->dmabuf_render_formats, DRM_FORMAT_R8, DRM_FORMAT_MOD_LINEAR) &&
+		wlr_drm_format_set_has(&renderer->dmabuf_render_formats, DRM_FORMAT_GR88, DRM_FORMAT_MOD_LINEAR)) {
+		wlr_drm_format_set_add(&renderer->dmabuf_render_formats, DRM_FORMAT_NV12, DRM_FORMAT_MOD_LINEAR);
+	}
 
 	int drm_fd = wlr_renderer_get_drm_fd(&renderer->wlr_renderer);
 	uint64_t cap_syncobj_timeline;
