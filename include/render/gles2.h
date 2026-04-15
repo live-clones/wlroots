@@ -53,6 +53,7 @@ struct wlr_gles2_renderer {
 	int drm_fd;
 
 	struct wlr_drm_format_set shm_texture_formats;
+	struct wlr_drm_format_set dmabuf_render_formats;
 
 	const char *exts_str;
 	struct {
