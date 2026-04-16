@@ -7,7 +7,8 @@ precision mediump float;
 varying vec2 v_texcoord;
 uniform sampler2D tex;
 uniform float alpha;
+uniform mat4 color_matrix;
 
 void main() {
-	gl_FragColor = texture2D(tex, v_texcoord) * alpha;
+	gl_FragColor = texture2D(tex, v_texcoord) * alpha * color_matrix;
 }

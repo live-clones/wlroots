@@ -28,12 +28,21 @@ struct wlr_gles2_pixel_format {
 	GLint gl_format, gl_type;
 };
 
+struct wlr_gles2_quad_shader {
+	GLuint program;
+	GLint proj;
+	GLint color;
+	GLint color_matrix;
+	GLint pos_attrib;
+};
+
 struct wlr_gles2_tex_shader {
 	GLuint program;
 	GLint proj;
 	GLint tex_proj;
 	GLint tex;
 	GLint alpha;
+	GLint color_matrix;
 	GLint pos_attrib;
 };
 
@@ -74,12 +83,7 @@ struct wlr_gles2_renderer {
 	} procs;
 
 	struct {
-		struct {
-			GLuint program;
-			GLint proj;
-			GLint color;
-			GLint pos_attrib;
-		} quad;
+		struct wlr_gles2_quad_shader quad;
 		struct wlr_gles2_tex_shader tex_rgba;
 		struct wlr_gles2_tex_shader tex_rgbx;
 		struct wlr_gles2_tex_shader tex_ext;

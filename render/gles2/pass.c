@@ -11,6 +11,13 @@
 
 #define MAX_QUADS 86 // 4kb
 
+static const GLfloat color_matrix_identity[16] = {
+	1, 0, 0, 0,
+	0, 1, 0, 0,
+	0, 0, 1, 0,
+	0, 0, 0, 1,
+};
+
 static const struct wlr_render_pass_impl render_pass_impl;
 
 static struct wlr_gles2_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
@@ -227,6 +234,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		WLR_RENDER_BLEND_MODE_NONE : options->blend_mode);
 
 	glUseProgram(shader->program);
+	glUniformMatrix4fv(shader->color_matrix, 1, GL_FALSE, color_matrix_identity);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(texture->target, texture->tex);
@@ -276,6 +284,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 	} else {
 		setup_blending(blend_mode);
 		glUseProgram(renderer->shaders.quad.program);
+		glUniformMatrix4fv(renderer->shaders.quad.color_matrix, 1, GL_FALSE, color_matrix_identity);
 		set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
 		glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
 		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
