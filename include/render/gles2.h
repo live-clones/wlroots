@@ -108,9 +108,11 @@ struct wlr_gles2_buffer {
 	struct wl_list link; // wlr_gles2_renderer.buffers
 	bool external_only;
 
-	EGLImageKHR image;
-	GLuint rbo;
-	GLuint fbo;
+	int n_images;
+	EGLImageKHR image[4];
+	GLuint rbo[4];
+	GLuint fbo[4];
+
 	GLuint tex;
 
 	struct wlr_addon addon;
@@ -153,7 +155,7 @@ const struct wlr_gles2_pixel_format *get_gles2_format_from_gl(
 void get_gles2_shm_formats(const struct wlr_gles2_renderer *renderer,
 	struct wlr_drm_format_set *out);
 
-GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer);
+GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer, int index);
 
 struct wlr_gles2_renderer *gles2_get_renderer(
 	struct wlr_renderer *wlr_renderer);

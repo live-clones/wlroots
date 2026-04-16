@@ -327,7 +327,7 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 		}
 	}
 
-	GLint fbo = gles2_buffer_get_fbo(buffer);
+	GLint fbo = gles2_buffer_get_fbo(buffer, 0);
 	if (!fbo) {
 		return NULL;
 	}
