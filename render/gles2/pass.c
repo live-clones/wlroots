@@ -1,10 +1,12 @@
 #include <stdlib.h>
 #include <assert.h>
+#include <drm_fourcc.h>
 #include <pixman.h>
 #include <time.h>
 #include <unistd.h>
 #include <wlr/render/drm_syncobj.h>
 #include <wlr/util/transform.h>
+#include "render/color.h"
 #include "render/egl.h"
 #include "render/gles2.h"
 #include "util/matrix.h"
@@ -160,6 +162,19 @@ static void set_tex_matrix(GLint loc, enum wl_output_transform trans,
 	glUniformMatrix3fv(loc, 1, GL_FALSE, tex_matrix);
 }
 
+static void set_filter_mode(GLenum target, enum wlr_scale_filter_mode mode) {
+	switch (mode) {
+	case WLR_SCALE_FILTER_BILINEAR:
+		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		break;
+	case WLR_SCALE_FILTER_NEAREST:
+		glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		break;
+	}
+}
+
 static void setup_blending(enum wlr_render_blend_mode mode) {
 	switch (mode) {
 	case WLR_RENDER_BLEND_MODE_PREMULTIPLIED:
@@ -174,11 +189,17 @@ static void setup_blending(enum wlr_render_blend_mode mode) {
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
 	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
+	struct wlr_gles2_buffer *buffer = pass->buffer;
+	struct wlr_gles2_renderer *renderer = buffer->renderer;
+	struct wlr_buffer *wlr_buffer = buffer->buffer;
 	struct wlr_gles2_texture *texture = gles2_get_texture(options->texture);
 
-	struct wlr_gles2_tex_shader *shader = NULL;
+	struct wlr_dmabuf_attributes dmabuf = {0};
+	if (!wlr_buffer_get_dmabuf(wlr_buffer, &dmabuf)) {
+		return;
+	}
 
+	struct wlr_gles2_tex_shader *shader;
 	switch (texture->target) {
 	case GL_TEXTURE_2D:
 		if (texture->has_alpha) {
@@ -239,24 +260,48 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(texture->target, texture->tex);
 
-	switch (options->filter_mode) {
-	case WLR_SCALE_FILTER_BILINEAR:
-		glTexParameteri(texture->target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameteri(texture->target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		break;
-	case WLR_SCALE_FILTER_NEAREST:
-		glTexParameteri(texture->target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-		glTexParameteri(texture->target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		break;
-	}
+	set_filter_mode(texture->target, options->filter_mode);
 
 	glUniform1i(shader->tex, 0);
 	glUniform1f(shader->alpha, alpha);
 	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
 	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
 
-	render(&dst_box, options->clip, shader->pos_attrib);
+	if (dmabuf.format == DRM_FORMAT_NV12) {
+		GLint luma_fbo = gles2_buffer_get_fbo(buffer, 0);
+		GLint chroma_fbo = gles2_buffer_get_fbo(buffer, 1);
+		if (!luma_fbo || !chroma_fbo) {
+			wlr_log(WLR_ERROR, "Failed to get fbo");
+			goto out;
+		}
 
+		glBindFramebuffer(GL_FRAMEBUFFER, luma_fbo);
+		glViewport(0, 0, wlr_buffer->width, wlr_buffer->height);
+		/* Note: this is the full matrix, but chroma gets discarded so zeroing out the chroma part
+		 * wouldn't make any difference.
+		 */
+		glUniformMatrix4fv(shader->color_matrix, 1, GL_FALSE, pass->color_matrix);
+		render(&dst_box, options->clip, shader->pos_attrib);
+
+		set_filter_mode(texture->target, WLR_SCALE_FILTER_BILINEAR);
+		glBindFramebuffer(GL_FRAMEBUFFER, chroma_fbo);
+		glViewport(0, 0, (wlr_buffer->width + 1) / 2, (wlr_buffer->height + 1) / 2);
+		glUniformMatrix4fv(shader->color_matrix, 1, GL_FALSE, pass->color_matrix_nv12_chroma);
+		render(&dst_box, options->clip, shader->pos_attrib);
+	} else {
+		GLint fbo = gles2_buffer_get_fbo(buffer, 0);
+		if (!fbo) {
+			wlr_log(WLR_ERROR, "Failed to get fbo");
+			goto out;
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+		glViewport(0, 0, wlr_buffer->width, wlr_buffer->height);
+		glUniformMatrix4fv(shader->color_matrix, 1, GL_FALSE, color_matrix_identity);
+		render(&dst_box, options->clip, shader->pos_attrib);
+	}
+
+out:
 	glBindTexture(texture->target, 0);
 	pop_gles2_debug(renderer);
 }
@@ -264,16 +309,60 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
 	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
-	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
+	struct wlr_gles2_buffer *buffer = pass->buffer;
+	struct wlr_gles2_renderer *renderer = buffer->renderer;
+	struct wlr_buffer *wlr_buffer = buffer->buffer;
+
+	struct wlr_dmabuf_attributes dmabuf = {0};
+	if (!wlr_buffer_get_dmabuf(wlr_buffer, &dmabuf)) {
+		return;
+	}
 
 	const struct wlr_render_color *color = &options->color;
 	struct wlr_box box;
-	struct wlr_buffer *wlr_buffer = pass->buffer->buffer;
 	wlr_render_rect_options_get_box(options, wlr_buffer, &box);
 
 	push_gles2_debug(renderer);
+
 	enum wlr_render_blend_mode blend_mode =
 		color->a == 1.0 ? WLR_RENDER_BLEND_MODE_NONE : options->blend_mode;
+
+	// TODO: Maybe it would be better to apply the color_matrix to the color outside the shader.
+	// TODO: Implement the glClear fullscreen optimisiation for NV12 too.
+	if (dmabuf.format == DRM_FORMAT_NV12) {
+		GLint luma_fbo = gles2_buffer_get_fbo(buffer, 0);
+		GLint chroma_fbo = gles2_buffer_get_fbo(buffer, 1);
+		if (!luma_fbo || !chroma_fbo) {
+			wlr_log(WLR_ERROR, "Failed to get fbo");
+			goto out;
+		}
+
+		setup_blending(blend_mode);
+		glUseProgram(renderer->shaders.quad.program);
+		set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
+		glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, luma_fbo);
+		glViewport(0, 0, wlr_buffer->width, wlr_buffer->height);
+		glUniformMatrix4fv(renderer->shaders.quad.color_matrix, 1, GL_FALSE, pass->color_matrix);
+		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, chroma_fbo);
+		glViewport(0, 0, (wlr_buffer->width + 1) / 2, (wlr_buffer->height + 1) / 2);
+		glUniformMatrix4fv(renderer->shaders.quad.color_matrix, 1, GL_FALSE, pass->color_matrix_nv12_chroma);
+		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
+		goto out;
+	}
+
+	GLint fbo = gles2_buffer_get_fbo(buffer, 0);
+	if (!fbo) {
+		wlr_log(WLR_ERROR, "Failed to get fbo");
+		goto out;
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glViewport(0, 0, wlr_buffer->width, wlr_buffer->height);
+
 	if (blend_mode == WLR_RENDER_BLEND_MODE_NONE &&
 			options->clip == NULL &&
 			box.x == 0 && box.y == 0 &&
@@ -290,6 +379,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
 	}
 
+out:
 	pop_gles2_debug(renderer);
 }
 
@@ -312,9 +402,20 @@ static const char *reset_status_str(GLenum status) {
 	}
 }
 
+static void derive_nv12_chroma_matrix(const float full[16], float chroma[16]) {
+	for (int col = 0; col < 4; col++) {
+		chroma[col * 4 + 0] = full[col * 4 + 1];
+		chroma[col * 4 + 1] = full[col * 4 + 2];
+		chroma[col * 4 + 2] = 0.0f;
+		chroma[col * 4 + 3] = 0.0f;
+	}
+	chroma[15] = 1.0f;
+}
+
 struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *buffer,
 		struct wlr_egl_context *prev_ctx, struct wlr_gles2_render_timer *timer,
-		struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point) {
+		struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point,
+		enum wlr_color_encoding color_encoding, enum wlr_color_range color_range) {
 	struct wlr_gles2_renderer *renderer = buffer->renderer;
 	struct wlr_buffer *wlr_buffer = buffer->buffer;
 
@@ -342,6 +443,14 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 	pass->buffer = buffer;
 	pass->timer = timer;
 	pass->prev_ctx = *prev_ctx;
+	if (color_encoding == WLR_COLOR_ENCODING_NONE) {
+		color_encoding = WLR_COLOR_ENCODING_BT709;
+	}
+	if (color_range == WLR_COLOR_RANGE_NONE) {
+		color_range = WLR_COLOR_RANGE_FULL;
+	}
+	wlr_color_rgb_to_ycbcr_matrix(color_encoding, color_range, pass->color_matrix);
+	derive_nv12_chroma_matrix(pass->color_matrix, pass->color_matrix_nv12_chroma);
 	if (signal_timeline != NULL) {
 		pass->signal_timeline = wlr_drm_syncobj_timeline_ref(signal_timeline);
 		pass->signal_point = signal_point;
@@ -351,9 +460,6 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 		WL_OUTPUT_TRANSFORM_FLIPPED_180);
 
 	push_gles2_debug(renderer);
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-	glViewport(0, 0, wlr_buffer->width, wlr_buffer->height);
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_SCISSOR_TEST);
 	pop_gles2_debug(renderer);

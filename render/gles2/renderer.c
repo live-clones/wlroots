@@ -295,7 +295,8 @@ static struct wlr_render_pass *gles2_begin_buffer_pass(struct wlr_renderer *wlr_
 	}
 
 	struct wlr_gles2_render_pass *pass = begin_gles2_buffer_pass(buffer,
-		&prev_ctx, timer, options->signal_timeline, options->signal_point);
+		&prev_ctx, timer, options->signal_timeline, options->signal_point,
+		options->color_encoding, options->color_range);
 	if (!pass) {
 		return NULL;
 	}
