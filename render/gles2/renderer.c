@@ -59,13 +59,18 @@ static void destroy_buffer(struct wlr_gles2_buffer *buffer) {
 
 	push_gles2_debug(buffer->renderer);
 
-	glDeleteFramebuffers(1, &buffer->fbo);
-	glDeleteRenderbuffers(1, &buffer->rbo);
+	for (int i = 0; i < buffer->n_images; ++i) {
+		glDeleteFramebuffers(1, &buffer->fbo[i]);
+		glDeleteRenderbuffers(1, &buffer->rbo[i]);
+	}
+
 	glDeleteTextures(1, &buffer->tex);
 
 	pop_gles2_debug(buffer->renderer);
 
-	wlr_egl_destroy_image(buffer->renderer->egl, buffer->image);
+	for (int i = 0; i < buffer->n_images; ++i) {
+		wlr_egl_destroy_image(buffer->renderer->egl, buffer->image[i]);
+	}
 
 	wlr_egl_restore_context(&prev_ctx);
 
@@ -83,42 +88,42 @@ static const struct wlr_addon_interface buffer_addon_impl = {
 	.destroy = handle_buffer_destroy,
 };
 
-GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer) {
+GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer, int index) {
 	if (buffer->external_only) {
 		wlr_log(WLR_ERROR, "DMA-BUF format is external-only");
 		return 0;
 	}
 
-	if (buffer->fbo) {
-		return buffer->fbo;
+	if (buffer->fbo[index]) {
+		return buffer->fbo[index];
 	}
 
 	push_gles2_debug(buffer->renderer);
 
-	if (!buffer->rbo) {
-		glGenRenderbuffers(1, &buffer->rbo);
-		glBindRenderbuffer(GL_RENDERBUFFER, buffer->rbo);
+	if (!buffer->rbo[index]) {
+		glGenRenderbuffers(1, &buffer->rbo[index]);
+		glBindRenderbuffer(GL_RENDERBUFFER, buffer->rbo[index]);
 		buffer->renderer->procs.glEGLImageTargetRenderbufferStorageOES(GL_RENDERBUFFER,
-			buffer->image);
+			buffer->image[index]);
 		glBindRenderbuffer(GL_RENDERBUFFER, 0);
 	}
 
-	glGenFramebuffers(1, &buffer->fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, buffer->fbo);
+	glGenFramebuffers(1, &buffer->fbo[index]);
+	glBindFramebuffer(GL_FRAMEBUFFER, buffer->fbo[index]);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-		GL_RENDERBUFFER, buffer->rbo);
+		GL_RENDERBUFFER, buffer->rbo[index]);
 	GLenum fb_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	if (fb_status != GL_FRAMEBUFFER_COMPLETE) {
 		wlr_log(WLR_ERROR, "Failed to create FBO");
-		glDeleteFramebuffers(1, &buffer->fbo);
-		buffer->fbo = 0;
+		glDeleteFramebuffers(1, &buffer->fbo[index]);
+		buffer->fbo[index] = 0;
 	}
 
 	pop_gles2_debug(buffer->renderer);
 
-	return buffer->fbo;
+	return buffer->fbo[index];
 }
 
 struct wlr_gles2_buffer *gles2_buffer_get_or_create(struct wlr_gles2_renderer *renderer,
@@ -143,10 +148,41 @@ struct wlr_gles2_buffer *gles2_buffer_get_or_create(struct wlr_gles2_renderer *r
 		goto error_buffer;
 	}
 
-	buffer->image = wlr_egl_create_image_from_dmabuf(renderer->egl,
-		&dmabuf, &buffer->external_only);
-	if (buffer->image == EGL_NO_IMAGE_KHR) {
-		goto error_buffer;
+	if (dmabuf.format == DRM_FORMAT_NV12) {
+		buffer->n_images = 2;
+
+		struct wlr_dmabuf_attributes luma = dmabuf;
+		luma.n_planes = 1;
+		luma.format = DRM_FORMAT_R8;
+		buffer->image[0] = wlr_egl_create_image_from_dmabuf(renderer->egl,
+				&luma, &buffer->external_only);
+		if (buffer->image[0] == EGL_NO_IMAGE_KHR) {
+			goto error_buffer;
+		}
+
+		struct wlr_dmabuf_attributes chroma = {
+			.format = DRM_FORMAT_GR88,
+			.n_planes = 1,
+			.offset = { dmabuf.offset[1] },
+			.stride = { dmabuf.stride[1] },
+			.fd = { dmabuf.fd[1] },
+			.width = (dmabuf.width + 1) / 2,
+			.height = (dmabuf.height + 1) / 2,
+			.modifier = dmabuf.modifier,
+		};
+		buffer->image[1] = wlr_egl_create_image_from_dmabuf(renderer->egl,
+				&chroma, &buffer->external_only);
+		if (buffer->image[1] == EGL_NO_IMAGE_KHR) {
+			wlr_egl_destroy_image(renderer->egl, buffer->image[0]);
+			goto error_buffer;
+		}
+	} else {
+		buffer->n_images = 1;
+		buffer->image[0] = wlr_egl_create_image_from_dmabuf(renderer->egl,
+			&dmabuf, &buffer->external_only);
+		if (buffer->image[0] == EGL_NO_IMAGE_KHR) {
+			goto error_buffer;
+		}
 	}
 
 	wlr_addon_init(&buffer->addon, &wlr_buffer->addons, renderer,
@@ -278,7 +314,7 @@ GLuint wlr_gles2_renderer_get_buffer_fbo(struct wlr_renderer *wlr_renderer,
 
 	struct wlr_gles2_buffer *buffer = gles2_buffer_get_or_create(renderer, wlr_buffer);
 	if (buffer) {
-		fbo = gles2_buffer_get_fbo(buffer);
+		fbo = gles2_buffer_get_fbo(buffer, 0);
 	}
 
 	wlr_egl_restore_context(&prev_ctx);
