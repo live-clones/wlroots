@@ -124,6 +124,7 @@ struct wlr_gles2_texture {
 	// case.
 	GLuint tex;
 	GLuint fbo;
+	GLint format;
 
 	bool has_alpha;
 
