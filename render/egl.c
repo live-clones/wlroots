@@ -12,6 +12,13 @@
 #include "render/egl.h"
 #include "util/env.h"
 
+// TODO: drop
+#define EGL_DEVICE_TYPE_EXT               0x3590
+#define EGL_DEVICE_TYPE_OTHER_EXT         0x3591
+#define EGL_DEVICE_TYPE_INTEGRATED_GPU_EXT 0x3592
+#define EGL_DEVICE_TYPE_DISCRETE_GPU_EXT  0x3593
+#define EGL_DEVICE_TYPE_CPU_EXT           0x3594
+
 static enum wlr_log_importance egl_log_importance_to_wlr(EGLint type) {
 	switch (type) {
 	case EGL_DEBUG_MSG_CRITICAL_KHR: return WLR_ERROR;
@@ -231,10 +238,9 @@ static struct wlr_egl *egl_create(void) {
 
 	if (check_egl_ext(client_exts_str, "EGL_EXT_device_base") || check_egl_ext(client_exts_str, "EGL_EXT_device_query")) {
 		egl->exts.EXT_device_query = true;
-		load_egl_proc(&egl->procs.eglQueryDeviceStringEXT,
-			"eglQueryDeviceStringEXT");
-		load_egl_proc(&egl->procs.eglQueryDisplayAttribEXT,
-			"eglQueryDisplayAttribEXT");
+		load_egl_proc(&egl->procs.eglQueryDeviceStringEXT, "eglQueryDeviceStringEXT");
+		load_egl_proc(&egl->procs.eglQueryDeviceAttribEXT, "eglQueryDeviceAttribEXT");
+		load_egl_proc(&egl->procs.eglQueryDisplayAttribEXT, "eglQueryDisplayAttribEXT");
 	}
 
 	if (check_egl_ext(client_exts_str, "EGL_KHR_debug")) {
@@ -258,6 +264,19 @@ static struct wlr_egl *egl_create(void) {
 	}
 
 	return egl;
+}
+
+static bool device_is_software(struct wlr_egl *egl, EGLDeviceEXT *device,
+		const char *device_exts_str) {
+	if (check_egl_ext(device_exts_str, "EGL_EXT_device_type")) {
+		EGLAttrib device_type;
+		if (!egl->procs.eglQueryDeviceAttribEXT(egl->device, EGL_DEVICE_TYPE_EXT, &device_type)) {
+			wlr_log(WLR_ERROR, "eglQueryDeviceAttribEXT(EGL_DEVICE_TYPE_EXT) failed");
+		} else {
+			return device_type == EGL_DEVICE_TYPE_CPU_EXT;
+		}
+	}
+	return check_egl_ext(device_exts_str, "EGL_MESA_device_software");
 }
 
 static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
@@ -327,7 +346,7 @@ static bool egl_init_display(struct wlr_egl *egl, EGLDisplay display,
 
 		// The only way a non-DRM device is selected is when the user
 		// explicitly picks software rendering
-		if (check_egl_ext(device_exts_str, "EGL_MESA_device_software")) {
+		if (device_is_software(egl, egl->device, device_exts_str)) {
 			if (allow_software || env_parse_bool("WLR_RENDERER_ALLOW_SOFTWARE")) {
 				wlr_log(WLR_INFO, "Using software rendering");
 			} else {
@@ -510,13 +529,11 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
 			}
 		}
 
-		bool is_software = check_egl_ext(device_exts_str, "EGL_MESA_device_software");
-
 		bool found;
 		if (selected_drm_device != NULL) {
 			found = egl_device_name != NULL && device_has_name(selected_drm_device, egl_device_name);
 		} else {
-			found = is_software;
+			found = device_is_software(egl, devices[i], device_exts_str);
 		}
 		if (found) {
 			if (egl_device_name != NULL) {
