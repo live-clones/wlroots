@@ -999,7 +999,7 @@ static bool create_3d_lut_image(struct wlr_vk_renderer *renderer,
 	res = vkCreateImage(dev, &img_info, NULL, image);
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkCreateImage failed", res);
-		return NULL;
+		return false;
 	}
 
 	VkMemoryRequirements mem_reqs = {0};
@@ -1262,7 +1262,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 
 	struct wlr_vk_command_buffer *cb = vulkan_acquire_command_buffer(renderer);
 	if (cb == NULL) {
-		free(pass);
+		render_pass_destroy(pass);
 		return NULL;
 	}
 
@@ -1273,7 +1273,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 	if (res != VK_SUCCESS) {
 		wlr_vk_error("vkBeginCommandBuffer", res);
 		vulkan_reset_command_buffer(cb);
-		free(pass);
+		render_pass_destroy(pass);
 		return NULL;
 	}
 
