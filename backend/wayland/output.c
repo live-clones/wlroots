@@ -72,8 +72,6 @@ static void surface_frame_callback(void *data, struct wl_callback *cb,
 	assert(output->frame_callback == cb);
 	wl_callback_destroy(cb);
 	output->frame_callback = NULL;
-
-	wlr_output_send_frame(&output->wlr_output);
 }
 
 static const struct wl_callback_listener frame_listener = {

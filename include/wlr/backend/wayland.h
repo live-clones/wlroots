@@ -49,6 +49,11 @@ struct wlr_output *wlr_wl_output_create_from_surface(struct wlr_backend *backend
 bool wlr_backend_is_wl(const struct wlr_backend *backend);
 
 /**
+ * Check whether the Wayland server advertises the wp_presentation protocol.
+ */
+bool wlr_wl_backend_has_presentation_time(struct wlr_backend *backend);
+
+/**
  * Check whether the provided input device is a Wayland input device.
  */
 bool wlr_input_device_is_wl(struct wlr_input_device *device);

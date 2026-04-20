@@ -12,6 +12,7 @@
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_output.h>
@@ -74,6 +75,7 @@ struct tinywl_output {
 	struct wl_list link;
 	struct tinywl_server *server;
 	struct wlr_output *wlr_output;
+	struct wlr_frame_scheduler *frame_scheduler;
 	struct wl_listener frame;
 	struct wl_listener request_state;
 	struct wl_listener destroy;
@@ -603,6 +605,7 @@ static void output_destroy(struct wl_listener *listener, void *data) {
 	wl_list_remove(&output->request_state.link);
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
+	wlr_frame_scheduler_destroy(output->frame_scheduler);
 	free(output);
 }
 
@@ -641,10 +644,6 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 	output->wlr_output = wlr_output;
 	output->server = server;
 
-	/* Sets up a listener for the frame event. */
-	output->frame.notify = output_frame;
-	wl_signal_add(&wlr_output->events.frame, &output->frame);
-
 	/* Sets up a listener for the state request event. */
 	output->request_state.notify = output_request_state;
 	wl_signal_add(&wlr_output->events.request_state, &output->request_state);
@@ -668,6 +667,10 @@ static void server_new_output(struct wl_listener *listener, void *data) {
 		wlr_output);
 	struct wlr_scene_output *scene_output = wlr_scene_output_create(server->scene, wlr_output);
 	wlr_scene_output_layout_add_output(server->scene_layout, l_output, scene_output);
+
+	/* Sets up a listener for the frame event. */
+	output->frame.notify = output_frame;
+	wl_signal_add(&scene_output->frame_scheduler->events.frame, &output->frame);
 }
 
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {

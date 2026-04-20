@@ -10,6 +10,7 @@
 #include <wlr/backend/wayland.h>
 #include <wlr/render/allocator.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_frame_scheduler.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
@@ -220,10 +221,10 @@ int main(int argc, char *argv[]) {
 	wl_subsurface_set_position(subsurface, 20, 20);
 	struct wlr_output *output = wlr_wl_output_create_from_surface(backend, child_surface);
 	wlr_output_init_render(output, allocator, renderer);
-	scene_output = wlr_scene_output_create(scene, output);
 
+	scene_output = wlr_scene_output_create(scene, output);
 	output_frame.notify = output_handle_frame;
-	wl_signal_add(&output->events.frame, &output_frame);
+	wl_signal_add(&scene_output->frame_scheduler->events.frame, &output_frame);
 
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
