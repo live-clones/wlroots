@@ -34,6 +34,7 @@ struct wlr_pointer {
 		struct wl_signal button; // struct wlr_pointer_button_event
 		struct wl_signal axis; // struct wlr_pointer_axis_event
 		struct wl_signal frame;
+		struct wl_signal warp; // struct wlr_pointer_warp_event
 
 		struct wl_signal swipe_begin; // struct wlr_pointer_swipe_begin_event
 		struct wl_signal swipe_update; // struct wlr_pointer_swipe_update_event
@@ -82,7 +83,10 @@ struct wlr_pointer_axis_event {
 	double delta;
 	int32_t delta_discrete;
 };
-
+struct wlr_pointer_warp_event {
+	struct wlr_pointer *pointer;
+	double sx, sy;
+};
 struct wlr_pointer_swipe_begin_event {
 	struct wlr_pointer *pointer;
 	uint32_t time_msec;
