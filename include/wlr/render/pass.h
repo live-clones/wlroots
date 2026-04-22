@@ -90,7 +90,7 @@ struct wlr_render_texture_options {
 	/* Source coordinates, leave empty to render the whole texture */
 	struct wlr_fbox src_box;
 	/* Destination coordinates, width/height default to the texture size */
-	struct wlr_box dst_box;
+	struct wlr_fbox dst_box;
 	/* Opacity between 0 (transparent) and 1 (opaque), leave NULL for opaque */
 	const float *alpha;
 	/* Clip region, leave NULL to disable clipping */
@@ -142,7 +142,7 @@ struct wlr_render_color {
 
 struct wlr_render_rect_options {
 	/* Rectangle coordinates */
-	struct wlr_box box;
+	struct wlr_fbox box;
 	/* Source color */
 	struct wlr_render_color color;
 	/* Clip region, leave NULL to disable clipping */
