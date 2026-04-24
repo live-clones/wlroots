@@ -8,11 +8,14 @@ layout(push_constant, row_major) uniform UBO {
 	vec2 uv_size;
 } data;
 
+layout(location = 0) in vec4 inst_rect;
+
 layout(location = 0) out vec2 uv;
 
 void main() {
 	vec2 pos = vec2(float((gl_VertexIndex + 1) & 2) * 0.5f,
 		float(gl_VertexIndex & 2) * 0.5f);
+	pos = inst_rect.xy + pos * inst_rect.zw;
 	uv = data.uv_offset + pos * data.uv_size;
 	gl_Position = data.proj * vec4(pos, 0.0, 1.0);
 }
