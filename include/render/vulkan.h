@@ -305,30 +305,7 @@ struct wlr_vk_renderer {
 
 	VkCommandPool command_pool;
 
-	VkShaderModule vert_module;
-	VkShaderModule tex_frag_module;
-	VkShaderModule quad_frag_module;
-	VkShaderModule output_module;
-
 	struct wl_list pipeline_layouts; // struct wlr_vk_pipeline_layout.link
-
-	// for blend->output subpass
-	VkPipelineLayout output_pipe_layout;
-	VkDescriptorSetLayout output_ds_srgb_layout;
-	VkDescriptorSetLayout output_ds_lut3d_layout;
-	VkSampler output_sampler_lut3d;
-	// descriptor set indicating dummy 1x1x1 image, for use in the lut3d slot
-	VkDescriptorSet output_ds_lut3d_dummy;
-	struct wlr_vk_descriptor_pool *output_ds_lut3d_dummy_pool;
-
-	size_t last_output_pool_size;
-	struct wl_list output_descriptor_pools; // wlr_vk_descriptor_pool.link
-
-	// dummy sampler to bind when output shader is not using a lookup table
-	VkImage dummy3d_image;
-	VkDeviceMemory dummy3d_mem;
-	VkImageView dummy3d_image_view;
-	bool dummy3d_image_transitioned;
 
 	VkSemaphore timeline_semaphore;
 	uint64_t timeline_point;
@@ -392,10 +369,17 @@ struct wlr_vk_texture_view {
 	VkImageView image_view;
 	struct wlr_vk_descriptor_pool *ds_pool;
 };
-
+struct wlr_vk_renderer *wlr_vk_renderer_from_renderer(
+	struct wlr_renderer *wlr_renderer);
+bool wlr_vk_create_shader_module(VkDevice dev, const uint32_t *code,
+	size_t code_size, const char *name, VkShaderModule *out);
+float wlr_color_to_linear_premult(float non_linear, float alpha);
+void wlr_encode_proj_matrix(const float mat3[9], float mat4[4][4]);
+void wlr_encode_color_matrix(const float mat3[9], float mat4[4][4]);
 struct wlr_vk_pipeline *setup_get_or_create_pipeline(
 	struct wlr_vk_render_format_setup *setup,
-	const struct wlr_vk_pipeline_key *key);
+	const struct wlr_vk_pipeline_key *key,
+	VkShaderModule vert_module, VkShaderModule frag_module);
 struct wlr_vk_pipeline_layout *get_or_create_pipeline_layout(
 	struct wlr_vk_renderer *renderer,
 	const struct wlr_vk_pipeline_layout_key *key);
@@ -479,6 +463,7 @@ void vulkan_free_ds(struct wlr_vk_renderer *renderer,
 struct wlr_vk_format_props *vulkan_format_props_from_drm(
 	struct wlr_vk_device *dev, uint32_t drm_format);
 struct wlr_vk_renderer *vulkan_get_renderer(struct wlr_renderer *r);
+VkShaderModule vulkan_create_common_vert_module(struct wlr_vk_renderer *renderer);
 
 struct wlr_vk_command_buffer *vulkan_acquire_command_buffer(
 	struct wlr_vk_renderer *renderer);
@@ -605,5 +590,65 @@ void vulkan_change_layout(VkCommandBuffer cb, VkImage img,
 	vulkan_strerror(res), res, ##__VA_ARGS__)
 
 #endif
+
+struct wlr_vk_render_rect_pass {
+	struct wlr_render_rect_pass base;
+	struct wlr_vk_renderer *renderer;
+	struct {
+		VkShaderModule vert_module;
+		VkShaderModule frag_module;
+	} shader;
+};
+
+bool wlr_render_rect_pass_is_vk(const struct wlr_render_rect_pass *rect_pass);
+struct wlr_vk_render_rect_pass *wlr_vk_render_rect_pass_from_pass(
+	struct wlr_render_rect_pass *rect_pass);
+
+struct wlr_vk_render_texture_pass {
+	struct wlr_render_texture_pass base;
+	struct wlr_vk_renderer *renderer;
+	struct {
+		VkShaderModule vert_module;
+		VkShaderModule frag_module;
+	} shader;
+};
+
+bool wlr_render_texture_pass_is_vk(const struct wlr_render_texture_pass *texture_pass);
+struct wlr_vk_render_texture_pass *wlr_vk_render_texture_pass_from_pass(
+	const struct wlr_render_texture_pass *texture_pass);
+
+struct wlr_vk_render_submit_pass {
+	struct wlr_render_submit_pass base;
+	struct wlr_vk_renderer *renderer;
+
+	struct {
+		VkShaderModule vert_module;
+		VkShaderModule frag_module;
+
+		VkPipelineLayout pipe_layout;
+		VkDescriptorSetLayout ds_srgb_layout;
+		VkDescriptorSetLayout ds_lut3d_layout;
+		VkSampler sampler_lut3d;
+		// descriptor set indicating dummy 1x1x1 image, for use in the lut3d slot
+		VkDescriptorSet ds_lut3d_dummy;
+		struct wlr_vk_descriptor_pool *ds_lut3d_dummy_pool;
+
+		size_t last_pool_size;
+		struct wl_list descriptor_pools; // wlr_vk_descriptor_pool.link
+
+		// dummy sampler to bind when output shader is not using a lookup table
+		VkImage dummy3d_image;
+		VkDeviceMemory dummy3d_mem;
+		VkImageView dummy3d_image_view;
+		bool dummy3d_image_transitioned;
+	} output;
+};
+
+bool wlr_render_submit_pass_is_vk(const struct wlr_render_submit_pass *submit_pass);
+struct wlr_vk_render_submit_pass *wlr_vk_render_submit_pass_from_pass(
+	struct wlr_render_submit_pass *submit_pass);
+
+bool vulkan_init_submit_pass_output(struct wlr_vk_renderer *renderer,
+	struct wlr_vk_render_submit_pass *submit_pass);
 
 #endif // RENDER_VULKAN_H

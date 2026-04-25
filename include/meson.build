@@ -29,6 +29,29 @@ install_subdir('wlr',
 	exclude_files: exclude_files,
 )
 
+internal_render_headers = [
+	'render/pixman.h',
+	'render/pixel_format.h',
+]
+if features.get('gles2-renderer')
+	internal_render_headers += [
+		'render/egl.h',
+		'render/gles2.h',
+	]
+endif
+if features.get('vulkan-renderer')
+	internal_render_headers += 'render/vulkan.h'
+endif
+
+install_headers(internal_render_headers,
+	subdir: versioned_name,
+	preserve_path: true,
+)
+
+install_headers('util/rect_union.h',
+	subdir: versioned_name / 'util',
+)
+
 foreach name, have : internal_features
 	internal_config.set10('HAVE_' + name.underscorify().to_upper(), have)
 endforeach
