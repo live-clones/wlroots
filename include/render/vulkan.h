@@ -44,6 +44,7 @@ struct wlr_vk_device {
 	bool sync_file_import_export;
 	bool implicit_sync_interop;
 	bool sampler_ycbcr_conversion;
+	bool host_image_copy;
 
 	// we only ever need one queue for rendering and transfer commands
 	uint32_t queue_family;
@@ -60,6 +61,8 @@ struct wlr_vk_device {
 		PFN_vkCreateSamplerYcbcrConversionKHR vkCreateSamplerYcbcrConversionKHR;
 		PFN_vkDestroySamplerYcbcrConversionKHR vkDestroySamplerYcbcrConversionKHR;
 		PFN_vkGetImageMemoryRequirements2KHR vkGetImageMemoryRequirements2KHR;
+		PFN_vkCopyMemoryToImageEXT vkCopyMemoryToImageEXT;
+		PFN_vkTransitionImageLayoutEXT vkTransitionImageLayoutEXT;
 	} api;
 
 	uint32_t format_prop_count;
@@ -115,6 +118,7 @@ struct wlr_vk_format_props {
 		VkExtent2D max_extent;
 		VkFormatFeatureFlags features;
 		bool has_mutable_srgb;
+		bool host_image_copy;
 	} shm;
 
 	struct {
@@ -518,6 +522,7 @@ struct wlr_vk_texture {
 	bool transitioned; // if dma_imported: whether we transitioned it away from preinit
 	bool has_alpha; // whether the image is has alpha channel
 	bool using_mutable_srgb; // can be accessed through _SRGB format view
+	bool host_image_copy; // whether uploads skip the staging buffer
 	struct wl_list foreign_link; // wlr_vk_renderer.foreign_textures
 	struct wl_list destroy_link; // wlr_vk_command_buffer.destroy_textures
 	struct wl_list link; // wlr_vk_renderer.textures
