@@ -105,9 +105,9 @@ void wlr_ext_image_copy_capture_frame_v1_ready(struct wlr_ext_image_copy_capture
 	frame_destroy(frame);
 }
 
-static bool copy_dmabuf(struct wlr_buffer *dst,
-		struct wlr_buffer *src, struct wlr_renderer *renderer,
-		const pixman_region32_t *clip) {
+static bool copy_dmabuf(struct wlr_buffer *dst, struct wlr_buffer *src,
+		struct wlr_renderer *renderer, const pixman_region32_t *clip,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
 	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src);
 	if (texture == NULL) {
 		return false;
@@ -123,6 +123,8 @@ static bool copy_dmabuf(struct wlr_buffer *dst,
 		.texture = texture,
 		.clip = clip,
 		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+		.wait_timeline = wait_timeline,
+		.wait_point = wait_point,
 	});
 
 	ok = wlr_render_pass_submit(pass);
@@ -133,7 +135,8 @@ out:
 }
 
 static bool copy_shm(void *data, uint32_t format, size_t stride,
-		struct wlr_buffer *src, struct wlr_renderer *renderer) {
+		struct wlr_buffer *src, struct wlr_renderer *renderer,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
 	// TODO: bypass renderer if source buffer supports data ptr access
 	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src);
 	if (!texture) {
@@ -145,6 +148,8 @@ static bool copy_shm(void *data, uint32_t format, size_t stride,
 		.data = data,
 		.format = format,
 		.stride = stride,
+		.wait_timeline = wait_timeline,
+		.wait_point = wait_point,
 	});
 
 	wlr_texture_destroy(texture);
@@ -153,7 +158,8 @@ static bool copy_shm(void *data, uint32_t format, size_t stride,
 }
 
 bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_capture_frame_v1 *frame,
-		struct wlr_buffer *src, struct wlr_renderer *renderer) {
+		struct wlr_buffer *src, struct wlr_renderer *renderer,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
 	struct wlr_buffer *dst = frame->buffer;
 
 	if (src->width != dst->width || src->height != dst->height) {
@@ -174,7 +180,7 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
 			ok = false;
 			failure_reason = EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS;
 		} else {
-			ok = copy_dmabuf(dst, src, renderer, &frame->buffer_damage);
+			ok = copy_dmabuf(dst, src, renderer, &frame->buffer_damage, wait_timeline, wait_point);
 		}
 	} else if (wlr_buffer_begin_data_ptr_access(dst,
 			WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride)) {
@@ -182,7 +188,7 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
 			ok = false;
 			failure_reason = EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS;
 		} else {
-			ok = copy_shm(data, format, stride, src, renderer);
+			ok = copy_shm(data, format, stride, src, renderer, wait_timeline, wait_point);
 		}
 		wlr_buffer_end_data_ptr_access(dst);
 	}
