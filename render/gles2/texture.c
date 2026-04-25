@@ -461,3 +461,25 @@ void wlr_gles2_texture_get_attribs(struct wlr_texture *wlr_texture,
 		.has_alpha = texture->has_alpha,
 	};
 }
+
+struct wlr_texture *wlr_gles2_texture_from_attribs(struct wlr_renderer *wlr_renderer,
+		 struct wlr_gles2_texture_attribs *attribs, int width, int height) {
+	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
+
+	if (attribs->target != GL_TEXTURE_2D) {
+	  return NULL;
+	}
+
+	struct wlr_gles2_texture *texture =
+		gles2_texture_create(renderer, width, height);
+
+	if (texture == NULL) {
+		return NULL;
+	}
+
+	texture->target = attribs->target;
+	texture->tex = attribs->tex;
+	texture->has_alpha = attribs->has_alpha;
+
+	return &texture->wlr_texture;
+}
