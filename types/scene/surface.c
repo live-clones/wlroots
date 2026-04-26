@@ -12,6 +12,7 @@
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/util/transform.h>
 #include "types/wlr_scene.h"
+#include "render/color.h"
 
 static double get_surface_preferred_buffer_scale(struct wlr_surface *surface) {
 	double scale = 1;
@@ -278,11 +279,14 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 
 	enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
 	enum wlr_color_named_primaries primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
+	struct wlr_color_luminances luminances;
+	wlr_color_transfer_function_get_default_luminance(tf, &luminances);
 	const struct wlr_image_description_v1_data *img_desc =
 		wlr_surface_get_image_description_v1_data(surface);
 	if (img_desc != NULL) {
 		tf = wlr_color_manager_v1_transfer_function_to_wlr(img_desc->tf_named);
 		primaries = wlr_color_manager_v1_primaries_to_wlr(img_desc->primaries_named);
+		wlr_color_manager_v1_get_luminances(img_desc, &luminances);
 	}
 
 	enum wlr_color_encoding color_encoding = WLR_COLOR_ENCODING_NONE;
@@ -307,6 +311,7 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 	wlr_scene_buffer_set_primaries(scene_buffer, primaries);
 	wlr_scene_buffer_set_color_encoding(scene_buffer, color_encoding);
 	wlr_scene_buffer_set_color_range(scene_buffer, color_range);
+	wlr_scene_buffer_set_luminances(scene_buffer, &luminances);
 
 	scene_buffer_unmark_client_buffer(scene_buffer);
 
