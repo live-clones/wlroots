@@ -153,7 +153,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data) {
 	surface->destroy.notify = surface_handle_destroy;
 	wl_signal_add(&wlr_surface->events.destroy, &surface->destroy);
 
-	wlr_scene_surface_create(&scene->tree, wlr_surface);
+	wlr_scene_surface_create(scene->tree, wlr_surface);
 }
 
 static void init_egl(struct wl_display *display) {

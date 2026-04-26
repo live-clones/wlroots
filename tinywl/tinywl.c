@@ -364,8 +364,8 @@ static struct tinywl_toplevel *desktop_toplevel_at(
 	 * We only care about surface nodes as we are specifically looking for a
 	 * surface in the surface tree of a tinywl_toplevel. */
 	struct wlr_scene_node *node = wlr_scene_node_at(
-		&server->scene->tree.node, lx, ly, sx, sy);
-	if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
+		&server->scene->tree->node, lx, ly, sx, sy);
+	if (node == NULL || !wlr_scene_node_is_buffer(node)) {
 		return NULL;
 	}
 	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
@@ -810,7 +810,7 @@ static void server_new_xdg_toplevel(struct wl_listener *listener, void *data) {
 	toplevel->server = server;
 	toplevel->xdg_toplevel = xdg_toplevel;
 	toplevel->scene_tree =
-		wlr_scene_xdg_surface_create(&toplevel->server->scene->tree, xdg_toplevel->base);
+		wlr_scene_xdg_surface_create(toplevel->server->scene->tree, xdg_toplevel->base);
 	toplevel->scene_tree->node.data = toplevel;
 	xdg_toplevel->base->data = toplevel->scene_tree;
 
@@ -1090,7 +1090,7 @@ int main(int argc, char *argv[]) {
 
 	wl_list_remove(&server.new_output.link);
 
-	wlr_scene_node_destroy(&server.scene->tree.node);
+	wlr_scene_destroy(server.scene);
 	wlr_xcursor_manager_destroy(server.cursor_mgr);
 	wlr_cursor_destroy(server.cursor);
 	wlr_allocator_destroy(server.allocator);

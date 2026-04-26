@@ -95,7 +95,7 @@ static void handle_scene_buffer_outputs_update(
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, outputs_update);
 	struct wlr_scene_outputs_update_event *event = data;
-	struct wlr_scene *scene = scene_node_get_root(&surface->buffer->node);
+	struct wlr_scene *scene = surface->buffer->node.scene;
 
 	// If the surface is no longer visible on any output, keep the last sent
 	// preferred configuration to avoid unnecessary redraws

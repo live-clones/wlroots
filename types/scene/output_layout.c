@@ -135,7 +135,7 @@ struct wlr_scene_output_layout *wlr_scene_attach_output_layout(struct wlr_scene 
 	wl_signal_add(&output_layout->events.change, &sol->layout_change);
 
 	sol->scene_destroy.notify = scene_output_layout_handle_scene_destroy;
-	wl_signal_add(&scene->tree.node.events.destroy, &sol->scene_destroy);
+	wl_signal_add(&scene->tree->node.events.destroy, &sol->scene_destroy);
 
 	return sol;
 }

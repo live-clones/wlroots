@@ -178,7 +178,7 @@ int main(void) {
 	/* End drawing */
 
 	struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_create(
-			&server.scene->tree, &buffer->base);
+			server.scene->tree, &buffer->base);
 	if (!scene_buffer) {
 		wl_display_destroy(server.display);
 		return EXIT_FAILURE;

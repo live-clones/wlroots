@@ -12,6 +12,7 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_scene_rect.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 
@@ -131,12 +132,12 @@ static void server_handle_new_surface(struct wl_listener *listener,
 	wl_signal_add(&wlr_surface->events.destroy, &surface->destroy);
 
 	/* Border dimensions will be set in surface.commit handler */
-	surface->border = wlr_scene_rect_create(&server->scene->tree,
+	surface->border = wlr_scene_rect_create(server->scene->tree,
 			0, 0, (float[4]){ 0.5f, 0.5f, 0.5f, 1 });
 	wlr_scene_node_set_position(&surface->border->node, pos, pos);
 
 	surface->scene_surface =
-		wlr_scene_surface_create(&server->scene->tree, wlr_surface);
+		wlr_scene_surface_create(server->scene->tree, wlr_surface);
 
 	wlr_scene_node_set_position(&surface->scene_surface->buffer->node,
 			pos + border_width, pos + border_width);

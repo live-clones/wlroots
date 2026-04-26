@@ -327,7 +327,7 @@ static struct wlr_scene_subsurface_tree *get_subsurface_tree_from_node(
 
 static bool subsurface_tree_set_clip(struct wlr_scene_node *node,
 		const struct wlr_box *clip) {
-	if (node->type != WLR_SCENE_NODE_TREE) {
+	if (wlr_scene_node_get_children(node) == NULL) {
 		return false;
 	}
 
@@ -350,9 +350,9 @@ static bool subsurface_tree_set_clip(struct wlr_scene_node *node,
 		subsurface_tree_reconfigure_clip(tree);
 	}
 
-	struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
+	struct wl_list *childrens = wlr_scene_node_get_children(node);
 	struct wlr_scene_node *child;
-	wl_list_for_each(child, &scene_tree->children, link) {
+	wl_list_for_each(child, childrens, link) {
 		discovered_subsurface_tree |= subsurface_tree_set_clip(child, clip);
 	}
 

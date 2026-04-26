@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_scene_rect.h>
 
 struct tree_spec {
 	// Parameters for the tree we'll construct
@@ -62,7 +63,7 @@ static bool build_tree(struct wlr_scene_tree *parent, struct tree_spec *spec,
 static bool bench_create_tree(struct wlr_scene *scene, struct tree_spec *spec) {
 	struct timespec start, end;
 	clock_gettime(CLOCK_MONOTONIC, &start);
-	if (!build_tree(&scene->tree, spec, 0, 0, 0)) {
+	if (!build_tree(scene->tree, spec, 0, 0, 0)) {
 		fprintf(stderr, "build_tree failed\n");
 		return false;
 	}
@@ -90,7 +91,7 @@ static void bench_scene_node_at(struct wlr_scene *scene, struct tree_spec *spec)
 		double ly = (double)(i * 53 % spec->max_y);
 		double nx, ny;
 		struct wlr_scene_node *node =
-			wlr_scene_node_at(&scene->tree.node, lx, ly, &nx, &ny);
+			wlr_scene_node_at(&scene->tree->node, lx, ly, &nx, &ny);
 		if (node != NULL) {
 			hits++;
 		}
@@ -119,7 +120,7 @@ static void bench_scene_node_for_each_buffer(struct wlr_scene *scene, struct tre
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	for (int i = 0; i < iters; i++) {
-		wlr_scene_node_for_each_buffer(&scene->tree.node,
+		wlr_scene_node_for_each_buffer(&scene->tree->node,
 			noop_iterator, &hits);
 	}
 	clock_gettime(CLOCK_MONOTONIC, &end);
@@ -149,6 +150,6 @@ int main(void) {
 	bench_scene_node_at(scene, &spec);
 	bench_scene_node_for_each_buffer(scene, &spec);
 
-	wlr_scene_node_destroy(&scene->tree.node);
+	wlr_scene_destroy(scene);
 	return 0;
 }
