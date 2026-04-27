@@ -546,7 +546,7 @@ ssize_t wlr_session_find_gpus(struct wlr_session *session,
 		bool is_primary = false;
 		const char *boot_display = udev_device_get_sysattr_value(dev, "boot_display");
 		if (boot_display && strcmp(boot_display, "1") == 0) {
-		    is_primary = true;
+			is_primary = true;
 		} else {
 			// This is owned by 'dev', so we don't need to free it
 			struct udev_device *pci =
