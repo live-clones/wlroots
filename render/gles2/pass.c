@@ -9,23 +9,30 @@
 #include "render/gles2.h"
 #include "util/matrix.h"
 
+#include "common_vert_src.h"
+#include "quad_frag_src.h"
+#include "tex_rgba_frag_src.h"
+#include "tex_rgbx_frag_src.h"
+#include "tex_external_frag_src.h"
+
 #define MAX_QUADS 86 // 4kb
 
 static const struct wlr_render_pass_impl render_pass_impl;
 
-static struct wlr_gles2_render_pass *get_render_pass(struct wlr_render_pass *wlr_pass) {
+struct wlr_gles2_render_pass *wlr_gles2_render_pass_from_render_pass(
+		struct wlr_render_pass *wlr_pass) {
 	assert(wlr_pass->impl == &render_pass_impl);
 	struct wlr_gles2_render_pass *pass = wl_container_of(wlr_pass, pass, base);
 	return pass;
 }
 
 static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
-	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_gles2_render_pass *pass = wlr_gles2_render_pass_from_render_pass(wlr_pass);
 	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
 	struct wlr_gles2_render_timer *timer = pass->timer;
 	bool ok = false;
 
-	push_gles2_debug(renderer);
+	 wlr_gles2_push_debug(renderer);
 
 	if (timer) {
 		// clear disjoint flag
@@ -65,7 +72,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 out:
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
 	wlr_egl_restore_context(&pass->prev_ctx);
 
 	wlr_drm_syncobj_timeline_unref(pass->signal_timeline);
@@ -124,7 +131,7 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 	pixman_region32_fini(&region);
 }
 
-static void set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box) {
+void wlr_gles_set_proj_matrix(GLint loc, float proj[9], const struct wlr_box *box) {
 	float gl_matrix[9];
 	wlr_matrix_identity(gl_matrix);
 	wlr_matrix_translate(gl_matrix, box->x, box->y);
@@ -166,25 +173,26 @@ static void setup_blending(enum wlr_render_blend_mode mode) {
 
 static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_texture_options *options) {
-	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_gles2_render_pass *pass = wlr_gles2_render_pass_from_render_pass(wlr_pass);
 	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
 	struct wlr_gles2_texture *texture = gles2_get_texture(options->texture);
-
+	struct wlr_gles2_render_texture_pass *texture_pass =
+		wlr_gles2_render_texture_pass_from_pass(renderer->wlr_renderer.texture_pass);
 	struct wlr_gles2_tex_shader *shader = NULL;
 
 	switch (texture->target) {
 	case GL_TEXTURE_2D:
 		if (texture->has_alpha) {
-			shader = &renderer->shaders.tex_rgba;
+			shader = &texture_pass->shaders.tex_rgba;
 		} else {
-			shader = &renderer->shaders.tex_rgbx;
+			shader = &texture_pass->shaders.tex_rgbx;
 		}
 		break;
 	case GL_TEXTURE_EXTERNAL_OES:
 		// EGL_EXT_image_dma_buf_import_modifiers requires
 		// GL_OES_EGL_image_external
 		assert(renderer->exts.OES_egl_image_external);
-		shader = &renderer->shaders.tex_ext;
+		shader = &texture_pass->shaders.tex_ext;
 		break;
 	default:
 		abort();
@@ -201,7 +209,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	src_fbox.width /= options->texture->width;
 	src_fbox.height /= options->texture->height;
 
-	push_gles2_debug(renderer);
+	 wlr_gles2_push_debug(renderer);
 
 	if (options->wait_timeline != NULL) {
 		int sync_file_fd =
@@ -244,26 +252,28 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 
 	glUniform1i(shader->tex, 0);
 	glUniform1f(shader->alpha, alpha);
-	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
+	wlr_gles_set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
 	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
 
 	render(&dst_box, options->clip, shader->pos_attrib);
 
 	glBindTexture(texture->target, 0);
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
 }
 
 static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		const struct wlr_render_rect_options *options) {
-	struct wlr_gles2_render_pass *pass = get_render_pass(wlr_pass);
+	struct wlr_gles2_render_pass *pass = wlr_gles2_render_pass_from_render_pass(wlr_pass);
 	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
+	struct wlr_gles2_render_rect_pass *rect_pass =
+		wlr_gles2_render_rect_pass_from_pass(renderer->wlr_renderer.rect_pass);
 
 	const struct wlr_render_color *color = &options->color;
 	struct wlr_box box;
 	struct wlr_buffer *wlr_buffer = pass->buffer->buffer;
 	wlr_render_rect_options_get_box(options, wlr_buffer, &box);
 
-	push_gles2_debug(renderer);
+	 wlr_gles2_push_debug(renderer);
 	enum wlr_render_blend_mode blend_mode =
 		color->a == 1.0 ? WLR_RENDER_BLEND_MODE_NONE : options->blend_mode;
 	if (blend_mode == WLR_RENDER_BLEND_MODE_NONE &&
@@ -275,19 +285,29 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		glClear(GL_COLOR_BUFFER_BIT);
 	} else {
 		setup_blending(blend_mode);
-		glUseProgram(renderer->shaders.quad.program);
-		set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
-		glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
-		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
+		glUseProgram(rect_pass->shader.program);
+		wlr_gles_set_proj_matrix(rect_pass->shader.proj, pass->projection_matrix, &box);
+		glUniform4f(rect_pass->shader.color, color->r, color->g, color->b, color->a);
+		render(&box, options->clip, rect_pass->shader.pos_attrib);
 	}
 
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
+}
+
+static void render_pass_destory(struct wlr_render_pass *wlr_pass) {
+	(void)wlr_pass;
+}
+
+static struct wlr_renderer *render_pass_get_renderer(struct wlr_render_pass *wlr_pass) {
+	struct wlr_gles2_render_pass *pass = wlr_gles2_render_pass_from_render_pass(wlr_pass);
+	struct wlr_gles2_renderer *renderer = pass->buffer->renderer;
+
+	return &renderer->wlr_renderer;
 }
 
 static const struct wlr_render_pass_impl render_pass_impl = {
-	.submit = render_pass_submit,
-	.add_texture = render_pass_add_texture,
-	.add_rect = render_pass_add_rect,
+	.destroy = render_pass_destory,
+	.get_renderer = render_pass_get_renderer,
 };
 
 static const char *reset_status_str(GLenum status) {
@@ -341,13 +361,217 @@ struct wlr_gles2_render_pass *begin_gles2_buffer_pass(struct wlr_gles2_buffer *b
 	matrix_projection(pass->projection_matrix, wlr_buffer->width, wlr_buffer->height,
 		WL_OUTPUT_TRANSFORM_FLIPPED_180);
 
-	push_gles2_debug(renderer);
+	 wlr_gles2_push_debug(renderer);
 	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
 	glViewport(0, 0, wlr_buffer->width, wlr_buffer->height);
 	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_SCISSOR_TEST);
-	pop_gles2_debug(renderer);
+	wlr_gles2_pop_debug(renderer);
+
+	return pass;
+}
+
+static void render_rect_pass_destroy(struct wlr_render_rect_pass *pass) {
+	struct wlr_gles2_render_rect_pass *gles2_pass =
+		wlr_gles2_render_rect_pass_from_pass(pass);
+	 wlr_gles2_push_debug(gles2_pass->renderer);
+	glDeleteProgram(gles2_pass->shader.program);
+	wlr_gles2_pop_debug(gles2_pass->renderer);
+	free(gles2_pass);
+}
+
+static const struct wlr_render_rect_pass_impl render_rect_pass_impl = {
+	.destroy = render_rect_pass_destroy,
+	.render = render_pass_add_rect,
+};
+
+struct wlr_render_rect_pass *wlr_gles2_render_rect_pass_create(
+		struct wlr_renderer *wlr_renderer) {
+	struct wlr_gles2_render_rect_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_gles2_render_rect_pass");
+		return NULL;
+	}
+
+	struct wlr_gles2_renderer *renderer =  wlr_gles2_renderer_from_renderer(wlr_renderer);
+	if (!wlr_egl_make_current(renderer->egl, NULL)) {
+		free(pass);
+		return NULL;
+	}
+
+	wlr_render_rect_pass_init(&pass->base, &render_rect_pass_impl);
+	 wlr_gles2_push_debug(renderer);
+	GLuint prog;
+	pass->shader.program = prog =
+		wlr_gles2_link_program(renderer, common_vert_src, quad_frag_src);
+	if (!pass->shader.program) {
+		goto error;
+	}
+
+	pass->shader.proj = glGetUniformLocation(pass->shader.program, "proj");
+	pass->shader.color = glGetUniformLocation(pass->shader.program, "color");
+	pass->shader.pos_attrib = glGetAttribLocation(pass->shader.program, "pos");
+	wlr_gles2_pop_debug(renderer);
+	wlr_egl_unset_current(renderer->egl);
+	pass->renderer = renderer;
+	return &pass->base;
+
+error:
+	render_rect_pass_destroy(&pass->base);
+	wlr_gles2_pop_debug(renderer);
+	wlr_egl_unset_current(renderer->egl);
+
+	return NULL;
+}
+
+bool wlr_render_rect_pass_is_gles2(const struct wlr_render_rect_pass *rect_pass) {
+	return rect_pass != NULL && rect_pass->impl == &render_rect_pass_impl;
+}
+
+struct wlr_gles2_render_rect_pass *wlr_gles2_render_rect_pass_from_pass(
+		struct wlr_render_rect_pass *rect_pass) {
+	if (!wlr_render_rect_pass_is_gles2(rect_pass)) {
+		return NULL;
+	}
+
+	struct wlr_gles2_render_rect_pass *pass =
+		wl_container_of(rect_pass, pass, base);
+
+	return pass;
+}
+
+static void render_texture_pass_destroy(struct wlr_render_texture_pass *pass) {
+	struct wlr_gles2_render_texture_pass *gles2_pass =
+		wlr_gles2_render_texture_pass_from_pass(pass);
+	 wlr_gles2_push_debug(gles2_pass->renderer);
+	glDeleteProgram(gles2_pass->shaders.tex_rgba.program);
+	glDeleteProgram(gles2_pass->shaders.tex_rgbx.program);
+	glDeleteProgram(gles2_pass->shaders.tex_ext.program);
+	wlr_gles2_pop_debug(gles2_pass->renderer);
+	free(gles2_pass);
+}
+
+static const struct wlr_render_texture_pass_impl render_texture_pass_impl = {
+	.destroy = render_texture_pass_destroy,
+	.render = render_pass_add_texture,
+};
+
+struct wlr_render_texture_pass *wlr_gles2_render_texture_pass_create(
+		struct wlr_renderer *wlr_renderer) {
+	struct wlr_gles2_render_texture_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_gles2_render_texture_pass");
+		return NULL;
+	}
+	wlr_render_texture_pass_init(&pass->base, &render_texture_pass_impl);
+	struct wlr_gles2_renderer *renderer =  wlr_gles2_renderer_from_renderer(wlr_renderer);
+	if (!wlr_egl_make_current(renderer->egl, NULL)) {
+		free(pass);
+		return NULL;
+	}
+	 wlr_gles2_push_debug(renderer);
+	GLuint prog;
+	pass->shaders.tex_rgba.program = prog =
+		wlr_gles2_link_program(renderer, common_vert_src, tex_rgba_frag_src);
+	if (!pass->shaders.tex_rgba.program) {
+		goto error;
+	}
+	pass->shaders.tex_rgba.proj = glGetUniformLocation(prog, "proj");
+	pass->shaders.tex_rgba.tex_proj = glGetUniformLocation(prog, "tex_proj");
+	pass->shaders.tex_rgba.tex = glGetUniformLocation(prog, "tex");
+	pass->shaders.tex_rgba.alpha = glGetUniformLocation(prog, "alpha");
+	pass->shaders.tex_rgba.pos_attrib = glGetAttribLocation(prog, "pos");
+
+	pass->shaders.tex_rgbx.program = prog =
+		wlr_gles2_link_program(renderer, common_vert_src, tex_rgbx_frag_src);
+	if (!pass->shaders.tex_rgbx.program) {
+		goto error;
+	}
+	pass->shaders.tex_rgbx.proj = glGetUniformLocation(prog, "proj");
+	pass->shaders.tex_rgbx.tex_proj = glGetUniformLocation(prog, "tex_proj");
+	pass->shaders.tex_rgbx.tex = glGetUniformLocation(prog, "tex");
+	pass->shaders.tex_rgbx.alpha = glGetUniformLocation(prog, "alpha");
+	pass->shaders.tex_rgbx.pos_attrib = glGetAttribLocation(prog, "pos");
+
+	if (renderer->exts.OES_egl_image_external) {
+		pass->shaders.tex_ext.program = prog =
+			wlr_gles2_link_program(renderer, common_vert_src, tex_external_frag_src);
+		if (!pass->shaders.tex_ext.program) {
+			goto error;
+		}
+		pass->shaders.tex_ext.proj = glGetUniformLocation(prog, "proj");
+		pass->shaders.tex_ext.tex_proj = glGetUniformLocation(prog, "tex_proj");
+		pass->shaders.tex_ext.tex = glGetUniformLocation(prog, "tex");
+		pass->shaders.tex_ext.alpha = glGetUniformLocation(prog, "alpha");
+		pass->shaders.tex_ext.pos_attrib = glGetAttribLocation(prog, "pos");
+	}
+
+	wlr_gles2_pop_debug(renderer);
+
+	wlr_egl_unset_current(renderer->egl);
+	pass->renderer = renderer;
+	return &pass->base;
+
+error:
+	render_texture_pass_destroy(&pass->base);
+	wlr_gles2_pop_debug(renderer);
+	wlr_egl_unset_current(renderer->egl);
+
+	return NULL;
+}
+
+bool wlr_render_texture_pass_is_gles2(const struct wlr_render_texture_pass *texture_pass) {
+	return texture_pass != NULL && texture_pass->impl == &render_texture_pass_impl;
+}
+
+struct wlr_gles2_render_texture_pass *wlr_gles2_render_texture_pass_from_pass(
+		struct wlr_render_texture_pass *texture_pass) {
+	if (!wlr_render_texture_pass_is_gles2(texture_pass)) {
+		return NULL;
+	}
+
+	struct wlr_gles2_render_texture_pass *pass =
+		wl_container_of(texture_pass, pass, base);
+
+	return pass;
+}
+
+static void render_submit_pass_destroy(struct wlr_render_submit_pass *pass) {
+	struct wlr_gles2_render_submit_pass *gles2_pass =
+		wlr_gles2_render_submit_pass_from_pass(pass);
+	free(gles2_pass);
+}
+
+static const struct wlr_render_submit_pass_impl gles2_render_submit_pass_impl = {
+	.destroy = render_submit_pass_destroy,
+	.render = render_pass_submit,
+};
+
+struct wlr_render_submit_pass *wlr_gles2_render_submit_pass_create(void) {
+	struct wlr_gles2_render_submit_pass *pass = calloc(1, sizeof(*pass));
+	if (pass == NULL) {
+		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_gles2_render_submit_pass");
+		return NULL;
+	}
+
+	wlr_render_submit_pass_init(&pass->base, &gles2_render_submit_pass_impl);
+
+	return &pass->base;
+}
+
+bool wlr_render_submit_pass_is_gles2(const struct wlr_render_submit_pass *submit_pass) {
+	return submit_pass->impl == &gles2_render_submit_pass_impl;
+}
+
+struct wlr_gles2_render_submit_pass *wlr_gles2_render_submit_pass_from_pass(
+		struct wlr_render_submit_pass *submit_pass) {
+	if (!wlr_render_submit_pass_is_gles2(submit_pass)) {
+		return NULL;
+	}
+
+	struct wlr_gles2_render_submit_pass *pass =
+		wl_container_of(submit_pass, pass, base);
 
 	return pass;
 }
