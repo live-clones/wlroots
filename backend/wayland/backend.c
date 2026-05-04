@@ -18,7 +18,9 @@
 #include "backend/wayland.h"
 #include "render/drm_format_set.h"
 #include "render/pixel_format.h"
+#include "types/wlr_color_management_v1.h"
 
+#include "color-management-v1-client-protocol.h"
 #include "drm-client-protocol.h"
 #include "linux-dmabuf-v1-client-protocol.h"
 #include "linux-drm-syncobj-v1-client-protocol.h"
@@ -348,6 +350,49 @@ static const struct wl_shm_listener shm_listener = {
 	.format = shm_handle_format,
 };
 
+static void color_manager_v1_handle_supported_intent(void *data,
+		struct wp_color_manager_v1 *color_manager_v1, uint32_t render_intent) {
+	// This space is intentionally left blank
+}
+
+static void color_manager_v1_handle_supported_feature(void *data,
+		struct wp_color_manager_v1 *color_manager_v1, uint32_t feature) {
+	struct wlr_wl_backend *wl = data;
+	switch (feature) {
+	case WP_COLOR_MANAGER_V1_FEATURE_PARAMETRIC:
+		wl->color_manager_v1_features.parametric = true;
+		break;
+	case WP_COLOR_MANAGER_V1_FEATURE_SET_MASTERING_DISPLAY_PRIMARIES:
+		wl->color_manager_v1_features.set_mastering_display_primaries = true;
+		break;
+	}
+}
+
+static void color_manager_v1_handle_supported_tf_named(void *data,
+		struct wp_color_manager_v1 *color_manager_v1, uint32_t tf) {
+	struct wlr_wl_backend *wl = data;
+	wl->supported_tfs |= transfer_function_try_to_wlr(tf);
+}
+
+static void color_manager_v1_handle_supported_primaries_named(void *data,
+		struct wp_color_manager_v1 *color_manager_v1, uint32_t primaries) {
+	struct wlr_wl_backend *wl = data;
+	wl->supported_primaries |= named_primaries_try_to_wlr(primaries);
+}
+
+static void color_manager_v1_handle_done(void *data,
+		struct wp_color_manager_v1 *color_manager_v1) {
+	// This space is intentionally left blank
+}
+
+static const struct wp_color_manager_v1_listener color_manager_v1_listener = {
+	.supported_intent = color_manager_v1_handle_supported_intent,
+	.supported_feature = color_manager_v1_handle_supported_feature,
+	.supported_tf_named = color_manager_v1_handle_supported_tf_named,
+	.supported_primaries_named = color_manager_v1_handle_supported_primaries_named,
+	.done = color_manager_v1_handle_done,
+};
+
 static void registry_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *iface, uint32_t version) {
 	struct wlr_wl_backend *wl = data;
@@ -419,6 +464,11 @@ static void registry_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(iface, wp_linux_drm_syncobj_manager_v1_interface.name) == 0) {
 		wl->drm_syncobj_manager_v1 = wl_registry_bind(registry, name,
 			&wp_linux_drm_syncobj_manager_v1_interface, 1);
+	} else if (strcmp(iface, wp_color_manager_v1_interface.name) == 0) {
+		wl->color_manager_v1 = wl_registry_bind(registry, name,
+			&wp_color_manager_v1_interface, 1);
+		wp_color_manager_v1_add_listener(wl->color_manager_v1,
+			&color_manager_v1_listener, wl);
 	}
 }
 
@@ -552,6 +602,9 @@ static void backend_destroy(struct wlr_backend *backend) {
 	}
 	if (wl->viewporter) {
 		wp_viewporter_destroy(wl->viewporter);
+	}
+	if (wl->color_manager_v1) {
+		wp_color_manager_v1_destroy(wl->color_manager_v1);
 	}
 	free(wl->drm_render_name);
 	free(wl->activation_token);

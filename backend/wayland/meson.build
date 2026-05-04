@@ -12,6 +12,7 @@ wlr_files += files(
 )
 
 client_protos = [
+	'color-management-v1',
 	'drm',
 	'linux-dmabuf-v1',
 	'linux-drm-syncobj-v1',
