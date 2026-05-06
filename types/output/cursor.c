@@ -89,7 +89,8 @@ static void output_cursor_get_box(struct wlr_output_cursor *cursor,
 }
 
 void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
-		struct wlr_render_pass *render_pass, const pixman_region32_t *damage) {
+		struct wlr_render_pass *render_pass, const pixman_region32_t *damage,
+		struct wlr_drm_syncobj_timeline *release_timeline, uint64_t release_point) {
 	int width, height;
 	wlr_output_transformed_resolution(output, &width, &height);
 
@@ -128,7 +129,14 @@ void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
 			.dst_box = box,
 			.clip = &cursor_damage,
 			.transform = output->transform,
+			.wait_timeline = cursor->wait_timeline,
+			.wait_point = cursor->wait_point,
 		});
+		struct wlr_output_cursor_texture_sample_event event = {
+			.release_timeline = release_timeline,
+			.release_point = release_point,
+		};
+		wl_signal_emit_mutable(&cursor->events.texture_sample, &event);
 
 		pixman_region32_fini(&cursor_damage);
 	}
@@ -284,6 +292,9 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 		wlr_buffer_unlock(buffer);
 		return NULL;
 	}
+
+	struct wlr_output_cursor_texture_sample_event event = {0};
+	wl_signal_emit_mutable(&cursor->events.texture_sample, &event);
 
 	return buffer;
 }
@@ -472,6 +483,7 @@ struct wlr_output_cursor *wlr_output_cursor_create(struct wlr_output *output) {
 	cursor->output = output;
 	wl_list_insert(&output->cursors, &cursor->link);
 	cursor->visible = true; // default position is at (0, 0)
+	wl_signal_init(&cursor->events.texture_sample);
 	wl_list_init(&cursor->renderer_destroy.link);
 	output_cursor_refresh_color_transform(cursor, output->image_description);
 	return cursor;
@@ -493,6 +505,7 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	}
 	wlr_drm_syncobj_timeline_unref(cursor->wait_timeline);
 	wl_list_remove(&cursor->link);
+	assert(wl_list_empty(&cursor->events.texture_sample.listener_list));
 	wlr_color_transform_unref(cursor->color_transform);
 	free(cursor);
 }
