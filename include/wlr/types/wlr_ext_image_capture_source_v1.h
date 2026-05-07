@@ -12,6 +12,7 @@
 #include <pixman.h>
 #include <wayland-server-core.h>
 #include <wlr/render/drm_format_set.h>
+#include <wlr/backend.h>
 
 struct wlr_scene_node;
 struct wlr_allocator;
@@ -77,11 +78,18 @@ struct wlr_ext_image_capture_source_v1_cursor {
  */
 struct wlr_ext_output_image_capture_source_manager_v1 {
 	struct wl_global *global;
+	struct wl_display *display;
+	struct wlr_scene *scene;
 
 	struct {
 		struct wl_listener display_destroy;
 	} WLR_PRIVATE;
+	struct wlr_backend *headless_backend;
 };
+
+void wlr_ext_output_image_capture_source_manager_v1_set_scene(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+		struct wlr_scene *scene);
 
 /**
  * Interface exposing one screen capture source per foreign toplevel.
