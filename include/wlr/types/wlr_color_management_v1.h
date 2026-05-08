@@ -33,6 +33,8 @@ struct wlr_image_description_v1_data {
 
 	bool has_primaries;
 	struct wlr_color_primaries primaries;
+	bool has_luminances;
+	struct wlr_color_luminances luminances;
 };
 
 struct wlr_color_manager_v1_features {
