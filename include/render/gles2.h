@@ -28,12 +28,21 @@ struct wlr_gles2_pixel_format {
 	GLint gl_format, gl_type;
 };
 
+struct wlr_gles2_quad_shader {
+	GLuint program;
+	GLint proj;
+	GLint color;
+	GLint color_matrix;
+	GLint pos_attrib;
+};
+
 struct wlr_gles2_tex_shader {
 	GLuint program;
 	GLint proj;
 	GLint tex_proj;
 	GLint tex;
 	GLint alpha;
+	GLint color_matrix;
 	GLint pos_attrib;
 };
 
@@ -44,6 +53,7 @@ struct wlr_gles2_renderer {
 	int drm_fd;
 
 	struct wlr_drm_format_set shm_texture_formats;
+	struct wlr_drm_format_set dmabuf_render_formats;
 
 	const char *exts_str;
 	struct {
@@ -74,12 +84,7 @@ struct wlr_gles2_renderer {
 	} procs;
 
 	struct {
-		struct {
-			GLuint program;
-			GLint proj;
-			GLint color;
-			GLint pos_attrib;
-		} quad;
+		struct wlr_gles2_quad_shader quad;
 		struct wlr_gles2_tex_shader tex_rgba;
 		struct wlr_gles2_tex_shader tex_rgbx;
 		struct wlr_gles2_tex_shader tex_ext;
@@ -104,9 +109,11 @@ struct wlr_gles2_buffer {
 	struct wl_list link; // wlr_gles2_renderer.buffers
 	bool external_only;
 
-	EGLImageKHR image;
-	GLuint rbo;
-	GLuint fbo;
+	int n_images;
+	EGLImageKHR image[4];
+	GLuint rbo[4];
+	GLuint fbo[4];
+
 	GLuint tex;
 
 	struct wlr_addon addon;
@@ -149,7 +156,7 @@ const struct wlr_gles2_pixel_format *get_gles2_format_from_gl(
 void get_gles2_shm_formats(const struct wlr_gles2_renderer *renderer,
 	struct wlr_drm_format_set *out);
 
-GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer);
+GLuint gles2_buffer_get_fbo(struct wlr_gles2_buffer *buffer, int index);
 
 struct wlr_gles2_renderer *gles2_get_renderer(
 	struct wlr_renderer *wlr_renderer);

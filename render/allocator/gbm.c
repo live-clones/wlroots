@@ -59,6 +59,41 @@ error_fd:
 	return false;
 }
 
+static struct gbm_bo *create_nv12_bo(struct gbm_device *gbm, int width, int height) {
+	int usage = GBM_BO_USE_RENDERING | GBM_BO_USE_SCANOUT | GBM_BO_USE_LINEAR;
+	struct gbm_bo *base = gbm_bo_create(gbm, width, height + (height + 1) / 2,
+			DRM_FORMAT_R8, usage);
+	if (!base) {
+		return NULL;
+	}
+
+	int fd = gbm_bo_get_fd(base);
+	if (fd < 0) {
+		gbm_bo_destroy(base);
+		return NULL;
+	}
+
+	struct gbm_import_fd_modifier_data d = {
+		.format = DRM_FORMAT_NV12,
+		.width = width,
+		.height = height,
+		.modifier = gbm_bo_get_modifier(base),
+		.num_fds = 2,
+		.fds[0] = fd,
+		.offsets[0] = 0,
+		.strides[0] = gbm_bo_get_stride(base),
+		.fds[1] = fd,
+		.offsets[1] = height * gbm_bo_get_stride(base),
+		.strides[1] = gbm_bo_get_stride(base),
+	};
+	struct gbm_bo *bo = gbm_bo_import(gbm, GBM_BO_IMPORT_FD_MODIFIER, &d, 0);
+
+	close(fd);
+	gbm_bo_destroy(base);
+
+	return bo;
+}
+
 static struct wlr_gbm_buffer *create_buffer(struct wlr_gbm_allocator *alloc,
 		int width, int height, const struct wlr_drm_format *format) {
 	struct gbm_device *gbm_device = alloc->gbm_device;
@@ -68,8 +103,16 @@ static struct wlr_gbm_buffer *create_buffer(struct wlr_gbm_allocator *alloc,
 	bool has_modifier = true;
 	uint64_t fallback_modifier = DRM_FORMAT_MOD_INVALID;
 	errno = 0;
-	struct gbm_bo *bo = gbm_bo_create_with_modifiers(gbm_device, width, height,
-		format->format, format->modifiers, format->len);
+	struct gbm_bo *bo;
+	if (format->format == DRM_FORMAT_NV12) {
+		bo = create_nv12_bo(gbm_device, width, height);
+		if (bo == NULL) {
+			return NULL;
+		}
+	} else {
+		bo = gbm_bo_create_with_modifiers(gbm_device, width, height,
+				format->format, format->modifiers, format->len);
+	}
 	if (bo == NULL) {
 		uint32_t usage = GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING;
 		if (format->len == 1 &&
