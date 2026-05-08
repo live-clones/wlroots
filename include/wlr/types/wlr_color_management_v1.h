@@ -30,6 +30,9 @@ struct wlr_image_description_v1_data {
 	} mastering_luminance;
 
 	uint32_t max_cll, max_fall; // cd/m², zero if unset
+
+	bool has_primaries;
+	struct wlr_color_primaries primaries;
 };
 
 struct wlr_color_manager_v1_features {
