@@ -6,13 +6,13 @@
 #include <wlr/types/wlr_ext_image_capture_source_v1.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/util/addon.h>
 #include <wlr/backend/headless.h>
 #include <wlr/types/wlr_scene.h>
 #include "types/wlr_scene.h"
 #include <wayland-server-core.h>
 #include "ext-image-capture-source-v1-protocol.h"
-#include <wlr/util/log.h>
 
 #define OUTPUT_IMAGE_SOURCE_MANAGER_V1_VERSION 1
 
@@ -124,6 +124,11 @@ static void source_update_buffer_constraints(struct wlr_ext_output_image_capture
 		output->swapchain, output->renderer);
 }
 
+void wlr_ext_output_image_capture_source_manager_v1_set_layout(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+		struct wlr_output_layout *layout) {
+	manager->layout = layout;
+}
 
 static void output_source_start(struct wlr_ext_image_capture_source_v1 *base,
 		bool with_cursors) {
@@ -152,6 +157,14 @@ static void output_source_start(struct wlr_ext_image_capture_source_v1 *base,
 			real->allocator, real->renderer);
 	source->hidden_scene_output = wlr_scene_output_create(
 			source->manager->scene, source->hidden_output);
+	if (source->manager->layout) {
+		struct wlr_box box;
+		wlr_output_layout_get_box(source->manager->layout,
+				source->output, &box);
+		wlr_scene_output_set_position(source->hidden_scene_output,
+				box.x, box.y);
+	}
+
 	if (!source->hidden_scene_output) {
 		wlr_output_destroy(source->hidden_output);
 		source->hidden_output = NULL;

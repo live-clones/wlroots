@@ -17,6 +17,7 @@
 struct wlr_scene_node;
 struct wlr_allocator;
 struct wlr_renderer;
+struct wlr_output_layout;
 
 /**
  * A screen capture source.
@@ -80,12 +81,17 @@ struct wlr_ext_output_image_capture_source_manager_v1 {
 	struct wl_global *global;
 	struct wl_display *display;
 	struct wlr_scene *scene;
+	struct wlr_output_layout *layout;
 
 	struct {
 		struct wl_listener display_destroy;
 	} WLR_PRIVATE;
 	struct wlr_backend *headless_backend;
 };
+
+void wlr_ext_output_image_capture_source_manager_v1_set_layout(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+		struct wlr_output_layout *layout);
 
 void wlr_ext_output_image_capture_source_manager_v1_set_scene(
 		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
