@@ -92,6 +92,7 @@ static void handle_hidden_frame(struct wl_listener *listener, void *data) {
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
 	wlr_output_state_set_enabled(&state, true);
+	wlr_output_state_set_scale(&state, source->output->scale);
 	if (!wlr_scene_output_build_state(source->hidden_scene_output,
 				&state, &opts)) {
 		wlr_output_state_finish(&state);
