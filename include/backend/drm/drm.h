@@ -162,6 +162,7 @@ struct wlr_drm_connector_state {
 	uint32_t fb_damage_clips;
 	int primary_in_fence_fd;
 	bool vrr_enabled;
+	uint32_t color_format;
 	uint32_t colorspace;
 	uint32_t hdr_output_metadata;
 };
