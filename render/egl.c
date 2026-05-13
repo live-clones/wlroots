@@ -575,9 +575,8 @@ struct wlr_egl *wlr_egl_create_with_drm_fd(int drm_fd) {
 				wlr_log(WLR_DEBUG, "Using EGL_PLATFORM_DEVICE_EXT");
 				return egl;
 			}
-			goto error;
 		}
-		/* Falls back on GBM in case the device was not found */
+		/* Falls back on GBM in case the device was not found or do not work */
 	} else {
 		wlr_log(WLR_DEBUG, "EXT_platform_device not supported");
 	}
