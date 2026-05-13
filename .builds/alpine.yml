@@ -58,3 +58,14 @@ tasks:
         -o public \
         "$include_dir/wlr/"
       zip -r ~/public.zip public/
+  - check-dco: |
+      set +x
+      cd wlroots
+      [ "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}" = "" ] && exit
+      git rev-list "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME".. | while read -r rev; do
+        sob=$(git log -1 --pretty='%(trailers:key=Signed-off-by,separator= )')
+        if [ "$sob" = "" ]; then
+          echo "Commit $rev is missing a Signed-off-by trailer"
+          exit 1
+        fi
+      done
