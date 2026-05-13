@@ -433,6 +433,15 @@ void wlr_seat_pointer_send_axis(struct wlr_seat *wlr_seat, uint32_t time_msec,
 void wlr_seat_pointer_send_frame(struct wlr_seat *wlr_seat);
 
 /**
+ * Send a warp event to the surface with pointer focus. This notifies the client
+ * that the pointer location has changed due to surface movement or compositor
+ * action, rather than input device motion. Coordinates are surface-local.
+ * This function does not respect pointer grabs.
+ */
+void wlr_seat_pointer_send_warp(struct wlr_seat *wlr_seat,
+		double sx, double sy);
+
+/**
  * Notify the seat of a pointer enter event to the given surface and request it
  * to be the focused surface for the pointer. Pass surface-local coordinates
  * where the enter occurred. This will send a leave event to the currently-
