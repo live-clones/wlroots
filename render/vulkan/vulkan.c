@@ -540,8 +540,12 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 			"falling back to blocking");
 	}
 
+	VkPhysicalDeviceHostImageCopyFeaturesEXT phdev_host_image_copy_features = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
+	};
 	VkPhysicalDeviceSamplerYcbcrConversionFeatures phdev_sampler_ycbcr_features = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,
+		.pNext = &phdev_host_image_copy_features,
 	};
 	VkPhysicalDeviceFeatures2 phdev_features = {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
@@ -552,6 +556,12 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 	dev->sampler_ycbcr_conversion = phdev_sampler_ycbcr_features.samplerYcbcrConversion;
 	wlr_log(WLR_DEBUG, "Sampler YCbCr conversion %s",
 		dev->sampler_ycbcr_conversion ? "supported" : "not supported");
+
+	dev->host_image_copy =
+		check_extension(avail_ext_props, avail_extc, VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME) &&
+		phdev_host_image_copy_features.hostImageCopy;
+	wlr_log(WLR_DEBUG, "Host image copy %s",
+		dev->host_image_copy ? "supported" : "not supported");
 
 	const float prio = 1.f;
 	VkDeviceQueueCreateInfo qinfo = {
@@ -592,9 +602,22 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 		.pNext = &sync2_features,
 		.timelineSemaphore = VK_TRUE,
 	};
+	VkPhysicalDeviceHostImageCopyFeaturesEXT host_image_copy_features = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_IMAGE_COPY_FEATURES_EXT,
+		.pNext = &timeline_features,
+		.hostImageCopy = VK_TRUE,
+	};
+	const void *features_chain = &timeline_features;
+	if (dev->host_image_copy) {
+		extensions[extensions_len++] = VK_EXT_HOST_IMAGE_COPY_EXTENSION_NAME;
+		extensions[extensions_len++] = VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME;
+		extensions[extensions_len++] = VK_KHR_FORMAT_FEATURE_FLAGS_2_EXTENSION_NAME;
+		features_chain = &host_image_copy_features;
+	}
+
 	VkDeviceCreateInfo dev_info = {
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-		.pNext = &timeline_features,
+		.pNext = features_chain,
 		.queueCreateInfoCount = 1u,
 		.pQueueCreateInfos = &qinfo,
 		.enabledExtensionCount = extensions_len,
@@ -635,6 +658,13 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 	if (has_external_semaphore_fd) {
 		load_device_proc(dev, "vkGetSemaphoreFdKHR", &dev->api.vkGetSemaphoreFdKHR);
 		load_device_proc(dev, "vkImportSemaphoreFdKHR", &dev->api.vkImportSemaphoreFdKHR);
+	}
+
+	if (dev->host_image_copy) {
+		load_device_proc(dev, "vkCopyMemoryToImageEXT",
+			&dev->api.vkCopyMemoryToImageEXT);
+		load_device_proc(dev, "vkTransitionImageLayoutEXT",
+			&dev->api.vkTransitionImageLayoutEXT);
 	}
 
 	size_t max_fmts;

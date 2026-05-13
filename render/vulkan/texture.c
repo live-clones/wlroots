@@ -35,9 +35,84 @@ static VkImageAspectFlagBits mem_plane_aspect(unsigned i) {
 	}
 }
 
+static bool write_pixels_host(struct wlr_vk_texture *texture,
+		uint32_t stride, const pixman_region32_t *region, const void *vdata) {
+	struct wlr_vk_renderer *renderer = texture->renderer;
+
+	const struct wlr_pixel_format_info *format_info = drm_get_pixel_format_info(texture->format->drm);
+	assert(format_info);
+
+	// If the buffer is in use, we unfortunately need to wait for that to finish
+	if (texture->last_used_cb != NULL &&
+			!vulkan_wait_command_buffer(texture->last_used_cb, renderer)) {
+		return false;
+	}
+
+	int rects_len = 0;
+	const pixman_box32_t *rects = pixman_region32_rectangles(region, &rects_len);
+	if (rects_len == 0) {
+		return true;
+	}
+
+	VkMemoryToImageCopyEXT *copies = calloc((size_t)rects_len, sizeof(*copies));
+	if (!copies) {
+		wlr_log(WLR_ERROR, "Failed to allocate image copy parameters");
+		return false;
+	}
+
+	for (int i = 0; i < rects_len; i++) {
+		pixman_box32_t rect = rects[i];
+		uint32_t width = rect.x2 - rect.x1;
+		uint32_t height = rect.y2 - rect.y1;
+		uint32_t src_x = rect.x1;
+		uint32_t src_y = rect.y1;
+
+		assert((uint32_t)rect.x2 <= texture->wlr_texture.width);
+		assert((uint32_t)rect.y2 <= texture->wlr_texture.height);
+
+		const char *pdata = (const char *)vdata;
+		pdata += stride * src_y;
+		pdata += format_info->bytes_per_block * src_x;
+
+		copies[i] = (VkMemoryToImageCopyEXT) {
+			.sType = VK_STRUCTURE_TYPE_MEMORY_TO_IMAGE_COPY_EXT,
+			.pHostPointer = pdata,
+			.memoryRowLength = stride / format_info->bytes_per_block,
+			.memoryImageHeight = height,
+			.imageExtent.width = width,
+			.imageExtent.height = height,
+			.imageExtent.depth = 1,
+			.imageOffset.x = src_x,
+			.imageOffset.y = src_y,
+			.imageOffset.z = 0,
+			.imageSubresource.mipLevel = 0,
+			.imageSubresource.baseArrayLayer = 0,
+			.imageSubresource.layerCount = 1,
+			.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+		};
+	}
+
+	VkCopyMemoryToImageInfoEXT copy_info = {
+		.sType = VK_STRUCTURE_TYPE_COPY_MEMORY_TO_IMAGE_INFO_EXT,
+		.dstImage = texture->image,
+		.dstImageLayout = VK_IMAGE_LAYOUT_GENERAL,
+		.regionCount = (uint32_t)rects_len,
+		.pRegions = copies,
+	};
+
+	VkResult res = renderer->dev->api.vkCopyMemoryToImageEXT(renderer->dev->dev, &copy_info);
+	free(copies);
+	if (res != VK_SUCCESS) {
+		wlr_vk_error("vkCopyMemoryToImageEXT failed", res);
+		return false;
+	}
+
+	return true;
+}
+
 // Will transition the texture to shaderReadOnlyOptimal layout for reading
 // from fragment shader later on
-static bool write_pixels(struct wlr_vk_texture *texture,
+static bool write_pixels_staging(struct wlr_vk_texture *texture,
 		uint32_t stride, const pixman_region32_t *region, const void *vdata,
 		VkImageLayout old_layout, VkPipelineStageFlags src_stage,
 		VkAccessFlags src_access) {
@@ -172,8 +247,13 @@ static bool vulkan_texture_update_from_buffer(struct wlr_texture *wlr_texture,
 		goto out;
 	}
 
-	ok = write_pixels(texture, stride, damage, data, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	if (texture->host_image_copy) {
+		ok = write_pixels_host(texture, stride, damage, data);
+	} else {
+		ok = write_pixels_staging(texture, stride, damage, data,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_READ_BIT);
+	}
 
 out:
 	wlr_buffer_end_data_ptr_access(buffer);
@@ -338,7 +418,9 @@ struct wlr_vk_texture_view *vulkan_texture_get_or_create_view(struct wlr_vk_text
 
 	VkDescriptorImageInfo ds_img_info = {
 		.imageView = view->image_view,
-		.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		.imageLayout = texture->host_image_copy
+			? VK_IMAGE_LAYOUT_GENERAL
+			: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 	};
 
 	VkWriteDescriptorSet ds_write = {
@@ -400,6 +482,12 @@ static struct wlr_texture *vulkan_texture_from_pixels(
 	}
 
 	texture_set_format(texture, &fmt->format, fmt->shm.has_mutable_srgb);
+	texture->host_image_copy = fmt->shm.host_image_copy;
+
+	VkImageUsageFlags usage = vulkan_shm_tex_usage;
+	if (texture->host_image_copy) {
+		usage |= VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT;
+	}
 
 	VkFormat view_formats[] = {
 		fmt->format.vk,
@@ -421,7 +509,7 @@ static struct wlr_texture *vulkan_texture_from_pixels(
 		.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 		.extent = (VkExtent3D) { width, height, 1 },
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = vulkan_shm_tex_usage,
+		.usage = usage,
 		.pNext = fmt->shm.has_mutable_srgb ? &list_info : NULL,
 	};
 	if (fmt->shm.has_mutable_srgb) {
@@ -463,14 +551,40 @@ static struct wlr_texture *vulkan_texture_from_pixels(
 		goto error;
 	}
 
-	pixman_region32_t region;
-	pixman_region32_init_rect(&region, 0, 0, width, height);
-	if (!write_pixels(texture, stride, &region, data, VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0)) {
-		goto error;
+	if (texture->host_image_copy) {
+		VkHostImageLayoutTransitionInfoEXT transition = {
+			.sType = VK_STRUCTURE_TYPE_HOST_IMAGE_LAYOUT_TRANSITION_INFO_EXT,
+			.image = texture->image,
+			.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+			.newLayout = VK_IMAGE_LAYOUT_GENERAL,
+			.subresourceRange = {
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseMipLevel = 0,
+				.levelCount = 1,
+				.baseArrayLayer = 0,
+				.layerCount = 1,
+			},
+		};
+		res = renderer->dev->api.vkTransitionImageLayoutEXT(dev, 1, &transition);
+		if (res != VK_SUCCESS) {
+			wlr_vk_error("vkTransitionImageLayoutEXT failed", res);
+			goto error;
+		}
 	}
 
-	return &texture->wlr_texture;
+	pixman_region32_t region;
+	pixman_region32_init_rect(&region, 0, 0, width, height);
+
+	bool ok;
+	if (texture->host_image_copy) {
+		ok = write_pixels_host(texture, stride, &region, data);
+	} else {
+		ok = write_pixels_staging(texture, stride, &region, data,
+			VK_IMAGE_LAYOUT_UNDEFINED, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0);
+	}
+	if (ok) {
+		return &texture->wlr_texture;
+	}
 
 error:
 	vulkan_texture_destroy(texture);
