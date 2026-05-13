@@ -6,7 +6,12 @@
 #include <wlr/types/wlr_ext_image_capture_source_v1.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/util/addon.h>
+#include <wlr/backend/headless.h>
+#include <wlr/types/wlr_scene.h>
+#include "types/wlr_scene.h"
+#include <wayland-server-core.h>
 #include "ext-image-capture-source-v1-protocol.h"
 
 #define OUTPUT_IMAGE_SOURCE_MANAGER_V1_VERSION 1
@@ -35,6 +40,13 @@ struct wlr_ext_output_image_capture_source_v1 {
 
 	size_t num_started;
 	bool software_cursors_locked;
+
+	// headless output to avoid icc profile stickiness
+	struct wlr_ext_output_image_capture_source_manager_v1 *manager;
+	struct wlr_output *hidden_output;
+	struct wlr_scene_output *hidden_scene_output;
+	struct wl_listener hidden_output_frame;
+	struct wl_listener hidden_output_commit;
 };
 
 struct wlr_ext_output_image_capture_source_v1_frame_event {
@@ -43,30 +55,151 @@ struct wlr_ext_output_image_capture_source_v1_frame_event {
 	struct timespec when;
 };
 
+static void handle_hidden_commit(struct wl_listener *listener, void *data) {
+	struct wlr_ext_output_image_capture_source_v1 *source =
+		wl_container_of(listener, source, hidden_output_commit);
+	struct wlr_output_event_commit *event = data;
+
+	if (!(event->state->committed & WLR_OUTPUT_STATE_BUFFER))
+		return;
+	struct wlr_buffer *buffer = event->state->buffer;
+	pixman_region32_t damage;
+	pixman_region32_init_rect(&damage, 0, 0, buffer->width, buffer->height);
+
+	struct wlr_ext_output_image_capture_source_v1_frame_event frame_event = {
+		.base = { .damage = &damage },
+		.buffer = buffer,
+		.when = event->when,
+	};
+	wl_signal_emit_mutable(&source->base.events.frame, &frame_event);
+	pixman_region32_fini(&damage);
+}
+
+static void handle_hidden_frame(struct wl_listener *listener, void *data) {
+	struct wlr_ext_output_image_capture_source_v1 *source =
+		wl_container_of(listener, source, hidden_output_frame);
+
+
+	pixman_region32_t damage;
+	pixman_region32_init_rect(&damage, 0, 0,
+			source->hidden_output->width, source->hidden_output->height);
+	pixman_region32_copy(&source->hidden_scene_output->pending_commit_damage, &damage);
+	pixman_region32_fini(&damage);
+
+	struct wlr_scene_output_state_options opts = {
+		.color_transform = NULL,   // sRGB
+	};
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	wlr_output_state_set_enabled(&state, true);
+	wlr_output_state_set_scale(&state, source->output->scale);
+	if (!wlr_scene_output_build_state(source->hidden_scene_output,
+				&state, &opts)) {
+		wlr_output_state_finish(&state);
+		return;
+	}
+	wlr_output_commit_state(source->hidden_output, &state);
+	wlr_output_state_finish(&state);
+}
+
+static struct wlr_backend *ensure_headless_backend(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager) {
+	if (manager->headless_backend)
+		return manager->headless_backend;
+
+	struct wl_event_loop *loop =
+		wl_display_get_event_loop(manager->display);
+	manager->headless_backend = wlr_headless_backend_create(loop);
+	if (manager->headless_backend)
+		wlr_backend_start(manager->headless_backend);
+	return manager->headless_backend;
+}
+
+static void source_update_buffer_constraints(struct wlr_ext_output_image_capture_source_v1 *source) {
+	struct wlr_output *output = source->output;
+	if (!wlr_output_configure_primary_swapchain(output, NULL, &output->swapchain)) {
+		return;
+	}
+
+	wlr_ext_image_capture_source_v1_set_constraints_from_swapchain(&source->base,
+		output->swapchain, output->renderer);
+}
+
+void wlr_ext_output_image_capture_source_manager_v1_set_layout(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+		struct wlr_output_layout *layout) {
+	manager->layout = layout;
+}
+
 static void output_source_start(struct wlr_ext_image_capture_source_v1 *base,
 		bool with_cursors) {
-	struct wlr_ext_output_image_capture_source_v1 *source = wl_container_of(base, source, base);
+	struct wlr_ext_output_image_capture_source_v1 *source =
+		wl_container_of(base, source, base);
 	source->num_started++;
 	if (source->num_started > 1) {
 		return;
 	}
-	wlr_output_lock_attach_render(source->output, true);
-	if (with_cursors) {
-		wlr_output_lock_software_cursors(source->output, true);
+
+	// Stop the real output from sending its ICC buffer to the capture session
+	wl_list_remove(&source->output_commit.link);
+
+	struct wlr_output *real = source->output;
+	struct wlr_backend *headless = ensure_headless_backend(source->manager);
+	if (!headless) {
+		return;
 	}
-	source->software_cursors_locked = with_cursors;
+
+	source->hidden_output = wlr_headless_add_output(headless,
+			real->width, real->height);
+	if (!source->hidden_output) {
+		return;
+	}
+	wlr_output_init_render(source->hidden_output,
+			real->allocator, real->renderer);
+	source->hidden_scene_output = wlr_scene_output_create(
+			source->manager->scene, source->hidden_output);
+	if (source->manager->layout) {
+		struct wlr_box box;
+		wlr_output_layout_get_box(source->manager->layout,
+				source->output, &box);
+		wlr_scene_output_set_position(source->hidden_scene_output,
+				box.x, box.y);
+	}
+
+	if (!source->hidden_scene_output) {
+		wlr_output_destroy(source->hidden_output);
+		source->hidden_output = NULL;
+		return;
+	}
+	source->hidden_output_frame.notify = handle_hidden_frame;
+	wl_signal_add(&source->hidden_output->events.frame,
+			&source->hidden_output_frame);
+	source->hidden_output_commit.notify = handle_hidden_commit;
+	wl_signal_add(&source->hidden_output->events.commit,
+			&source->hidden_output_commit);
+
+	source_update_buffer_constraints(source);
+	wl_signal_emit_mutable(&source->hidden_output->events.frame, source->hidden_output);
 }
 
 static void output_source_stop(struct wlr_ext_image_capture_source_v1 *base) {
-	struct wlr_ext_output_image_capture_source_v1 *source = wl_container_of(base, source, base);
-	assert(source->num_started > 0);
+	struct wlr_ext_output_image_capture_source_v1 *source =
+		wl_container_of(base, source, base);
 	source->num_started--;
 	if (source->num_started > 0) {
 		return;
 	}
-	wlr_output_lock_attach_render(source->output, false);
-	if (source->software_cursors_locked) {
-		wlr_output_lock_software_cursors(source->output, false);
+
+	// Let real output commit event flow once more
+	wl_signal_add(&source->output->events.commit, &source->output_commit);
+
+	if (source->hidden_output) {
+		wl_list_remove(&source->hidden_output_frame.link);
+		wl_list_remove(&source->hidden_output_commit.link);
+		wlr_scene_output_destroy(source->hidden_scene_output);
+		wlr_output_destroy(source->hidden_output);
+		source->hidden_scene_output = NULL;
+		source->hidden_output = NULL;
 	}
 }
 
@@ -106,21 +239,6 @@ static const struct wlr_ext_image_capture_source_v1_interface output_source_impl
 	.copy_frame = output_source_copy_frame,
 	.get_pointer_cursor = output_source_get_pointer_cursor,
 };
-
-static void source_update_buffer_constraints(struct wlr_ext_output_image_capture_source_v1 *source) {
-	struct wlr_output *output = source->output;
-
-	if (!output->enabled) {
-		return;
-	}
-
-	if (!wlr_output_configure_primary_swapchain(output, NULL, &output->swapchain)) {
-		return;
-	}
-
-	wlr_ext_image_capture_source_v1_set_constraints_from_swapchain(&source->base,
-		output->swapchain, output->renderer);
-}
 
 static void source_handle_output_commit(struct wl_listener *listener,
 		void *data) {
@@ -200,6 +318,8 @@ static void output_manager_handle_create_source(struct wl_client *client,
 		wlr_addon_init(&source->addon, &output->addons, NULL, &output_addon_impl);
 		source->output = output;
 
+		source->manager = wl_resource_get_user_data(manager_resource);
+
 		source->output_commit.notify = source_handle_output_commit;
 		wl_signal_add(&output->events.commit, &source->output_commit);
 
@@ -253,6 +373,10 @@ struct wlr_ext_output_image_capture_source_manager_v1 *wlr_ext_output_image_capt
 		return NULL;
 	}
 
+	manager->display = display;
+	manager->headless_backend = NULL;
+
+
 	manager->global = wl_global_create(display,
 		&ext_output_image_capture_source_manager_v1_interface, version, manager, output_manager_bind);
 	if (manager->global == NULL) {
@@ -264,6 +388,12 @@ struct wlr_ext_output_image_capture_source_manager_v1 *wlr_ext_output_image_capt
 	wl_display_add_destroy_listener(display, &manager->display_destroy);
 
 	return manager;
+}
+
+void wlr_ext_output_image_capture_source_manager_v1_set_scene(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+		struct wlr_scene *scene) {
+	manager->scene = scene;
 }
 
 static void output_cursor_source_request_frame(struct wlr_ext_image_capture_source_v1 *base,
