@@ -216,6 +216,10 @@ static void output_apply_state(struct wlr_output *output,
 		output->render_format = state->render_format;
 	}
 
+	if (state->committed & WLR_OUTPUT_STATE_COLOR_FORMAT) {
+		output->color_format = state->color_format;
+	}
+
 	if (state->committed & WLR_OUTPUT_STATE_SUBPIXEL) {
 		output->subpixel = state->subpixel;
 	}
@@ -357,6 +361,7 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 		.impl = impl,
 		.event_loop = event_loop,
 		.render_format = DRM_FORMAT_XRGB8888,
+		.color_format = WLR_OUTPUT_COLOR_FORMAT_AUTO,
 		.transform = WL_OUTPUT_TRANSFORM_NORMAL,
 		.scale = 1,
 		.commit_seq = 0,
@@ -589,6 +594,10 @@ static uint32_t output_compare_state(struct wlr_output *output,
 			output->color_encoding == state->color_encoding &&
 			output->color_range == state->color_range) {
 		fields |= WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
+	}
+	if ((state->committed & WLR_OUTPUT_STATE_COLOR_FORMAT) &&
+			output->color_format == state->color_format) {
+		fields |= WLR_OUTPUT_STATE_COLOR_FORMAT;
 	}
 	return fields;
 }
