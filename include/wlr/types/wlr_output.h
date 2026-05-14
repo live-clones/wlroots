@@ -86,6 +86,22 @@ enum wlr_output_state_mode_type {
 };
 
 /**
+ * HDR static metadata block 1 values, as advertised by the display via EDID.
+ *
+ * Luminances are given in cd/m². desired_content_min_luminance is always
+ * available (defaults to 0 when the EDID block does not provide a value).
+ * desired_content_max_luminance and desired_content_max_frame_average_luminance
+ * are optional and only meaningful when their corresponding has_* flag is set.
+ */
+struct wlr_output_hdr_metadata {
+	double desired_content_min_luminance;
+	bool has_desired_content_max_luminance;
+	double desired_content_max_luminance;
+	bool has_desired_content_max_frame_average_luminance;
+	double desired_content_max_frame_average_luminance;
+};
+
+/**
  * Colorimetric image description.
  *
  * Carries information about the color encoding used for a struct wlr_buffer.
@@ -194,6 +210,8 @@ struct wlr_output {
 	char *make, *model, *serial; // may be NULL
 	int32_t phys_width, phys_height; // mm
 	const struct wlr_color_primaries *default_primaries; // may be NULL
+	// HDR static metadata block 1 values from the EDID, NULL if not advertised
+	const struct wlr_output_hdr_metadata *hdr_metadata;
 
 	// Note: some backends may have zero modes
 	struct wl_list modes; // wlr_output_mode.link
@@ -278,6 +296,7 @@ struct wlr_output {
 		struct wlr_output_image_description image_description_value;
 		struct wlr_color_transform *color_transform;
 		struct wlr_color_primaries default_primaries_value;
+		struct wlr_output_hdr_metadata hdr_metadata_value;
 	} WLR_PRIVATE;
 };
 
