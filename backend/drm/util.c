@@ -105,7 +105,14 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 		output->supported_transfer_functions |= WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
 	}
 
-	if (hdr_static_metadata->type1) {
+	// Capture HDR static metadata whenever the EDID provides any value, even if
+	// the Type 1 descriptor flag is unset: some displays only advertise EOTFs
+	// without explicitly flagging Type 1 support, but still expose useful
+	// desired-content luminance values.
+	if (hdr_static_metadata->type1 ||
+			hdr_static_metadata->desired_content_max_luminance > 0 ||
+			hdr_static_metadata->desired_content_max_frame_avg_luminance > 0 ||
+			hdr_static_metadata->desired_content_min_luminance > 0) {
 		output->hdr_metadata_value = (struct wlr_output_hdr_metadata){
 			.desired_content_min_luminance = hdr_static_metadata->desired_content_min_luminance,
 		};
@@ -120,6 +127,19 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 				hdr_static_metadata->desired_content_max_frame_avg_luminance;
 		}
 		output->hdr_metadata = &output->hdr_metadata_value;
+		wlr_log(WLR_DEBUG,
+			"EDID HDR static metadata: type1=%d pq=%d hlg=%d hdr_gamma=%d sdr=%d, "
+			"min_lum=%.4f cd/m^2, max_lum=%.1f cd/m^2, max_fall=%.1f cd/m^2",
+			hdr_static_metadata->type1, hdr_static_metadata->pq,
+			hdr_static_metadata->hlg, hdr_static_metadata->traditional_hdr,
+			hdr_static_metadata->traditional_sdr,
+			hdr_static_metadata->desired_content_min_luminance,
+			hdr_static_metadata->desired_content_max_luminance,
+			hdr_static_metadata->desired_content_max_frame_avg_luminance);
+	} else {
+		wlr_log(WLR_DEBUG,
+			"EDID has no HDR static metadata (sdr_only=%d)",
+			hdr_static_metadata->traditional_sdr);
 	}
 
 	di_info_destroy(info);
