@@ -160,16 +160,31 @@ static void image_desc_handle_get_information(struct wl_client *client,
 	wp_image_description_info_v1_send_luminances(resource,
 		round(luminances.min * 10000), round(luminances.max),
 		round(luminances.reference));
-	// TODO: send mastering display primaries and luminances here when we add
-	// support for features.set_mastering_display_primaries
+	const struct wlr_color_primaries *target_primaries = &primaries;
+	if (image_desc->data.has_mastering_display_primaries) {
+		target_primaries = &image_desc->data.mastering_display_primaries;
+	}
 	wp_image_description_info_v1_send_target_primaries(resource,
-		encode_cie1931_coord(primaries.red.x), encode_cie1931_coord(primaries.red.y),
-		encode_cie1931_coord(primaries.green.x), encode_cie1931_coord(primaries.green.y),
-		encode_cie1931_coord(primaries.blue.x), encode_cie1931_coord(primaries.blue.y),
-		encode_cie1931_coord(primaries.white.x), encode_cie1931_coord(primaries.white.y));
+		encode_cie1931_coord(target_primaries->red.x), encode_cie1931_coord(target_primaries->red.y),
+		encode_cie1931_coord(target_primaries->green.x), encode_cie1931_coord(target_primaries->green.y),
+		encode_cie1931_coord(target_primaries->blue.x), encode_cie1931_coord(target_primaries->blue.y),
+		encode_cie1931_coord(target_primaries->white.x), encode_cie1931_coord(target_primaries->white.y));
+	double target_min = luminances.min;
+	double target_max = luminances.max;
+	if (image_desc->data.has_mastering_luminance) {
+		target_min = image_desc->data.mastering_luminance.min;
+		target_max = image_desc->data.mastering_luminance.max;
+	}
 	wp_image_description_info_v1_send_target_luminance(resource,
-		round(luminances.min * 10000), round(luminances.max));
-	// TODO: send target_max_cll and target_max_fall
+		round(target_min * 10000), round(target_max));
+	if (image_desc->data.max_cll > 0) {
+		wp_image_description_info_v1_send_target_max_cll(resource,
+			image_desc->data.max_cll);
+	}
+	if (image_desc->data.max_fall > 0) {
+		wp_image_description_info_v1_send_target_max_fall(resource,
+			image_desc->data.max_fall);
+	}
 	wp_image_description_info_v1_send_done(resource);
 	wl_resource_destroy(resource);
 }
@@ -266,10 +281,50 @@ static void cm_output_handle_get_image_description(struct wl_client *client,
 		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_GAMMA22,
 		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
 	};
-	const struct wlr_output_image_description *image_desc = cm_output->output->image_description;
+	const struct wlr_output *output = cm_output->output;
+	const struct wlr_output_image_description *image_desc = output->image_description;
 	if (image_desc != NULL) {
 		data.tf_named = wlr_color_manager_v1_transfer_function_from_wlr(image_desc->transfer_function);
 		data.primaries_named = wlr_color_manager_v1_primaries_from_wlr(image_desc->primaries);
+		if (image_desc->mastering_luminance.max > 0) {
+			data.has_mastering_luminance = true;
+			data.mastering_luminance.min = image_desc->mastering_luminance.min;
+			data.mastering_luminance.max = image_desc->mastering_luminance.max;
+		}
+		if (image_desc->max_cll > 0) {
+			data.max_cll = (uint32_t)round(image_desc->max_cll);
+		}
+		if (image_desc->max_fall > 0) {
+			data.max_fall = (uint32_t)round(image_desc->max_fall);
+		}
+		const struct wlr_color_primaries *p = &image_desc->mastering_display_primaries;
+		if (p->red.x != 0 || p->red.y != 0 || p->green.x != 0 || p->green.y != 0 ||
+				p->blue.x != 0 || p->blue.y != 0 || p->white.x != 0 || p->white.y != 0) {
+			data.has_mastering_display_primaries = true;
+			data.mastering_display_primaries = *p;
+		}
+	}
+	// Fall back to EDID-derived target metadata when the compositor didn't
+	// populate it on the output's image description.
+	if (!data.has_mastering_luminance && output->hdr_metadata != NULL) {
+		const struct wlr_output_hdr_metadata *hdr = output->hdr_metadata;
+		if (hdr->has_desired_content_max_luminance) {
+			data.has_mastering_luminance = true;
+			data.mastering_luminance.min = hdr->desired_content_min_luminance;
+			data.mastering_luminance.max = hdr->desired_content_max_luminance;
+		}
+	}
+	if (data.max_cll == 0 && output->hdr_metadata != NULL &&
+			output->hdr_metadata->has_desired_content_max_luminance) {
+		data.max_cll = (uint32_t)round(output->hdr_metadata->desired_content_max_luminance);
+	}
+	if (data.max_fall == 0 && output->hdr_metadata != NULL &&
+			output->hdr_metadata->has_desired_content_max_frame_average_luminance) {
+		data.max_fall = (uint32_t)round(output->hdr_metadata->desired_content_max_frame_average_luminance);
+	}
+	if (!data.has_mastering_display_primaries && output->default_primaries != NULL) {
+		data.has_mastering_display_primaries = true;
+		data.mastering_display_primaries = *output->default_primaries;
 	}
 	image_desc_create_ready(cm_output->manager, cm_output_resource, id, &data, true);
 }
