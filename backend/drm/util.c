@@ -105,6 +105,23 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 		output->supported_transfer_functions |= WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
 	}
 
+	if (hdr_static_metadata->type1) {
+		output->hdr_metadata_value = (struct wlr_output_hdr_metadata){
+			.desired_content_min_luminance = hdr_static_metadata->desired_content_min_luminance,
+		};
+		if (hdr_static_metadata->desired_content_max_luminance > 0) {
+			output->hdr_metadata_value.has_desired_content_max_luminance = true;
+			output->hdr_metadata_value.desired_content_max_luminance =
+				hdr_static_metadata->desired_content_max_luminance;
+		}
+		if (hdr_static_metadata->desired_content_max_frame_avg_luminance > 0) {
+			output->hdr_metadata_value.has_desired_content_max_frame_average_luminance = true;
+			output->hdr_metadata_value.desired_content_max_frame_average_luminance =
+				hdr_static_metadata->desired_content_max_frame_avg_luminance;
+		}
+		output->hdr_metadata = &output->hdr_metadata_value;
+	}
+
 	di_info_destroy(info);
 }
 
