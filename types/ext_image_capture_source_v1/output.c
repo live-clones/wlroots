@@ -50,7 +50,6 @@ static void output_source_start(struct wlr_ext_image_capture_source_v1 *base,
 	if (source->num_started > 1) {
 		return;
 	}
-	wlr_output_lock_attach_render(source->output, true);
 	if (with_cursors) {
 		wlr_output_lock_software_cursors(source->output, true);
 	}
@@ -64,7 +63,6 @@ static void output_source_stop(struct wlr_ext_image_capture_source_v1 *base) {
 	if (source->num_started > 0) {
 		return;
 	}
-	wlr_output_lock_attach_render(source->output, false);
 	if (source->software_cursors_locked) {
 		wlr_output_lock_software_cursors(source->output, false);
 	}
