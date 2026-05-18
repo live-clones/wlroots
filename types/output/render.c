@@ -205,9 +205,21 @@ struct wlr_render_pass *wlr_output_begin_render_pass(struct wlr_output *output,
 		return NULL;
 	}
 
+	struct wlr_buffer_pass_options opts = {0};
+	if (render_options != NULL) {
+		opts = *render_options;
+	}
+	if (state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) {
+		opts.color_encoding = state->color_encoding;
+		opts.color_range = state->color_range;
+	} else {
+		opts.color_encoding = output->color_encoding;
+		opts.color_range = output->color_range;
+	}
+
 	struct wlr_renderer *renderer = output->renderer;
 	assert(renderer != NULL);
-	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(renderer, buffer, render_options);
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(renderer, buffer, &opts);
 	if (pass == NULL) {
 		return NULL;
 	}
