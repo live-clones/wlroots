@@ -196,6 +196,9 @@ struct wlr_scene_buffer {
 	enum wlr_color_encoding color_encoding;
 	enum wlr_color_range color_range;
 
+	bool has_luminances;
+	struct wlr_color_luminances luminances;
+
 	struct {
 		uint64_t active_outputs;
 		struct wlr_texture *texture;
@@ -569,6 +572,9 @@ void wlr_scene_buffer_set_color_encoding(struct wlr_scene_buffer *scene_buffer,
 
 void wlr_scene_buffer_set_color_range(struct wlr_scene_buffer *scene_buffer,
 	enum wlr_color_range range);
+
+void wlr_scene_buffer_set_luminances(struct wlr_scene_buffer *scene_buffer,
+	const struct wlr_color_luminances *lum);
 
 /**
  * Calls the buffer's frame_done signal.

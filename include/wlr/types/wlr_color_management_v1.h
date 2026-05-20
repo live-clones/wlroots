@@ -29,6 +29,9 @@ struct wlr_image_description_v1_data {
 		float min, max; // cd/m²
 	} mastering_luminance;
 
+	bool has_luminances;
+	struct wlr_color_luminances luminances; // cd/m²
+
 	uint32_t max_cll, max_fall; // cd/m², zero if unset
 };
 
@@ -93,6 +96,9 @@ wlr_surface_get_image_description_v1_data(struct wlr_surface *surface);
 void wlr_color_manager_v1_set_surface_preferred_image_description(
 	struct wlr_color_manager_v1 *manager, struct wlr_surface *surface,
 	const struct wlr_image_description_v1_data *data);
+
+void wlr_color_manager_v1_get_luminances(const struct wlr_image_description_v1_data *img_desc,
+	struct wlr_color_luminances *lum);
 
 /**
  * Convert a protocol transfer function to enum wlr_color_transfer_function.
