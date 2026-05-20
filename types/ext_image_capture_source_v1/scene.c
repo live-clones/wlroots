@@ -153,14 +153,22 @@ static void source_copy_frame(struct wlr_ext_image_capture_source_v1 *base,
 	struct scene_node_source *source = wl_container_of(base, source, base);
 	struct scene_node_source_frame_event *event = wl_container_of(base_event, event, base);
 
+	struct wlr_drm_syncobj_timeline *copy_timeline;
+	uint64_t copy_point;
 	if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
 			event->buffer, source->output.renderer,
-			event->wait_timeline, event->wait_point)) {
-		wlr_ext_image_copy_capture_frame_v1_ready(frame,
-			source->output.transform, &event->when);
-		if (event->release_merger) {
-			wlr_drm_syncobj_merger_add_dmabuf(event->release_merger, event->buffer,
-				source->output.event_loop);
+			event->wait_timeline, event->wait_point, &copy_timeline, &copy_point)) {
+		if (copy_timeline != NULL) {
+			if (event->release_merger != NULL) {
+				wlr_drm_syncobj_merger_add(event->release_merger, copy_timeline, copy_point,
+					source->output.event_loop);
+			}
+			wlr_ext_image_copy_capture_frame_v1_ready_deferred(frame,
+				source->output.transform, &event->when, copy_timeline, copy_point);
+			wlr_drm_syncobj_timeline_unref(copy_timeline);
+		} else {
+			wlr_ext_image_copy_capture_frame_v1_ready(frame,
+				source->output.transform, &event->when);
 		}
 	}
 }
