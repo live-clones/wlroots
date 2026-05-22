@@ -1462,15 +1462,31 @@ static void xwm_handle_surface_id_message(struct wlr_xwm *xwm,
 	struct wlr_xwayland_surface *xsurface = lookup_surface(xwm, ev->window);
 	if (xsurface == NULL) {
 		wlr_log(WLR_DEBUG,
-			"client message WL_SURFACE_ID but no new window %u ?",
+			"Received client message WL_SURFACE_ID but no X11 window %u",
 			ev->window);
 		return;
 	}
-	/* Check if we got notified after wayland surface create event */
+	if (xsurface->surface != NULL) {
+		wlr_log(WLR_DEBUG, "Received multiple client messages WL_SURFACE_ID "
+			"for an already-associated X11 window %u", ev->window);
+		return;
+	}
+
 	uint32_t id = ev->data.data32[0];
+
+	// Because the X11 and Wayland connections are separate sockets, the
+	// WL_SURFACE_ID and wl_compositor.create_surface messages may be received
+	// in any order.
 	struct wl_resource *resource =
 		wl_client_get_object(xwm->xwayland->server->client, id);
 	if (resource) {
+		if (wl_resource_get_interface(resource) != &wl_surface_interface) {
+			wlr_log(WLR_DEBUG, "Received client message WL_SURFACE_ID "
+				"for X11 window %u but Wayland object is not a wl_surface",
+				ev->window);
+			return;
+		}
+
 		struct wlr_surface *surface = wlr_surface_from_resource(resource);
 		xwayland_surface_associate(xwm, xsurface, surface);
 	} else {
