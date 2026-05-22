@@ -659,7 +659,7 @@ static void read_surface_class(struct wlr_xwm *xwm,
 	}
 
 	size_t len = xcb_get_property_value_length(reply);
-	char *class = xcb_get_property_value(reply);
+	const char *class = xcb_get_property_value(reply);
 
 	// Unpack two sequentially stored strings: instance, class
 	size_t instance_len = strnlen(class, len);
@@ -667,6 +667,7 @@ static void read_surface_class(struct wlr_xwm *xwm,
 	if (len > 0 && instance_len < len) {
 		surface->instance = strndup(class, instance_len);
 		class += instance_len + 1;
+		len -= instance_len + 1;
 	} else {
 		surface->instance = NULL;
 	}
@@ -690,7 +691,7 @@ static void read_surface_startup_id(struct wlr_xwm *xwm,
 	}
 
 	size_t len = xcb_get_property_value_length(reply);
-	char *startup_id = xcb_get_property_value(reply);
+	const char *startup_id = xcb_get_property_value(reply);
 
 	free(xsurface->startup_id);
 	if (len > 0) {
@@ -719,7 +720,7 @@ static void read_surface_opacity(struct wlr_xwm *xwm,
 		return;
 	}
 
-	uint32_t *val = xcb_get_property_value(reply);
+	const uint32_t *val = xcb_get_property_value(reply);
 	xsurface->opacity = (double)*val / UINT32_MAX;
 	wl_signal_emit_mutable(&xsurface->events.set_opacity, NULL);
 }
@@ -734,7 +735,7 @@ static void read_surface_role(struct wlr_xwm *xwm,
 	}
 
 	size_t len = xcb_get_property_value_length(reply);
-	char *role = xcb_get_property_value(reply);
+	const char *role = xcb_get_property_value(reply);
 
 	free(xsurface->role);
 	if (len > 0) {
@@ -806,7 +807,7 @@ static void read_surface_parent(struct wlr_xwm *xwm,
 	}
 
 	struct wlr_xwayland_surface *found_parent = NULL;
-	xcb_window_t *xid = xcb_get_property_value(reply);
+	const xcb_window_t *xid = xcb_get_property_value(reply);
 	if (reply->type != XCB_ATOM_NONE && xid != NULL) {
 		found_parent = lookup_surface(xwm, *xid);
 		if (!has_parent(found_parent, xsurface)) {
@@ -837,9 +838,9 @@ static void read_surface_window_type(struct wlr_xwm *xwm,
 		return;
 	}
 
-	xcb_atom_t *atoms = xcb_get_property_value(reply);
-	size_t atoms_len = reply->value_len;
-	size_t atoms_size = sizeof(xcb_atom_t) * atoms_len;
+	const xcb_atom_t *atoms = xcb_get_property_value(reply);
+	size_t atoms_len = xcb_get_property_value_length(reply) / sizeof(atoms[0]);
+	size_t atoms_size = sizeof(atoms[0]) * atoms_len;
 
 	free(xsurface->window_type);
 	if (atoms_len > 0) {
@@ -864,9 +865,9 @@ static void read_surface_protocols(struct wlr_xwm *xwm,
 		return;
 	}
 
-	xcb_atom_t *atoms = xcb_get_property_value(reply);
-	size_t atoms_len = reply->value_len;
-	size_t atoms_size = sizeof(xcb_atom_t) * atoms_len;
+	const xcb_atom_t *atoms = xcb_get_property_value(reply);
+	size_t atoms_len = xcb_get_property_value_length(reply) / sizeof(atoms[0]);
+	size_t atoms_size = sizeof(atoms[0]) * atoms_len;
 
 	free(xsurface->protocols);
 	if (atoms_len > 0) {
@@ -893,7 +894,7 @@ static void read_surface_hints(struct wlr_xwm *xwm,
 	}
 
 	free(xsurface->hints);
-	if (reply->value_len > 0) {
+	if (xcb_get_property_value_length(reply) > 0) {
 		xsurface->hints = calloc(1, sizeof(*xsurface->hints));
 		if (xsurface->hints == NULL) {
 			return;
@@ -923,7 +924,7 @@ static void read_surface_normal_hints(struct wlr_xwm *xwm,
 	free(xsurface->size_hints);
 	xsurface->size_hints = NULL;
 
-	if (reply->value_len == 0) {
+	if (xcb_get_property_value_length(reply) == 0) {
 		return;
 	}
 
@@ -970,18 +971,19 @@ static void read_surface_normal_hints(struct wlr_xwm *xwm,
 static void read_surface_motif_hints(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
-	if (reply->value_len == 0) {
+	if (xcb_get_property_value_length(reply) == 0) {
 		xsurface->decorations = 0;
 		wl_signal_emit_mutable(&xsurface->events.set_decorations, NULL);
 		return;
 	}
 
-	if (reply->value_len < 5) {
+	const uint32_t *motif_hints = xcb_get_property_value(reply);
+	int motif_hints_len = xcb_get_property_value_length(reply) / sizeof(motif_hints[0]);
+	if (motif_hints_len < 5) {
 		wlr_log(WLR_DEBUG, "Invalid MOTIF_WM_HINTS property type");
 		return;
 	}
 
-	uint32_t *motif_hints = xcb_get_property_value(reply);
 	if (motif_hints[MWM_HINTS_FLAGS_FIELD] & MWM_HINTS_DECORATIONS) {
 		xsurface->decorations = WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
 		uint32_t decorations = motif_hints[MWM_HINTS_DECORATIONS_FIELD];
@@ -1029,31 +1031,32 @@ static void read_surface_net_wm_state(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface,
 		xcb_get_property_reply_t *reply) {
 	xsurface->fullscreen = 0;
-	xcb_atom_t *atom = xcb_get_property_value(reply);
-	for (uint32_t i = 0; i < reply->value_len; i++) {
-		if (atom[i] == xwm->atoms[NET_WM_STATE_MODAL]) {
+	const xcb_atom_t *atoms = xcb_get_property_value(reply);
+	uint32_t atoms_len = xcb_get_property_value_length(reply) / sizeof(atoms[0]);
+	for (uint32_t i = 0; i < atoms_len; i++) {
+		if (atoms[i] == xwm->atoms[NET_WM_STATE_MODAL]) {
 			xsurface->modal = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_FULLSCREEN]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_FULLSCREEN]) {
 			xsurface->fullscreen = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_MAXIMIZED_VERT]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_MAXIMIZED_VERT]) {
 			xsurface->maximized_vert = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_MAXIMIZED_HORZ]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_MAXIMIZED_HORZ]) {
 			xsurface->maximized_horz = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_HIDDEN]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_HIDDEN]) {
 			xsurface->minimized = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_STICKY]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_STICKY]) {
 			xsurface->sticky = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_SHADED]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_SHADED]) {
 			xsurface->shaded = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_SKIP_TASKBAR]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_SKIP_TASKBAR]) {
 			xsurface->skip_taskbar = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_SKIP_PAGER]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_SKIP_PAGER]) {
 			xsurface->skip_pager = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_ABOVE]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_ABOVE]) {
 			xsurface->above = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_BELOW]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_BELOW]) {
 			xsurface->below = true;
-		} else if (atom[i] == xwm->atoms[NET_WM_STATE_DEMANDS_ATTENTION]) {
+		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_DEMANDS_ATTENTION]) {
 			xsurface->demands_attention = true;
 		}
 	}
