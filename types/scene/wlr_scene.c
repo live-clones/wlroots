@@ -463,11 +463,6 @@ static void update_node_update_outputs(struct wlr_scene_node *node,
 		}
 	}
 
-	if (old_primary_output != scene_buffer->primary_output) {
-		scene_buffer->prev_feedback_options =
-			(struct wlr_linux_dmabuf_feedback_v1_init_options){0};
-	}
-
 	// if there are active outputs on this node, we should always have a primary
 	// output
 	assert(!active_outputs || scene_buffer->primary_output);
