@@ -6,6 +6,7 @@
 #include <wayland-server-core.h>
 
 struct libseat;
+struct drm_event_monitor;
 
 /**
  * An opened physical device.
@@ -45,9 +46,8 @@ struct wlr_session {
 
 	char seat[256];
 
-	struct udev *udev;
-	struct udev_monitor *mon;
-	struct wl_event_source *udev_event;
+	struct drm_event_monitor *drm_handle;
+	struct wl_event_source *drm_event;
 
 	struct libseat *seat_handle;
 	struct wl_event_source *libseat_event;
