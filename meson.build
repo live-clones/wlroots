@@ -121,7 +121,12 @@ pixman = dependency('pixman-1',
 	default_options: ['werror=false'],
 )
 math = cc.find_library('m')
-rt = cc.find_library('rt')
+platform = target_machine.system()
+if platform == 'openbsd'
+	rt = dependency('', required: false)
+else
+	rt = cc.find_library('rt')
+endif
 
 wlr_files = []
 wlr_deps = [
