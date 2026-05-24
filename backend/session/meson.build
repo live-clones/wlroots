@@ -12,6 +12,6 @@ if not (udev.found() and libseat.found())
 	subdir_done()
 endif
 
-wlr_files += files('session.c')
+wlr_files += files('session.c', 'udev.c')
 wlr_deps += [udev, libseat]
 features += { 'session': true }

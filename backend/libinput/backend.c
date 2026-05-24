@@ -6,6 +6,7 @@
 #include <wlr/backend/session.h>
 #include <wlr/util/log.h>
 #include "backend/libinput.h"
+#include "backend/session/udev.h"
 #include "util/env.h"
 
 static struct wlr_libinput_backend *get_libinput_backend_from_backend(
@@ -181,6 +182,13 @@ static void handle_session_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_backend *wlr_libinput_backend_create(struct wlr_session *session) {
+	struct wlr_udev_device_manager *device_manager =
+		wlr_udev_device_manager_try_from_base(session->device_manager);
+	if (device_manager == NULL) {
+		wlr_log(WLR_ERROR, "libinput requires an udev device manager");
+		return NULL;
+	}
+
 	struct wlr_libinput_backend *backend = calloc(1, sizeof(*backend));
 	if (!backend) {
 		wlr_log(WLR_ERROR, "Allocation failed: %s", strerror(errno));
@@ -192,7 +200,7 @@ struct wlr_backend *wlr_libinput_backend_create(struct wlr_session *session) {
 	backend->session = session;
 
 	backend->libinput_context = libinput_udev_create_context(&libinput_impl,
-		backend, backend->session->udev);
+		backend, device_manager->udev);
 	if (!backend->libinput_context) {
 		wlr_log(WLR_ERROR, "Failed to create libinput context");
 		wlr_backend_finish(&backend->backend);
