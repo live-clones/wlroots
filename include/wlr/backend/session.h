@@ -45,9 +45,7 @@ struct wlr_session {
 
 	char seat[256];
 
-	struct udev *udev;
-	struct udev_monitor *mon;
-	struct wl_event_source *udev_event;
+	struct wlr_device_manager *device_manager;
 
 	struct libseat *seat_handle;
 	struct wl_event_source *libseat_event;

@@ -82,6 +82,7 @@ internal_features = {
 	'xcb-errors': false,
 	'egl': false,
 	'libliftoff': false,
+	'udev': false,
 }
 internal_config = configuration_data()
 
