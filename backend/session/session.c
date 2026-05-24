@@ -20,6 +20,8 @@
 
 #if HAVE_UDEV
 #include "backend/session/udev.h"
+#else
+#include "backend/session/linux.h"
 #endif
 
 #define WAIT_GPU_TIMEOUT 10000 // ms
@@ -194,14 +196,13 @@ struct wlr_session *wlr_session_create(struct wl_event_loop *event_loop) {
 
 #if HAVE_UDEV
 	session->device_manager = wlr_udev_device_manager_create(session);
+#else
+	session->device_manager = wlr_linux_device_manager_create(session);
+#endif
 	if (session->device_manager == NULL) {
-		wlr_log(WLR_ERROR, "Failed to create udev device manager");
+		wlr_log(WLR_ERROR, "Failed to create device manager");
 		goto error_session;
 	}
-#else
-	wlr_log(WLR_ERROR, "Session requires udev");
-	goto error_session;
-#endif
 
 	session->event_loop_destroy.notify = handle_event_loop_destroy;
 	wl_event_loop_add_destroy_listener(event_loop, &session->event_loop_destroy);
