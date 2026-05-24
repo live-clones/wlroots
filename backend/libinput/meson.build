@@ -1,16 +1,21 @@
 msg = ['Required for libinput backend support.']
 if 'libinput' in backends
-	msg += 'Install "libinput" or disable the libinput backend.'
+	msg += 'Install "@0@" or disable the libinput backend.'
 endif
 
 libinput = dependency(
 	'libinput',
 	version: '>=1.19.0',
 	required: 'libinput' in backends,
-	not_found_message: '\n'.join(msg),
+	not_found_message: '\n'.join(msg).format('libinput'),
+)
+udev = dependency(
+	'libudev',
+	required: 'libinput' in backends,
+	not_found_message: '\n'.join(msg).format('libudev'),
 )
 
-if not (libinput.found() and features['session'])
+if not (libinput.found() and udev.found() and features['session'])
 	subdir_done()
 endif
 

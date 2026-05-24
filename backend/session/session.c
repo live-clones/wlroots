@@ -15,8 +15,12 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include "backend/session/session.h"
-#include "backend/session/udev.h"
+#include "config.h"
 #include "util/time.h"
+
+#if HAVE_UDEV
+#include "backend/session/udev.h"
+#endif
 
 #define WAIT_GPU_TIMEOUT 10000 // ms
 
@@ -188,11 +192,16 @@ struct wlr_session *wlr_session_create(struct wl_event_loop *event_loop) {
 		goto error_open;
 	}
 
+#if HAVE_UDEV
 	session->device_manager = wlr_udev_device_manager_create(session);
 	if (session->device_manager == NULL) {
 		wlr_log(WLR_ERROR, "Failed to create udev device manager");
 		goto error_session;
 	}
+#else
+	wlr_log(WLR_ERROR, "Session requires udev");
+	goto error_session;
+#endif
 
 	session->event_loop_destroy.notify = handle_event_loop_destroy;
 	wl_event_loop_add_destroy_listener(event_loop, &session->event_loop_destroy);
