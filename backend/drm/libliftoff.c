@@ -159,6 +159,10 @@ static bool set_plane_props(struct wlr_drm_plane *plane,
 	}
 
 	// The src_* properties are in 16.16 fixed point
+	enum wlr_drm_pixel_blend_mode blend_mode = fb->has_alpha ?
+		WLR_DRM_BLEND_PREMULTI : WLR_DRM_BLEND_PIXEL_NONE;
+	bool set_blend_mode = plane->props.pixel_blend_mode == 0 ||
+		liftoff_layer_set_property(layer, "pixel blend mode", blend_mode) == 0;
 	return liftoff_layer_set_property(layer, "zpos", zpos) == 0 &&
 		liftoff_layer_set_property(layer, "SRC_X", src_box->x * (1 << 16)) == 0 &&
 		liftoff_layer_set_property(layer, "SRC_Y", src_box->y * (1 << 16)) == 0 &&
@@ -168,7 +172,8 @@ static bool set_plane_props(struct wlr_drm_plane *plane,
 		liftoff_layer_set_property(layer, "CRTC_Y", dst_box->y) == 0 &&
 		liftoff_layer_set_property(layer, "CRTC_W", dst_box->width) == 0 &&
 		liftoff_layer_set_property(layer, "CRTC_H", dst_box->height) == 0 &&
-		liftoff_layer_set_property(layer, "FB_ID", fb->id) == 0;
+		liftoff_layer_set_property(layer, "FB_ID", fb->id) == 0 &&
+		set_blend_mode;
 }
 
 static bool disable_plane(struct wlr_drm_plane *plane) {
