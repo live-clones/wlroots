@@ -394,6 +394,11 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 		return false;
 	}
 
+	double brightness = (state->base->committed & WLR_OUTPUT_STATE_BRIGHTNESS) ?
+		state->base->brightness : output->brightness;
+	uint64_t luminance = conn->luminance_bounds[0] +
+		round(brightness * (conn->luminance_bounds[1] - conn->luminance_bounds[0]));
+
 	state->mode_id = mode_id;
 	state->gamma_lut = gamma_lut;
 	state->fb_damage_clips = fb_damage_clips;
@@ -401,6 +406,7 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	state->vrr_enabled = vrr_enabled;
 	state->colorspace = colorspace;
 	state->hdr_output_metadata = hdr_output_metadata;
+	state->luminance = luminance;
 	return true;
 }
 
@@ -572,6 +578,9 @@ static void atomic_connector_add(struct atomic *atom,
 	}
 	if (conn->props.hdr_output_metadata != 0) {
 		atomic_add(atom, conn->id, conn->props.hdr_output_metadata, state->hdr_output_metadata);
+	}
+	if (conn->props.luminance != 0) {
+		atomic_add(atom, conn->id, conn->props.luminance, state->luminance);
 	}
 	atomic_add(atom, crtc->id, crtc->props.mode_id, state->mode_id);
 	atomic_add(atom, crtc->id, crtc->props.active, active);
