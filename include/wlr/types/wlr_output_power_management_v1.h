@@ -10,6 +10,7 @@ struct wlr_output_power_manager_v1 {
 
 	struct {
 		struct wl_signal set_mode; // struct wlr_output_power_v1_set_mode_event
+		struct wl_signal set_brightness; // struct wlr_output_power_v1_set_brightness_event
 		struct wl_signal destroy;
 	} events;
 
@@ -37,6 +38,11 @@ struct wlr_output_power_v1 {
 struct wlr_output_power_v1_set_mode_event {
 	struct wlr_output *output;
 	enum zwlr_output_power_v1_mode mode;
+};
+
+struct wlr_output_power_v1_set_brightness_event {
+	struct wlr_output *output;
+	float value;
 };
 
 struct wlr_output_power_manager_v1 *wlr_output_power_manager_v1_create(

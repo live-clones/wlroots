@@ -9,7 +9,7 @@
 #include <wlr/util/log.h>
 #include "wlr-output-power-management-unstable-v1-protocol.h"
 
-#define OUTPUT_POWER_MANAGER_V1_VERSION 1
+#define OUTPUT_POWER_MANAGER_V1_VERSION 2
 
 static void output_power_handle_destroy(struct wl_client *client,
 		struct wl_resource *resource) {
@@ -58,6 +58,11 @@ static void output_power_v1_send_mode(struct wlr_output_power_v1 *output_power) 
 	zwlr_output_power_v1_send_mode(output_power->resource, mode);
 }
 
+static void output_power_v1_send_brightness(struct wlr_output_power_v1 *output_power) {
+	zwlr_output_power_v1_send_brightness(output_power->resource,
+		round((double)output_power->output->brightness * UINT32_MAX));
+}
+
 static void output_power_handle_output_commit(struct wl_listener *listener,
 		void *data) {
 	struct wlr_output_power_v1 *output_power =
@@ -65,6 +70,9 @@ static void output_power_handle_output_commit(struct wl_listener *listener,
 	struct wlr_output_event_commit *event = data;
 	if (event->state->committed & WLR_OUTPUT_STATE_ENABLED) {
 		output_power_v1_send_mode(output_power);
+	}
+	if (event->state->committed & WLR_OUTPUT_STATE_BRIGHTNESS) {
+		output_power_v1_send_brightness(output_power);
 	}
 }
 
@@ -93,9 +101,31 @@ static void output_power_handle_set_mode(struct wl_client *client,
 	wl_signal_emit_mutable(&output_power->manager->events.set_mode, &event);
 }
 
+static void output_power_handle_set_brightness(struct wl_client *client,
+		struct wl_resource *output_power_resource,
+		uint32_t value_u32) {
+	struct wlr_output_power_v1 *output_power =
+		output_power_from_resource(output_power_resource);
+	if (output_power == NULL) {
+		return;
+	}
+
+	if (!output_power->output->brightness_supported) {
+		zwlr_output_power_v1_send_failed(output_power->resource);
+		return;
+	}
+
+	struct wlr_output_power_v1_set_brightness_event event = {
+		.output = output_power->output,
+		.value = (double)value_u32 / UINT32_MAX,
+	};
+	wl_signal_emit_mutable(&output_power->manager->events.set_brightness, &event);
+}
+
 static const struct zwlr_output_power_v1_interface output_power_impl = {
 	.destroy = output_power_handle_destroy,
 	.set_mode = output_power_handle_set_mode,
+	.set_brightness = output_power_handle_set_brightness,
 };
 
 static const struct zwlr_output_power_manager_v1_interface
@@ -162,6 +192,9 @@ static void output_power_manager_get_output_power(struct wl_client *client,
 
 	wl_list_insert(&manager->output_powers, &output_power->link);
 	output_power_v1_send_mode(output_power);
+	if (output->brightness_supported) {
+		output_power_v1_send_brightness(output_power);
+	}
 }
 
 static void output_power_manager_destroy(struct wl_client *client,
@@ -195,6 +228,7 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	wl_signal_emit_mutable(&manager->events.destroy, manager);
 
 	assert(wl_list_empty(&manager->events.set_mode.listener_list));
+	assert(wl_list_empty(&manager->events.set_brightness.listener_list));
 	assert(wl_list_empty(&manager->events.destroy.listener_list));
 
 	wl_global_destroy(manager->global);
@@ -217,6 +251,7 @@ struct wlr_output_power_manager_v1 *wlr_output_power_manager_v1_create(
 	}
 
 	wl_signal_init(&manager->events.set_mode);
+	wl_signal_init(&manager->events.set_brightness);
 	wl_signal_init(&manager->events.destroy);
 
 	wl_list_init(&manager->output_powers);
