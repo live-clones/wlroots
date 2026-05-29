@@ -618,7 +618,7 @@ VkImage vulkan_import_dmabuf(struct wlr_vk_renderer *renderer,
 	VkImage image;
 	res = vkCreateImage(dev, &img_info, NULL, &image);
 	if (res != VK_SUCCESS) {
-		wlr_vk_error("vkCreateImage", res);
+		wlr_vk_error("vkCreateImage failed", res);
 		return VK_NULL_HANDLE;
 	}
 
