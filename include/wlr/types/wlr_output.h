@@ -78,6 +78,7 @@ enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_COLOR_TRANSFORM = 1 << 12,
 	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION = 1 << 13,
 	WLR_OUTPUT_STATE_COLOR_REPRESENTATION = 1 << 14,
+	WLR_OUTPUT_STATE_BRIGHTNESS = 1 << 15,
 };
 
 enum wlr_output_state_mode_type {
@@ -165,6 +166,8 @@ struct wlr_output_state {
 	struct wlr_color_transform *color_transform;
 
 	struct wlr_output_image_description *image_description;
+
+	float brightness;
 };
 
 struct wlr_output_impl;
@@ -213,11 +216,14 @@ struct wlr_output {
 	enum wlr_color_encoding color_encoding;
 	enum wlr_color_range color_range;
 	const struct wlr_output_image_description *image_description;
+	float brightness;
 
 	// Indicates whether making changes to adaptive sync status is supported.
 	// If false, changes to adaptive sync status is guaranteed to fail. If
 	// true, changes may either succeed or fail.
 	bool adaptive_sync_supported;
+	// Indicates whether brightness changes are supported.
+	bool brightness_supported;
 
 	bool needs_frame;
 	// damage for cursors and fullscreen surface, in output-local coordinates
@@ -631,6 +637,8 @@ void wlr_output_state_set_color_transform(struct wlr_output_state *state,
  */
 bool wlr_output_state_set_image_description(struct wlr_output_state *state,
 	const struct wlr_output_image_description *image_desc);
+
+void wlr_output_state_set_brightness(struct wlr_output_state *state, float value);
 
 /**
  * Set the color encoding and range of the primary scanout buffer.
