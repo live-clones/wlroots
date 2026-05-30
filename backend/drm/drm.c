@@ -503,7 +503,7 @@ void drm_page_flip_destroy(struct wlr_drm_page_flip *page_flip) {
 }
 
 static struct wlr_drm_page_flip *drm_page_flip_create(struct wlr_drm_backend *drm,
-		const struct wlr_drm_device_state *state) {
+		const struct wlr_drm_device_state *state, uint32_t flags) {
 	struct wlr_drm_page_flip *page_flip = calloc(1, sizeof(*page_flip));
 	if (page_flip == NULL) {
 		return NULL;
@@ -516,7 +516,11 @@ static struct wlr_drm_page_flip *drm_page_flip_create(struct wlr_drm_backend *dr
 		return NULL;
 	}
 	for (size_t i = 0; i < state->connectors_len; i++) {
-		struct wlr_drm_connector *conn = state->connectors[i].connector;
+		const struct wlr_drm_connector_state *conn_state = &state->connectors[i];
+		struct wlr_drm_connector *conn = conn_state->connector;
+		if (!(flags & DRM_MODE_PAGE_FLIP_EVENT) && !conn_state->page_flip_event) {
+			continue;
+		}
 		page_flip->connectors[i] = (struct wlr_drm_page_flip_connector){
 			.connector = conn,
 			.crtc_id = conn->crtc->id,
@@ -632,6 +636,16 @@ static void drm_connector_rollback_commit(const struct wlr_drm_connector_state *
 	}
 }
 
+static bool device_state_has_conn_page_flip_event(const struct wlr_drm_device_state *state) {
+	for (size_t i = 0; i < state->connectors_len; i++) {
+		const struct wlr_drm_connector_state *conn_state = &state->connectors[i];
+		if (conn_state->page_flip_event) {
+			return true;
+		}
+	}
+	return false;
+}
+
 static bool drm_commit(struct wlr_drm_backend *drm,
 		const struct wlr_drm_device_state *state,
 		uint32_t flags, bool test_only) {
@@ -639,8 +653,8 @@ static bool drm_commit(struct wlr_drm_backend *drm,
 	assert((flags & ~DRM_MODE_PAGE_FLIP_FLAGS) == 0);
 
 	struct wlr_drm_page_flip *page_flip = NULL;
-	if (flags & DRM_MODE_PAGE_FLIP_EVENT) {
-		page_flip = drm_page_flip_create(drm, state);
+	if ((flags & DRM_MODE_PAGE_FLIP_EVENT) || device_state_has_conn_page_flip_event(state)) {
+		page_flip = drm_page_flip_create(drm, state, flags);
 		if (page_flip == NULL) {
 			return false;
 		}
@@ -998,7 +1012,11 @@ static bool drm_connector_commit_state(struct wlr_drm_connector *conn,
 
 	uint32_t flags = 0;
 	if (!test_only && pending.active) {
-		flags |= DRM_MODE_PAGE_FLIP_EVENT;
+		if (conn->crtc->props.page_flip_event) {
+			pending.page_flip_event = true;
+		} else {
+			flags |= DRM_MODE_PAGE_FLIP_EVENT;
+		}
 	}
 	if (pending.base->tearing_page_flip) {
 		flags |= DRM_MODE_PAGE_FLIP_ASYNC;
@@ -1943,6 +1961,7 @@ bool commit_drm_device(struct wlr_drm_backend *drm,
 
 	bool ok = false;
 	bool modeset = false;
+	uint32_t flags = 0;
 	size_t conn_states_len = 0;
 	for (size_t i = 0; i < output_states_len; i++) {
 		const struct wlr_backend_output_state *output_state = &output_states[i];
@@ -1975,6 +1994,14 @@ bool commit_drm_device(struct wlr_drm_backend *drm,
 		}
 
 		modeset |= output_state->base.allow_reconfiguration;
+
+		if (!test_only) {
+			if (conn->crtc->props.page_flip_event) {
+				conn_state->page_flip_event = true;
+			} else {
+				flags |= DRM_MODE_PAGE_FLIP_EVENT;
+			}
+		}
 	}
 
 	if (test_only && drm->mgpu_renderer.wlr_rend) {
@@ -1984,10 +2011,6 @@ bool commit_drm_device(struct wlr_drm_backend *drm,
 		goto out;
 	}
 
-	uint32_t flags = 0;
-	if (!test_only) {
-		flags |= DRM_MODE_PAGE_FLIP_EVENT;
-	}
 	struct wlr_drm_device_state dev_state = {
 		.modeset = modeset,
 		.connectors = conn_states,
