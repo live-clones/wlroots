@@ -21,13 +21,15 @@
 #include <wlr/backend/drm.h>
 #endif
 
-#define LINUX_DMABUF_VERSION 5
+#define LINUX_DMABUF_VERSION 6
 
 struct wlr_linux_buffer_params_v1 {
 	struct wl_resource *resource;
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf;
 	struct wlr_dmabuf_attributes attributes;
 	bool has_modifier;
+	bool has_sampling_device;
+	dev_t sampling_device;
 };
 
 struct wlr_linux_dmabuf_feedback_v1_compiled_tranche {
@@ -37,7 +39,7 @@ struct wlr_linux_dmabuf_feedback_v1_compiled_tranche {
 };
 
 struct wlr_linux_dmabuf_feedback_v1_compiled {
-	dev_t main_device;
+	dev_t main_device; // for < v6
 	int table_fd;
 	size_t table_size;
 
@@ -241,6 +243,8 @@ static void params_create_common(struct wl_resource *params_resource,
 
 	struct wlr_dmabuf_attributes attribs = params->attributes;
 	struct wlr_linux_dmabuf_v1 *linux_dmabuf = params->linux_dmabuf;
+	bool has_sampling_device = params->has_sampling_device;
+	dev_t sampling_device = params->sampling_device;
 
 	// Make the params resource inert
 	wl_resource_set_user_data(params_resource, NULL);
@@ -371,6 +375,11 @@ static void params_create_common(struct wl_resource *params_resource,
 	buffer->release.notify = buffer_handle_release;
 	wl_signal_add(&buffer->base.events.release, &buffer->release);
 
+	if (has_sampling_device) {
+		buffer->sampling_device_value = sampling_device;
+		buffer->sampling_device = &buffer->sampling_device_value;
+	}
+
 	/* send 'created' event when the request is not for an immediate
 	 * import, that is buffer_id is zero */
 	if (buffer_id == 0) {
@@ -412,11 +421,34 @@ static void params_create_immed(struct wl_client *client,
 		format, flags);
 }
 
+static void params_set_sampling_device(struct wl_client *client,
+		struct wl_resource *params_resource, struct wl_array *devid_arr) {
+	struct wlr_linux_buffer_params_v1 *params =
+		params_from_resource(params_resource);
+	if (!params) {
+		wl_resource_post_error(params_resource,
+			ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED,
+			"params was already used to create a wl_buffer");
+		return;
+	}
+
+	if (devid_arr->size != sizeof(dev_t)) {
+		wl_resource_post_error(params_resource,
+			ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_DEV_T_SIZE,
+			"invalid dev_t size");
+		return;
+	}
+
+	params->has_sampling_device = true;
+	memcpy(&params->sampling_device, devid_arr->data, sizeof(params->sampling_device));
+}
+
 static const struct zwp_linux_buffer_params_v1_interface buffer_params_impl = {
 	.destroy = params_destroy,
 	.add = params_add,
 	.create = params_create,
 	.create_immed = params_create_immed,
+	.set_sampling_device = params_set_sampling_device,
 };
 
 static void params_handle_resource_destroy(struct wl_resource *resource) {
@@ -507,7 +539,7 @@ static ssize_t get_drm_format_set_index(const struct wlr_drm_format_set *set,
 }
 
 static struct wlr_linux_dmabuf_feedback_v1_compiled *feedback_compile(
-		const struct wlr_linux_dmabuf_feedback_v1 *feedback) {
+		const struct wlr_linux_dmabuf_feedback_v1 *feedback, uint32_t version) {
 	const struct wlr_linux_dmabuf_feedback_v1_tranche *tranches = feedback->tranches.data;
 	size_t tranches_len = feedback->tranches.size / sizeof(struct wlr_linux_dmabuf_feedback_v1_tranche);
 	assert(tranches_len > 0);
@@ -578,10 +610,26 @@ static struct wlr_linux_dmabuf_feedback_v1_compiled *feedback_compile(
 	compiled->table_size = table_size;
 
 	// Build the indices lists for all tranches
+	bool has_sampling_tranche = false;
 	for (size_t i = 0; i < tranches_len; i++) {
 		const struct wlr_linux_dmabuf_feedback_v1_tranche *tranche = &tranches[i];
 		struct wlr_linux_dmabuf_feedback_v1_compiled_tranche *compiled_tranche =
 			&compiled->tranches[i];
+
+		if (version >= ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING_SINCE_VERSION) {
+			if (tranche->flags == 0) {
+				wlr_log(WLR_ERROR, "Tranche flags must not be zero");
+				goto error_compiled;
+			}
+
+			if (tranche->flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING) {
+				if (!has_sampling_tranche) {
+					// For backwards compat with < v6
+					compiled->main_device = tranche->target_device;
+				}
+				has_sampling_tranche = true;
+			}
+		}
 
 		compiled_tranche->target_device = tranche->target_device;
 		compiled_tranche->flags = tranche->flags;
@@ -611,6 +659,12 @@ static struct wlr_linux_dmabuf_feedback_v1_compiled *feedback_compile(
 			}
 		}
 		compiled_tranche->indices.size = n * sizeof(uint16_t);
+	}
+
+	if (version >= ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING_SINCE_VERSION &&
+			!has_sampling_tranche) {
+		wlr_log(WLR_ERROR, "Missing a SAMPLING tranche");
+		goto error_compiled;
 	}
 
 	wlr_drm_format_set_finish(&all_formats);
@@ -645,7 +699,11 @@ static void feedback_tranche_send(
 		.data = (void *)&tranche->target_device,
 	};
 	zwp_linux_dmabuf_feedback_v1_send_tranche_target_device(resource, &dev_array);
-	zwp_linux_dmabuf_feedback_v1_send_tranche_flags(resource, tranche->flags);
+	uint32_t flags = tranche->flags;
+	if (wl_resource_get_version(resource) < ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING_SINCE_VERSION) {
+		flags &= ~ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING;
+	}
+	zwp_linux_dmabuf_feedback_v1_send_tranche_flags(resource, flags);
 	zwp_linux_dmabuf_feedback_v1_send_tranche_formats(resource,
 		(struct wl_array *)&tranche->indices);
 	zwp_linux_dmabuf_feedback_v1_send_tranche_done(resource);
@@ -653,11 +711,13 @@ static void feedback_tranche_send(
 
 static void feedback_send(const struct wlr_linux_dmabuf_feedback_v1_compiled *feedback,
 		struct wl_resource *resource) {
-	struct wl_array dev_array = {
-		.size = sizeof(feedback->main_device),
-		.data = (void *)&feedback->main_device,
-	};
-	zwp_linux_dmabuf_feedback_v1_send_main_device(resource, &dev_array);
+	if (wl_resource_get_version(resource) < 6) {
+		struct wl_array dev_array = {
+			.size = sizeof(feedback->main_device),
+			.data = (void *)&feedback->main_device,
+		};
+		zwp_linux_dmabuf_feedback_v1_send_main_device(resource, &dev_array);
+	}
 
 	zwp_linux_dmabuf_feedback_v1_send_format_table(resource,
 		feedback->table_fd, feedback->table_size);
@@ -886,7 +946,8 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 
 static bool set_default_feedback(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
 		const struct wlr_linux_dmabuf_feedback_v1 *feedback) {
-	struct wlr_linux_dmabuf_feedback_v1_compiled *compiled = feedback_compile(feedback);
+	struct wlr_linux_dmabuf_feedback_v1_compiled *compiled =
+		feedback_compile(feedback, wl_global_get_version(linux_dmabuf->global));
 	if (compiled == NULL) {
 		return false;
 	}
@@ -1025,7 +1086,7 @@ bool wlr_linux_dmabuf_v1_set_surface_feedback(
 
 	struct wlr_linux_dmabuf_feedback_v1_compiled *compiled = NULL;
 	if (feedback != NULL) {
-		compiled = feedback_compile(feedback);
+		compiled = feedback_compile(feedback, wl_global_get_version(linux_dmabuf->global));
 		if (compiled == NULL) {
 			return false;
 		}
@@ -1163,6 +1224,7 @@ bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feed
 	}
 
 	tranche->target_device = renderer_dev;
+	tranche->flags = ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING;
 	if (!wlr_drm_format_set_copy(&tranche->formats, renderer_formats)) {
 		goto error;
 	}
