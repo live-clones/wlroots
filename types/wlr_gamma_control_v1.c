@@ -288,7 +288,7 @@ bool wlr_gamma_control_v1_apply(struct wlr_gamma_control_v1 *gamma_control,
 		}
 	}
 
-	wlr_output_state_set_color_transform(output_state, tr);
+	wlr_output_state_set_post_color_transform(output_state, tr);
 	return true;
 }
 
