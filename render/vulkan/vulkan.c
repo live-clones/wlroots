@@ -195,6 +195,14 @@ struct wlr_vk_instance *vulkan_instance_create(bool debug) {
 		}
 	}
 
+	ini->vkGetPhysicalDeviceProperties2KHR = (PFN_vkGetPhysicalDeviceProperties2KHR)
+		vkGetInstanceProcAddr(ini->instance, "vkGetPhysicalDeviceProperties2KHR");
+	if (!ini->vkGetPhysicalDeviceProperties2KHR) {
+		wlr_log(WLR_ERROR, "vkGetPhysicalDeviceProperties2KHR not found");
+		goto error;
+	}
+
+
 	return ini;
 
 error:
@@ -324,7 +332,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 			props.pNext = &driver_props;
 		}
 
-		vkGetPhysicalDeviceProperties2(phdev, &props);
+		ini->vkGetPhysicalDeviceProperties2KHR(phdev, &props);
 
 		if (has_driver_props) {
 			wlr_log(WLR_INFO, "  Driver name: %s (%s)", driver_props.driverName, driver_props.driverInfo);
@@ -356,7 +364,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 	return VK_NULL_HANDLE;
 }
 
-int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
+int vulkan_open_phdev_drm_fd(struct wlr_vk_instance *ini, VkPhysicalDevice phdev) {
 	// vulkan_find_drm_phdev() already checks that VK_EXT_physical_device_drm
 	// is supported
 	VkPhysicalDeviceDrmPropertiesEXT drm_props = {
@@ -366,7 +374,7 @@ int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
 		.pNext = &drm_props,
 	};
-	vkGetPhysicalDeviceProperties2(phdev, &props);
+	ini->vkGetPhysicalDeviceProperties2KHR(phdev, &props);
 
 	dev_t devid;
 	if (drm_props.hasRender) {
