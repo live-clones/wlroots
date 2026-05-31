@@ -252,12 +252,12 @@ static void output_apply_state(struct wlr_output *output,
 		}
 	}
 
-	if (state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) {
-		wlr_color_transform_unref(output->color_transform);
-		if (state->color_transform != NULL) {
-			output->color_transform = wlr_color_transform_ref(state->color_transform);
+	if (state->committed & WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM) {
+		wlr_color_transform_unref(output->post_color_transform);
+		if (state->post_color_transform != NULL) {
+			output->post_color_transform = wlr_color_transform_ref(state->post_color_transform);
 		} else {
-			output->color_transform = NULL;
+			output->post_color_transform = NULL;
 		}
 	}
 
@@ -426,7 +426,7 @@ void wlr_output_finish(struct wlr_output *output) {
 
 	wlr_swapchain_destroy(output->cursor_swapchain);
 	wlr_buffer_unlock(output->cursor_front_buffer);
-	wlr_color_transform_unref(output->color_transform);
+	wlr_color_transform_unref(output->post_color_transform);
 
 	wlr_swapchain_destroy(output->swapchain);
 
@@ -581,9 +581,9 @@ static uint32_t output_compare_state(struct wlr_output *output,
 			output->subpixel == state->subpixel) {
 		fields |= WLR_OUTPUT_STATE_SUBPIXEL;
 	}
-	if ((state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) &&
-			output->color_transform == state->color_transform) {
-		fields |= WLR_OUTPUT_STATE_COLOR_TRANSFORM;
+	if ((state->committed & WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM) &&
+			output->post_color_transform == state->post_color_transform) {
+		fields |= WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM;
 	}
 	if ((state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) &&
 			output->color_encoding == state->color_encoding &&
@@ -685,7 +685,7 @@ static bool output_basic_test(struct wlr_output *output,
 		{ WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED, "adaptive sync" },
 		{ WLR_OUTPUT_STATE_RENDER_FORMAT, "render format" },
 		{ WLR_OUTPUT_STATE_SUBPIXEL, "subpixel" },
-		{ WLR_OUTPUT_STATE_COLOR_TRANSFORM, "color transform" },
+		{ WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM, "post color transform" },
 		{ WLR_OUTPUT_STATE_IMAGE_DESCRIPTION, "image description" },
 	};
 	if (!enabled) {
