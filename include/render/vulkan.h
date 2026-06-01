@@ -26,6 +26,7 @@ struct wlr_vk_instance {
 	} api;
 
 	PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR;
+	PFN_vkGetPhysicalDeviceFeatures2KHR vkGetPhysicalDeviceFeatures2KHR;
 };
 
 // Creates and initializes a vulkan instance.

@@ -202,6 +202,13 @@ struct wlr_vk_instance *vulkan_instance_create(bool debug) {
 		goto error;
 	}
 
+	ini->vkGetPhysicalDeviceFeatures2KHR = (PFN_vkGetPhysicalDeviceFeatures2KHR)
+		vkGetInstanceProcAddr(ini->instance, "vkGetPhysicalDeviceFeatures2KHR");
+	if (!ini->vkGetPhysicalDeviceFeatures2KHR) {
+		wlr_log(WLR_ERROR, "vkGetPhysicalDeviceFeatures2KHR not found");
+		goto error;
+	}
+
 
 	return ini;
 
@@ -555,7 +562,7 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
 		.pNext = &phdev_sampler_ycbcr_features,
 	};
-	vkGetPhysicalDeviceFeatures2(phdev, &phdev_features);
+	ini->vkGetPhysicalDeviceFeatures2KHR(phdev, &phdev_features);
 
 	dev->sampler_ycbcr_conversion = phdev_sampler_ycbcr_features.samplerYcbcrConversion;
 	wlr_log(WLR_DEBUG, "Sampler YCbCr conversion %s",
