@@ -19,14 +19,15 @@ struct wlr_vk_texture;
 struct wlr_vk_instance {
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT messenger;
+	uint32_t api_version;
 
 	struct {
 		PFN_vkCreateDebugUtilsMessengerEXT createDebugUtilsMessengerEXT;
 		PFN_vkDestroyDebugUtilsMessengerEXT destroyDebugUtilsMessengerEXT;
 	} api;
 
-	PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR;
-	PFN_vkGetPhysicalDeviceFeatures2KHR vkGetPhysicalDeviceFeatures2KHR;
+	PFN_vkGetPhysicalDeviceProperties2 vkGetPhysicalDeviceProperties2;
+	PFN_vkGetPhysicalDeviceFeatures2 vkGetPhysicalDeviceFeatures2;
 };
 
 // Creates and initializes a vulkan instance.
