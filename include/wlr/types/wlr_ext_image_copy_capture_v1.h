@@ -10,9 +10,10 @@
 #define WLR_TYPES_WLR_EXT_IMAGE_COPY_CAPTURE_V1_H
 
 #include <pixman.h>
+#include <stdint.h>
+#include <time.h>
 #include <wayland-server-protocol.h>
 #include <wayland-protocols/ext-image-copy-capture-v1-enum.h>
-#include <time.h>
 
 struct wlr_renderer;
 
@@ -58,6 +59,8 @@ struct wlr_ext_image_copy_capture_frame_v1 {
 
 	struct {
 		struct wlr_ext_image_copy_capture_session_v1 *session;
+		struct timespec capture_time;
+		bool capture_time_valid;
 	} WLR_PRIVATE;
 };
 
