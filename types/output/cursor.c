@@ -256,7 +256,7 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 		buffer->width, buffer->height);
 
 	struct wlr_buffer_pass_options options = {
-		.color_transform = cursor->color_transform,
+		.color_transform = cursor->color_transform_encode,
 	};
 	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(renderer, buffer, &options);
 	if (pass == NULL) {
@@ -278,6 +278,7 @@ static struct wlr_buffer *render_cursor_buffer(struct wlr_output_cursor *cursor)
 		.transform = transform,
 		.wait_timeline = cursor->wait_timeline,
 		.wait_point = cursor->wait_point,
+		.color_transform = cursor->color_transform_linearize,
 	});
 
 	if (!wlr_render_pass_submit(pass)) {
@@ -493,16 +494,25 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	}
 	wlr_drm_syncobj_timeline_unref(cursor->wait_timeline);
 	wl_list_remove(&cursor->link);
-	wlr_color_transform_unref(cursor->color_transform);
+	wlr_color_transform_unref(cursor->color_transform_linearize);
+	wlr_color_transform_unref(cursor->color_transform_encode);
 	free(cursor);
 }
 
 bool output_cursor_refresh_color_transform(struct wlr_output_cursor *output_cursor,
 		const struct wlr_output_image_description *img_desc) {
-	wlr_color_transform_unref(output_cursor->color_transform);
-	output_cursor->color_transform = NULL;
+	wlr_color_transform_unref(output_cursor->color_transform_linearize);
+	output_cursor->color_transform_linearize = NULL;
+	wlr_color_transform_unref(output_cursor->color_transform_encode);
+	output_cursor->color_transform_encode = NULL;
 	if (img_desc == NULL) {
 		return true;
+	}
+
+	output_cursor->color_transform_linearize = wlr_color_transform_init_eotf_to_linear(
+		WLR_COLOR_TRANSFER_FUNCTION_GAMMA22);
+	if (output_cursor->color_transform_linearize == NULL) {
+		return false;
 	}
 
 	struct wlr_color_primaries primaries_srgb;
@@ -525,13 +535,22 @@ bool output_cursor_refresh_color_transform(struct wlr_output_cursor *output_curs
 		wlr_color_transform_init_linear_to_inverse_eotf(img_desc->transfer_function),
 	};
 	if (transforms[0] == NULL || transforms[1] == NULL) {
-		wlr_color_transform_unref(transforms[0]);
-		wlr_color_transform_unref(transforms[1]);
-		return false;
+		goto err;
 	}
-	output_cursor->color_transform = wlr_color_transform_init_pipeline(transforms,
+	output_cursor->color_transform_encode = wlr_color_transform_init_pipeline(transforms,
 		sizeof(transforms) / sizeof(transforms[0]));
+	if (output_cursor->color_transform_encode == NULL) {
+		goto err;
+	}
+
 	wlr_color_transform_unref(transforms[0]);
 	wlr_color_transform_unref(transforms[1]);
-	return output_cursor->color_transform != NULL;
+	return true;
+
+err:
+	wlr_color_transform_unref(output_cursor->color_transform_linearize);
+	output_cursor->color_transform_linearize = NULL;
+	wlr_color_transform_unref(transforms[0]);
+	wlr_color_transform_unref(transforms[1]);
+	return false;
 }
