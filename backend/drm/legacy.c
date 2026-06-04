@@ -79,6 +79,12 @@ static bool legacy_crtc_test(const struct wlr_drm_connector_state *state,
 		}
 	}
 
+	if (state->base->committed & WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM) {
+		wlr_drm_conn_log(conn, WLR_DEBUG,
+			"Pre-blending color pipeline not supported for legacy KMS API");
+		return false;
+	}
+
 	return true;
 }
 

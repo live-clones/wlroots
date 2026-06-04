@@ -28,6 +28,8 @@ struct wlr_drm_colorop {
 
 	struct wlr_drm_colorop_props props;
 	struct wl_list link; // wlr_drm_plane.color_pipelines
+
+	uint32_t data; // for 1D_LUT, CTM_3X4, 3D_LUT
 };
 
 struct wlr_drm_plane {
@@ -61,6 +63,9 @@ struct wlr_drm_plane {
 	uint32_t initial_crtc_id;
 	struct liftoff_plane *liftoff;
 	struct liftoff_layer *liftoff_layer;
+
+	// Atomic modesetting only
+	uint32_t color_pipeline;
 };
 
 struct wlr_drm_layer {
@@ -177,6 +182,15 @@ struct wlr_drm_connector_state {
 	bool vrr_enabled;
 	uint32_t colorspace;
 	uint32_t hdr_output_metadata;
+	uint32_t primary_color_pipeline;
+	struct wl_array colorops; // struct wlr_drm_colorop_state
+};
+
+struct wlr_drm_colorop_state {
+	struct wlr_drm_colorop *colorop;
+	bool bypass;
+	uint32_t curve_1d_type; // for 1D_CURVE
+	uint32_t data; // for 1D_LUT, CTM_3X4, 3D_LUT
 };
 
 /**
