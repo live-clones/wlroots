@@ -23,6 +23,7 @@ struct wlr_drm_viewport {
 struct wlr_drm_colorop {
 	uint32_t id;
 	uint32_t type; // enum drm_colorop_type
+	uint32_t size; // for 1D_LUT, 3D_LUT
 
 	struct wlr_drm_colorop_props props;
 	struct wl_list link; // wlr_drm_plane.color_pipelines
