@@ -191,6 +191,12 @@ static bool init_color_pipeline(struct wlr_drm_backend *drm,
 			}
 			colorop->size = size;
 			break;
+		case DRM_COLOROP_1D_CURVE:
+			if (!introspect_drm_prop_enum(drm->fd, colorop->props.curve_1d_type,
+					&colorop->curve_1d_types)) {
+				return false;
+			}
+			break;
 		}
 
 		id = (uint32_t)next;
