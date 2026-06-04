@@ -18,9 +18,17 @@ void wlr_texture_init(struct wlr_texture *texture, struct wlr_renderer *renderer
 		.width = width,
 		.height = height,
 	};
+
+	wl_signal_init(&texture->events.destroy);
+	wl_signal_init(&texture->events.updated);
 }
 
 void wlr_texture_destroy(struct wlr_texture *texture) {
+	wl_signal_emit(&texture->events.destroy, NULL);
+
+	assert(wl_list_empty(&texture->events.destroy.listener_list));
+	assert(wl_list_empty(&texture->events.updated.listener_list));
+
 	if (texture && texture->impl && texture->impl->destroy) {
 		texture->impl->destroy(texture);
 	} else {
@@ -133,5 +141,12 @@ bool wlr_texture_update_from_buffer(struct wlr_texture *texture,
 			extents->y2 > buffer->height) {
 		return false;
 	}
-	return texture->impl->update_from_buffer(texture, buffer, damage);
+
+	bool ret = texture->impl->update_from_buffer(texture, buffer, damage);
+	if (!ret) {
+		return false;
+	}
+
+	wl_signal_emit (&texture->events.updated, NULL);
+	return true;
 }
