@@ -42,6 +42,7 @@ static const uint32_t COMMIT_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_LAYERS |
 	WLR_OUTPUT_STATE_WAIT_TIMELINE |
 	WLR_OUTPUT_STATE_SIGNAL_TIMELINE |
+	WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM |
 	WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM |
 	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION |
 	WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
@@ -983,6 +984,13 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 			state->post_color_transform->type != WLR_COLOR_TRANSFORM_LUT_3X1D) {
 		wlr_drm_conn_log(conn, WLR_DEBUG,
 			"Only 3x1D LUT post-blend color transforms are supported");
+		return false;
+	}
+
+	if ((state->committed & WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM) &&
+			conn->backend->iface != &atomic_iface) {
+		wlr_log(WLR_DEBUG, "Pre-blend color transforms are only supported "
+			"with the atomic interface");
 		return false;
 	}
 
