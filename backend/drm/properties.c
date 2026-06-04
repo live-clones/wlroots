@@ -234,3 +234,25 @@ bool introspect_drm_prop_range(int fd, uint32_t prop_id,
 	drmModeFreeProperty(prop);
 	return true;
 }
+
+bool introspect_drm_prop_enum(int fd, uint32_t prop_id, uint64_t *bitmask) {
+	drmModePropertyRes *prop = drmModeGetProperty(fd, prop_id);
+	if (!prop) {
+		return false;
+	}
+
+	if (drmModeGetPropertyType(prop) != DRM_MODE_PROP_ENUM) {
+		drmModeFreeProperty(prop);
+		return false;
+	}
+
+	*bitmask = 0;
+	for (int i = 0; i < prop->count_enums; i++) {
+		uint64_t value = prop->enums[i].value;
+		assert(value < 64);
+		*bitmask |= 1 << value;
+	}
+
+	drmModeFreeProperty(prop);
+	return true;
+}
