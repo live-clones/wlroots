@@ -181,6 +181,18 @@ static bool init_color_pipeline(struct wlr_drm_backend *drm,
 		}
 
 		colorop->type = (uint32_t)type;
+
+		switch (type) {
+		case DRM_COLOROP_1D_LUT:
+		case DRM_COLOROP_3D_LUT:;
+			uint64_t size = 0;
+			if (!get_drm_prop(drm->fd, id, colorop->props.size, &size)) {
+				return false;
+			}
+			colorop->size = size;
+			break;
+		}
+
 		id = (uint32_t)next;
 	}
 
