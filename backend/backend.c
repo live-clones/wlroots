@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -137,6 +139,23 @@ static size_t parse_outputs_env(const char *name) {
 	return outputs;
 }
 
+static unsigned int parse_output_dimension_env(const char *name, unsigned int fallback) {
+	const char *dimension_str = getenv(name);
+	if (dimension_str == NULL) {
+		return fallback;
+	}
+
+	char *end;
+	errno = 0;
+	unsigned long dimension = strtoul(dimension_str, &end, 10);
+	if (*end || errno != 0 || dimension == 0 || dimension > UINT_MAX) {
+		wlr_log(WLR_ERROR, "%s specified with invalid integer, ignoring", name);
+		return fallback;
+	}
+
+	return dimension;
+}
+
 /**
  * Helper to destroy the multi backend when one of its nested backends is
  * destroyed.
@@ -225,8 +244,10 @@ static struct wlr_backend *attempt_headless_backend(struct wl_event_loop *loop) 
 	}
 
 	size_t outputs = parse_outputs_env("WLR_HEADLESS_OUTPUTS");
+	unsigned int width = parse_output_dimension_env("WLR_HEADLESS_OUTPUT_WIDTH", 1280);
+	unsigned int height = parse_output_dimension_env("WLR_HEADLESS_OUTPUT_HEIGHT", 720);
 	for (size_t i = 0; i < outputs; ++i) {
-		wlr_headless_add_output(backend, 1280, 720);
+		wlr_headless_add_output(backend, width, height);
 	}
 
 	return backend;
