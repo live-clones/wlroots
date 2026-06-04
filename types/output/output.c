@@ -252,6 +252,15 @@ static void output_apply_state(struct wlr_output *output,
 		}
 	}
 
+	if (state->committed & WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM) {
+		wlr_color_transform_unref(output->pre_color_transform);
+		if (state->pre_color_transform != NULL) {
+			output->pre_color_transform = wlr_color_transform_ref(state->pre_color_transform);
+		} else {
+			output->pre_color_transform = NULL;
+		}
+	}
+
 	if (state->committed & WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM) {
 		wlr_color_transform_unref(output->post_color_transform);
 		if (state->post_color_transform != NULL) {
@@ -426,6 +435,7 @@ void wlr_output_finish(struct wlr_output *output) {
 
 	wlr_swapchain_destroy(output->cursor_swapchain);
 	wlr_buffer_unlock(output->cursor_front_buffer);
+	wlr_color_transform_unref(output->pre_color_transform);
 	wlr_color_transform_unref(output->post_color_transform);
 
 	wlr_swapchain_destroy(output->swapchain);
@@ -581,6 +591,10 @@ static uint32_t output_compare_state(struct wlr_output *output,
 			output->subpixel == state->subpixel) {
 		fields |= WLR_OUTPUT_STATE_SUBPIXEL;
 	}
+	if ((state->committed & WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM) &&
+			output->pre_color_transform == state->pre_color_transform) {
+		fields |= WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM;
+	}
 	if ((state->committed & WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM) &&
 			output->post_color_transform == state->post_color_transform) {
 		fields |= WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM;
@@ -685,6 +699,7 @@ static bool output_basic_test(struct wlr_output *output,
 		{ WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED, "adaptive sync" },
 		{ WLR_OUTPUT_STATE_RENDER_FORMAT, "render format" },
 		{ WLR_OUTPUT_STATE_SUBPIXEL, "subpixel" },
+		{ WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM, "pre color transform" },
 		{ WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM, "post color transform" },
 		{ WLR_OUTPUT_STATE_IMAGE_DESCRIPTION, "image description" },
 	};

@@ -19,6 +19,7 @@ void wlr_output_state_finish(struct wlr_output_state *state) {
 	pixman_region32_fini(&state->damage);
 	wlr_drm_syncobj_timeline_unref(state->wait_timeline);
 	wlr_drm_syncobj_timeline_unref(state->signal_timeline);
+	wlr_color_transform_unref(state->pre_color_transform);
 	wlr_color_transform_unref(state->post_color_transform);
 	free(state->image_description);
 }
@@ -113,6 +114,17 @@ void wlr_output_state_set_signal_timeline(struct wlr_output_state *state,
 	state->signal_point = dst_point;
 }
 
+void wlr_output_state_set_pre_color_transform(struct wlr_output_state *state,
+		struct wlr_color_transform *tr) {
+	state->committed |= WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM;
+	wlr_color_transform_unref(state->pre_color_transform);
+	if (tr) {
+		state->pre_color_transform = wlr_color_transform_ref(tr);
+	} else {
+		state->pre_color_transform = NULL;
+	}
+}
+
 void wlr_output_state_set_post_color_transform(struct wlr_output_state *state,
 		struct wlr_color_transform *tr) {
 	state->committed |= WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM;
@@ -164,6 +176,7 @@ bool wlr_output_state_copy(struct wlr_output_state *dst,
 	pixman_region32_init(&copy.damage);
 	copy.wait_timeline = NULL;
 	copy.signal_timeline = NULL;
+	copy.pre_color_transform = NULL;
 	copy.post_color_transform = NULL;
 	copy.image_description = NULL;
 
@@ -186,6 +199,9 @@ bool wlr_output_state_copy(struct wlr_output_state *dst,
 			src->signal_point);
 	}
 
+	if (src->committed & WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM) {
+		wlr_output_state_set_pre_color_transform(&copy, src->pre_color_transform);
+	}
 	if (src->committed & WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM) {
 		wlr_output_state_set_post_color_transform(&copy, src->post_color_transform);
 	}
