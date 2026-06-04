@@ -404,7 +404,7 @@ static void surface_state_move(struct wlr_surface_state *state,
 	next->cached_state_locks = 0;
 }
 
-static void surface_apply_damage(struct wlr_surface *surface) {
+static bool surface_apply_damage(struct wlr_surface *surface) {
 	if (surface->current.buffer == NULL) {
 		// NULL commit
 		if (surface->buffer != NULL) {
@@ -412,7 +412,7 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 		}
 		surface->buffer = NULL;
 		surface->opaque = false;
-		return;
+		return true;
 	}
 
 	surface->opaque = wlr_buffer_is_opaque(surface->current.buffer);
@@ -422,12 +422,12 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 				surface->current.buffer, &surface->buffer_damage)) {
 			wlr_buffer_unlock(surface->current.buffer);
 			surface->current.buffer = NULL;
-			return;
+			return true;
 		}
 	}
 
 	if (surface->compositor->renderer == NULL) {
-		return;
+		return true;
 	}
 
 	struct wlr_client_buffer *buffer = wlr_client_buffer_create(
@@ -435,13 +435,14 @@ static void surface_apply_damage(struct wlr_surface *surface) {
 
 	if (buffer == NULL) {
 		wlr_log(WLR_ERROR, "Failed to upload buffer");
-		return;
+		return false;
 	}
 
 	if (surface->buffer != NULL) {
 		wlr_buffer_unlock(&surface->buffer->base);
 	}
 	surface->buffer = buffer;
+	return true;
 }
 
 static void surface_update_opaque_region(struct wlr_surface *surface) {
@@ -531,8 +532,12 @@ static void surface_commit_state(struct wlr_surface *surface,
 	surface_state_move(&surface->current, next, surface);
 	surface_update_damage(&surface->buffer_damage, &surface->current);
 
-	if (invalid_buffer) {
-		surface_apply_damage(surface);
+	if (invalid_buffer && !surface_apply_damage(surface)) {
+		// We could not update the buffer, which means inconsistent surface
+		// state. If we keep going we risk hitting asserts, so let's play it
+		// safe and kill the client for now.
+		wl_resource_post_no_memory(surface->resource);
+		return;
 	}
 	surface_update_opaque_region(surface);
 	surface_update_input_region(surface);
