@@ -106,5 +106,6 @@ char *get_drm_prop_enum(int fd, uint32_t obj, uint32_t prop);
 
 bool introspect_drm_prop_range(int fd, uint32_t prop_id,
 	uint64_t *min, uint64_t *max);
+bool introspect_drm_prop_enum(int fd, uint32_t prop_id, uint64_t *bitmask);
 
 #endif
