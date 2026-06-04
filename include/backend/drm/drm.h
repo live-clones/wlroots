@@ -24,6 +24,7 @@ struct wlr_drm_colorop {
 	uint32_t id;
 	uint32_t type; // enum drm_colorop_type
 	uint32_t size; // for 1D_LUT, 3D_LUT
+	uint64_t curve_1d_types; // for 1D_CURVE, bitmask of 1 << WLR_DRM_COLOROP_1D_CURVE_*
 
 	struct wlr_drm_colorop_props props;
 	struct wl_list link; // wlr_drm_plane.color_pipelines
