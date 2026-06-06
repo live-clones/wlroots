@@ -399,6 +399,30 @@ static void process_cursor_move(struct tinywl_server *server) {
 		server->cursor->y - server->grab_y);
 }
 
+static void update_resize_position(struct tinywl_toplevel *toplevel) {
+	struct tinywl_server *server = toplevel->server;
+	if (server->cursor_mode != TINYWL_CURSOR_RESIZE ||
+			server->grabbed_toplevel != toplevel) {
+		return;
+	}
+
+	struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
+	int lx = server->grab_geobox.x;
+	int ly = server->grab_geobox.y;
+
+	if (server->resize_edges & WLR_EDGE_LEFT) {
+		lx = server->grab_geobox.x + server->grab_geobox.width -
+			geo_box->width;
+	}
+	if (server->resize_edges & WLR_EDGE_TOP) {
+		ly = server->grab_geobox.y + server->grab_geobox.height -
+			geo_box->height;
+	}
+
+	wlr_scene_node_set_position(&toplevel->scene_tree->node,
+		lx - geo_box->x, ly - geo_box->y);
+}
+
 static void process_cursor_resize(struct tinywl_server *server) {
 	/*
 	 * Resizing the grabbed toplevel can be a little bit complicated, because we
@@ -406,9 +430,8 @@ static void process_cursor_resize(struct tinywl_server *server) {
 	 * toplevel on one or two axes, but can also move the toplevel if you resize
 	 * from the top or left edges (or top-left corner).
 	 *
-	 * Note that some shortcuts are taken here. In a more fleshed-out
-	 * compositor, you'd wait for the client to prepare a buffer at the new
-	 * size, then commit any movement that was prepared.
+	 * Movement is applied on commit so that surfaces which quantize their size
+	 * can keep the unmoved edge stable.
 	 */
 	struct tinywl_toplevel *toplevel = server->grabbed_toplevel;
 	double border_x = server->cursor->x - server->grab_x;
@@ -440,10 +463,6 @@ static void process_cursor_resize(struct tinywl_server *server) {
 			new_right = new_left + 1;
 		}
 	}
-
-	struct wlr_box *geo_box = &toplevel->xdg_toplevel->base->geometry;
-	wlr_scene_node_set_position(&toplevel->scene_tree->node,
-		new_left - geo_box->x, new_top - geo_box->y);
 
 	int new_width = new_right - new_left;
 	int new_height = new_bottom - new_top;
@@ -701,7 +720,10 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
 		 * configures the xdg_toplevel with 0,0 size to let the client pick the
 		 * dimensions itself. */
 		wlr_xdg_toplevel_set_size(toplevel->xdg_toplevel, 0, 0);
+		return;
 	}
+
+	update_resize_position(toplevel);
 }
 
 static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
