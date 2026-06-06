@@ -278,6 +278,8 @@ struct wlr_output {
 		struct wlr_output_image_description image_description_value;
 		struct wlr_color_transform *color_transform;
 		struct wlr_color_primaries default_primaries_value;
+		int cursor_uploaded_this_frame;
+		struct wlr_output_cursor *cursor_pending_upload;
 	} WLR_PRIVATE;
 };
 
