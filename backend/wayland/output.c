@@ -1151,6 +1151,9 @@ static void output_start(struct wlr_wl_output *output) {
 		if (seat->wl_pointer) {
 			create_pointer(seat, output);
 		}
+		if (seat->wl_touch) {
+			create_touch(seat, output);
+		}
 	}
 }
 
