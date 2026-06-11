@@ -135,10 +135,10 @@ static void create_device(struct wl_resource *manager_resource, uint32_t id,
 	wl_signal_add(&seat_client->events.destroy, &device->seat_client_destroy);
 
 	if (tablet_tool != NULL) {
-	    device->tablet_tool_destroy.notify = device_handle_tablet_tool_destroy;
-	    wl_signal_add(&tablet_tool->wlr_tool->events.destroy, &device->tablet_tool_destroy);
+		device->tablet_tool_destroy.notify = device_handle_tablet_tool_destroy;
+		wl_signal_add(&tablet_tool->wlr_tool->events.destroy, &device->tablet_tool_destroy);
 	} else {
-	    wl_list_init(&device->tablet_tool_destroy.link);
+		wl_list_init(&device->tablet_tool_destroy.link);
 	}
 
 	wl_resource_set_user_data(device_resource, device);

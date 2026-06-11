@@ -227,13 +227,18 @@ static int handle_udev_event(int fd, uint32_t mask, void *data) {
 			}
 		}
 	} else if (strcmp(action, "remove") == 0) {
+		bool found = false;
 		struct wlr_device *dev;
 		wl_list_for_each(dev, &session->devices, link) {
 			if (dev->dev == devnum) {
-				wlr_log(WLR_DEBUG, "DRM device %s removed", sysname);
-				wl_signal_emit_mutable(&dev->events.remove, NULL);
+				found = true;
 				break;
 			}
+		}
+
+		if (found) {
+			wlr_log(WLR_DEBUG, "DRM device %s removed", sysname);
+			wlr_session_close_file(session, dev);
 		}
 	}
 
@@ -375,11 +380,10 @@ void wlr_session_close_file(struct wlr_session *session,
 		wlr_log_errno(WLR_ERROR, "Failed to close device %d", dev->device_id);
 	}
 
+	wl_signal_emit_mutable(&dev->events.remove, NULL);
+
 	assert(wl_list_empty(&dev->events.change.listener_list));
-	// TODO: assert that the "remove" listener list is empty as well. Listeners
-	// will typically call wlr_session_close_file() in response, and
-	// wl_signal_emit_mutable() installs two phantom listeners, so we'd count
-	// these two.
+	assert(wl_list_empty(&dev->events.remove.listener_list));
 
 	close(dev->fd);
 	wl_list_remove(&dev->link);
@@ -546,7 +550,7 @@ ssize_t wlr_session_find_gpus(struct wlr_session *session,
 		bool is_primary = false;
 		const char *boot_display = udev_device_get_sysattr_value(dev, "boot_display");
 		if (boot_display && strcmp(boot_display, "1") == 0) {
-		    is_primary = true;
+			is_primary = true;
 		} else {
 			// This is owned by 'dev', so we don't need to free it
 			struct udev_device *pci =
