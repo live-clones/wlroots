@@ -428,35 +428,6 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		pass->render_buffer_out->transitioned = true;
 	}
 
-	if (pass->two_pass) {
-		// On the first frame the clear render pass transitions the blend
-		// image from undefined and we just mark it transitioned. On every
-		// frame after, the previous frame left it read-only, so we change
-		// it back to a color attachment before the render pass starts
-		if (render_buffer->two_pass.blend_transitioned) {
-			VkImageMemoryBarrier blend_acq_barrier = {
-				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-				.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-				.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-				.image = render_buffer->two_pass.blend_image,
-				.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-				.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-				.srcAccessMask = VK_ACCESS_SHADER_READ_BIT,
-				.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-				.subresourceRange = {
-					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-					.layerCount = 1,
-					.levelCount = 1,
-				},
-			};
-			vkCmdPipelineBarrier(stage_cb->vk, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-				0, 0, NULL, 0, NULL, 1, &blend_acq_barrier);
-		} else {
-			render_buffer->two_pass.blend_transitioned = true;
-		}
-	}
-
 	// acquire render buffer before rendering
 	acquire_barriers[idx] = (VkImageMemoryBarrier){
 		.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -600,6 +571,10 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 		device_lost = res == VK_ERROR_DEVICE_LOST;
 		wlr_vk_error("vkQueueSubmit", res);
 		goto error;
+	}
+
+	if (pass->two_pass) {
+		render_buffer->two_pass.blend_transitioned = true;
 	}
 
 	free(render_wait);
