@@ -79,6 +79,12 @@ static bool legacy_crtc_test(const struct wlr_drm_connector_state *state,
 		}
 	}
 
+	if (state->base->committed & WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM) {
+		wlr_drm_conn_log(conn, WLR_DEBUG,
+			"Pre-blending color pipeline not supported for legacy KMS API");
+		return false;
+	}
+
 	return true;
 }
 
@@ -125,12 +131,12 @@ static bool legacy_crtc_commit(const struct wlr_drm_connector_state *state,
 		}
 	}
 
-	if (state->base->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) {
+	if (state->base->committed & WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM) {
 		size_t dim = 0;
 		uint16_t *lut = NULL;
-		if (state->base->color_transform != NULL) {
+		if (state->base->post_color_transform != NULL) {
 			struct wlr_color_transform_lut_3x1d *tr =
-				color_transform_lut_3x1d_from_base(state->base->color_transform);
+				color_transform_lut_3x1d_from_base(state->base->post_color_transform);
 			dim = tr->dim;
 			lut = tr->lut_3x1d;
 		}

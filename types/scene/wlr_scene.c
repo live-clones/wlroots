@@ -2180,7 +2180,7 @@ static void scene_output_state_attempt_gamma(struct wlr_scene_output *scene_outp
 		return;
 	}
 
-	wlr_output_state_set_color_transform(&gamma_pending, scene_output->gamma_lut_color_transform);
+	wlr_output_state_set_post_color_transform(&gamma_pending, scene_output->gamma_lut_color_transform);
 	scene_output->gamma_lut_changed = false;
 
 	if (!wlr_output_test_state(scene_output->output, &gamma_pending)) {
