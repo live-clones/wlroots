@@ -35,6 +35,8 @@ wlroots reads these environment variables
 
 * *WLR_HEADLESS_OUTPUTS*: when using the headless backend specifies the number
   of outputs
+* *WLR_HEADLESS_OUTPUT_WIDTH*, *WLR_HEADLESS_OUTPUT_HEIGHT*: when using the
+  headless backend specifies the output size
 
 ## libinput backend
 
