@@ -401,6 +401,7 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	state->vrr_enabled = vrr_enabled;
 	state->colorspace = colorspace;
 	state->hdr_output_metadata = hdr_output_metadata;
+	state->color_format = state->base->color_format;
 	return true;
 }
 
@@ -566,6 +567,10 @@ static void atomic_connector_add(struct atomic *atom,
 	}
 	if (modeset && active && conn->props.max_bpc != 0 && conn->max_bpc_bounds[1] != 0) {
 		atomic_add(atom, conn->id, conn->props.max_bpc, pick_max_bpc(conn, state->primary_fb));
+	}
+	if (modeset && conn->props.color_format != 0 &&
+			state->base->committed & WLR_OUTPUT_STATE_COLOR_FORMAT) {
+		atomic_add(atom, conn->id, conn->props.color_format, state->color_format);
 	}
 	if (conn->props.colorspace != 0) {
 		atomic_add(atom, conn->id, conn->props.colorspace, state->colorspace);

@@ -97,6 +97,12 @@ void wlr_output_state_set_layers(struct wlr_output_state *state,
 	state->layers_len = layers_len;
 }
 
+void wlr_output_state_set_color_format(struct wlr_output_state *state,
+		enum wlr_output_color_format color_format) {
+	state->committed |= WLR_OUTPUT_STATE_COLOR_FORMAT;
+	state->color_format = color_format;
+}
+
 void wlr_output_state_set_wait_timeline(struct wlr_output_state *state,
 		struct wlr_drm_syncobj_timeline *timeline, uint64_t src_point) {
 	state->committed |= WLR_OUTPUT_STATE_WAIT_TIMELINE;

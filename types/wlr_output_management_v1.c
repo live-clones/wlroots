@@ -6,7 +6,7 @@
 #include <wlr/util/log.h>
 #include "wlr-output-management-unstable-v1-protocol.h"
 
-#define OUTPUT_MANAGER_VERSION 4
+#define OUTPUT_MANAGER_VERSION 5
 
 enum {
 	HEAD_STATE_ENABLED = 1 << 0,
@@ -15,11 +15,12 @@ enum {
 	HEAD_STATE_TRANSFORM = 1 << 3,
 	HEAD_STATE_SCALE = 1 << 4,
 	HEAD_STATE_ADAPTIVE_SYNC = 1 << 5,
+	HEAD_STATE_COLOR_FORMAT = 1 << 6,
 };
 
 static const uint32_t HEAD_STATE_ALL = HEAD_STATE_ENABLED | HEAD_STATE_MODE |
 	HEAD_STATE_POSITION | HEAD_STATE_TRANSFORM | HEAD_STATE_SCALE |
-	HEAD_STATE_ADAPTIVE_SYNC;
+	HEAD_STATE_ADAPTIVE_SYNC | HEAD_STATE_COLOR_FORMAT;
 
 static const struct zwlr_output_head_v1_interface head_impl;
 
@@ -162,6 +163,7 @@ struct wlr_output_configuration_head_v1 *
 	config_head->state.scale = output->scale;
 	config_head->state.adaptive_sync_enabled =
 		output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
+	config_head->state.color_format = output->color_format;
 	return config_head;
 }
 
@@ -307,6 +309,24 @@ static void config_head_handle_set_adaptive_sync(struct wl_client *client,
 	}
 }
 
+static void config_head_handle_set_color_format(struct wl_client *client,
+		struct wl_resource *config_head_resource, uint32_t format) {
+	struct wlr_output_configuration_head_v1 *config_head =
+		config_head_from_resource(config_head_resource);
+	if (config_head == NULL) {
+		return;
+	}
+
+	if (format > ZWLR_OUTPUT_HEAD_V1_COLOR_FORMAT_YCBCR420) {
+		wl_resource_post_error(config_head_resource,
+			ZWLR_OUTPUT_CONFIGURATION_HEAD_V1_ERROR_INVALID_COLOR_FORMAT,
+			"client requested invalid color format %u", format);
+		return;
+	}
+
+	config_head->state.color_format = format;
+}
+
 static const struct zwlr_output_configuration_head_v1_interface config_head_impl = {
 	.set_mode = config_head_handle_set_mode,
 	.set_custom_mode = config_head_handle_set_custom_mode,
@@ -314,6 +334,7 @@ static const struct zwlr_output_configuration_head_v1_interface config_head_impl
 	.set_transform = config_head_handle_set_transform,
 	.set_scale = config_head_handle_set_scale,
 	.set_adaptive_sync = config_head_handle_set_adaptive_sync,
+	.set_color_format = config_head_handle_set_color_format,
 };
 
 static void config_head_handle_resource_destroy(struct wl_resource *resource) {
@@ -815,6 +836,13 @@ static void head_send_state(struct wlr_output_head_v1 *head,
 				ZWLR_OUTPUT_HEAD_V1_ADAPTIVE_SYNC_STATE_DISABLED);
 		}
 	}
+
+	if ((state & HEAD_STATE_COLOR_FORMAT) &&
+			wl_resource_get_version(head_resource) >=
+			ZWLR_OUTPUT_HEAD_V1_COLOR_FORMAT_SINCE_VERSION) {
+		zwlr_output_head_v1_send_color_format(head_resource,
+			head->state.color_format);
+	}
 }
 
 static void head_handle_resource_destroy(struct wl_resource *resource) {
@@ -910,6 +938,9 @@ static bool manager_update_head(struct wlr_output_manager_v1 *manager,
 	}
 	if (current->adaptive_sync_enabled != next->adaptive_sync_enabled) {
 		state |= HEAD_STATE_ADAPTIVE_SYNC;
+	}
+	if (current->color_format != next->color_format) {
+		state |= HEAD_STATE_COLOR_FORMAT;
 	}
 
 	// If  a mode was added to wlr_output.modes we need to add the new mode
@@ -1032,6 +1063,8 @@ void wlr_output_head_v1_state_apply(
 	wlr_output_state_set_transform(output_state, head_state->transform);
 	wlr_output_state_set_adaptive_sync_enabled(output_state,
 		head_state->adaptive_sync_enabled);
+	wlr_output_state_set_color_format(output_state,
+		head_state->color_format);
 }
 
 struct wlr_backend_output_state *wlr_output_configuration_v1_build_state(
