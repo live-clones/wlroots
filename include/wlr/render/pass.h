@@ -84,6 +84,21 @@ enum wlr_scale_filter_mode {
 	WLR_SCALE_FILTER_NEAREST,
 };
 
+/**
+ * Tone-mapping parameters for a texture, in cd/m². Content luminance is mapped
+ * to the display's capability: black point compensation maps the content's
+ * [min, reference] range onto the display's [min, reference] range, and a
+ * Reinhard curve compresses the highlights above the reference.
+ */
+struct wlr_render_tone_mapping {
+	float content_reference; // content reference white luminance
+	float content_min; // content min (black) luminance
+	float content_max; // content max luminance
+	float display_reference; // display reference white luminance
+	float display_min; // display min (black) luminance
+	float display_max; // display max luminance
+};
+
 struct wlr_render_texture_options {
 	/* Source texture */
 	struct wlr_texture *texture;
@@ -111,6 +126,8 @@ struct wlr_render_texture_options {
 	enum wlr_color_range color_range;
 	/* Default: 1.0 */
 	const float *luminance_multiplier;
+	/* Tone mapping to apply to the source content, leave NULL to disable */
+	const struct wlr_render_tone_mapping *tone_mapping;
 
 	/* Wait for a timeline synchronization point before texturing.
 	 *

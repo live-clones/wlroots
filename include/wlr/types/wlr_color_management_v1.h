@@ -30,6 +30,13 @@ struct wlr_image_description_v1_data {
 	} mastering_luminance;
 
 	uint32_t max_cll, max_fall; // cd/m², zero if unset
+
+	// True when this image description was allocated by a windows_* request
+	// (e.g. create_windows_scrgb). Such descriptions describe content that is
+	// already display-referred and must bypass compositor tone mapping, even
+	// though their transfer function may be shared with other descriptions
+	// (e.g. ext-linear).
+	bool bypass_tone_mapping;
 };
 
 struct wlr_color_manager_v1_features {

@@ -196,6 +196,15 @@ struct wlr_scene_buffer {
 	enum wlr_color_encoding color_encoding;
 	enum wlr_color_range color_range;
 
+	// When true, this buffer's content bypasses tone mapping (e.g. it was
+	// described by the color-management-v1 windows_scrgb request). Keyed
+	// independently of the transfer function.
+	bool bypass_tone_mapping;
+	// Content luminances (cd/m²). When max is zero, the transfer function's
+	// default luminances are used. Set from the client's mastering display /
+	// max_cll metadata to drive tone mapping.
+	struct wlr_color_luminances content_luminances;
+
 	struct {
 		uint64_t active_outputs;
 		struct wlr_texture *texture;
@@ -569,6 +578,20 @@ void wlr_scene_buffer_set_color_encoding(struct wlr_scene_buffer *scene_buffer,
 
 void wlr_scene_buffer_set_color_range(struct wlr_scene_buffer *scene_buffer,
 	enum wlr_color_range range);
+
+/**
+ * Sets whether this buffer's content bypasses tone mapping. Set this for
+ * content described by the color-management-v1 windows_scrgb request.
+ */
+void wlr_scene_buffer_set_bypass_tone_mapping(struct wlr_scene_buffer *scene_buffer,
+	bool bypass);
+
+/**
+ * Sets the content luminances (cd/m²) used to drive tone mapping. Pass a max of
+ * zero to fall back to the transfer function's default luminances.
+ */
+void wlr_scene_buffer_set_content_luminances(struct wlr_scene_buffer *scene_buffer,
+	struct wlr_color_luminances luminances);
 
 /**
  * Calls the buffer's frame_done signal.
