@@ -48,6 +48,7 @@ struct wlr_color_manager_v1_features {
 	bool set_mastering_display_primaries;
 	bool extended_target_volume;
 	bool windows_scrgb;
+	bool windows_bt2100;
 };
 
 struct wlr_color_manager_v1_options {
