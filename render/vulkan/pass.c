@@ -912,6 +912,14 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		.alpha = alpha,
 		.luminance_multiplier = luminance_multiplier,
 	};
+	if (options->tone_mapping != NULL) {
+		frag_pcr_data.tm_content_ref = options->tone_mapping->content_reference;
+		frag_pcr_data.tm_content_min = options->tone_mapping->content_min;
+		frag_pcr_data.tm_content_max = options->tone_mapping->content_max;
+		frag_pcr_data.tm_display_ref = options->tone_mapping->display_reference;
+		frag_pcr_data.tm_display_min = options->tone_mapping->display_min;
+		frag_pcr_data.tm_display_max = options->tone_mapping->display_max;
+	}
 	encode_color_matrix(color_matrix, frag_pcr_data.matrix);
 
 	bind_pipeline(pass, pipe->vk);

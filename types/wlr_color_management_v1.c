@@ -956,9 +956,15 @@ static void manager_handle_create_windows_scrgb(struct wl_client *client,
 	}
 	// Windows-scRGB: sRGB (BT.709) primaries, extended-linear transfer
 	// characteristic. R=G=B=1.0 corresponds to 80 cd/m².
+	//
+	// Content using this description is already display-referred, so it must
+	// bypass tone mapping. The bypass is keyed on this flag rather than on the
+	// transfer function: a generic ext-linear description is still tone mapped.
+	// A future create_windows_bt2100 request should set the same flag.
 	const struct wlr_image_description_v1_data data = {
 		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_EXT_LINEAR,
 		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_SRGB,
+		.bypass_tone_mapping = true,
 	};
 	image_desc_create_ready(manager, manager_resource, id, &data, false);
 }
