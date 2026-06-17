@@ -12,7 +12,7 @@
 #include "render/color.h"
 #include "util/mem.h"
 
-#define COLOR_MANAGEMENT_V1_VERSION 2
+#define COLOR_MANAGEMENT_V1_VERSION 3
 
 struct wlr_color_management_output_v1 {
 	struct wl_resource *resource;
@@ -969,6 +969,27 @@ static void manager_handle_create_windows_scrgb(struct wl_client *client,
 	image_desc_create_ready(manager, manager_resource, id, &data, false);
 }
 
+static void manager_handle_create_windows_bt2100(struct wl_client *client,
+		struct wl_resource *manager_resource, uint32_t id) {
+	struct wlr_color_manager_v1 *manager = manager_from_resource(manager_resource);
+	if (!manager->features.windows_bt2100) {
+		wl_resource_post_error(manager_resource,
+			WP_COLOR_MANAGER_V1_ERROR_UNSUPPORTED_FEATURE,
+			"create_windows_bt2100 is not supported");
+		return;
+	}
+	// Windows-BT.2100: BT.2020 primaries, ST.2084 PQ transfer characteristic.
+	// Like windows_scrgb, this content is already display-referred and must
+	// bypass tone mapping (keyed on the flag, not the transfer function, so
+	// generic PQ content is still tone mapped).
+	const struct wlr_image_description_v1_data data = {
+		.tf_named = WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ,
+		.primaries_named = WP_COLOR_MANAGER_V1_PRIMARIES_BT2020,
+		.bypass_tone_mapping = true,
+	};
+	image_desc_create_ready(manager, manager_resource, id, &data, false);
+}
+
 static const struct wp_color_manager_v1_interface manager_impl = {
 	.destroy = resource_handle_destroy,
 	.get_output = manager_handle_get_output,
@@ -977,6 +998,7 @@ static const struct wp_color_manager_v1_interface manager_impl = {
 	.create_icc_creator = manager_handle_create_icc_creator,
 	.create_parametric_creator = manager_handle_create_parametric_creator,
 	.create_windows_scrgb = manager_handle_create_windows_scrgb,
+	.create_windows_bt2100 = manager_handle_create_windows_bt2100,
 };
 
 static void manager_bind(struct wl_client *client, void *data,
@@ -1000,12 +1022,20 @@ static void manager_bind(struct wl_client *client, void *data,
 		[WP_COLOR_MANAGER_V1_FEATURE_SET_MASTERING_DISPLAY_PRIMARIES] = manager->features.set_mastering_display_primaries,
 		[WP_COLOR_MANAGER_V1_FEATURE_EXTENDED_TARGET_VOLUME] = manager->features.extended_target_volume,
 		[WP_COLOR_MANAGER_V1_FEATURE_WINDOWS_SCRGB] = manager->features.windows_scrgb,
+		[WP_COLOR_MANAGER_V1_FEATURE_WINDOWS_BT2100] = manager->features.windows_bt2100,
 	};
 
 	for (uint32_t i = 0; i < sizeof(features) / sizeof(features[0]); i++) {
-		if (features[i]) {
-			wp_color_manager_v1_send_supported_feature(resource, i);
+		if (!features[i]) {
+			continue;
 		}
+		// windows_bt2100's request only exists since version 3; don't advertise
+		// the feature to older clients that couldn't use it.
+		if (i == WP_COLOR_MANAGER_V1_FEATURE_WINDOWS_BT2100 &&
+				version < WP_COLOR_MANAGER_V1_CREATE_WINDOWS_BT2100_SINCE_VERSION) {
+			continue;
+		}
+		wp_color_manager_v1_send_supported_feature(resource, i);
 	}
 	for (size_t i = 0; i < manager->render_intents_len; i++) {
 		wp_color_manager_v1_send_supported_intent(resource,
