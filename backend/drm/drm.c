@@ -647,18 +647,28 @@ static bool drm_commit(struct wlr_drm_backend *drm,
 		page_flip->async = (flags & DRM_MODE_PAGE_FLIP_ASYNC);
 	}
 
-	bool ok = drm->iface->commit(drm, state, page_flip, flags, test_only);
-	if (ok && !test_only) {
-		for (size_t i = 0; i < state->connectors_len; i++) {
-			drm_connector_apply_commit(&state->connectors[i], page_flip);
+	enum wlr_drm_commit_result result = drm->iface->commit(drm, state, page_flip,
+			flags, test_only);
+	for (size_t i = 0; i < state->connectors_len; i++) {
+		bool connector_ok = result == COMMIT_SUCCESS;
+		if (result == COMMIT_PARTIAL) {
+			for (size_t j = 0; j < page_flip->connectors_len; j++) {
+				if (page_flip->connectors[j].connector == state->connectors[i].connector) {
+					connector_ok = true;
+					break;
+				}
+			}
 		}
-	} else {
-		for (size_t i = 0; i < state->connectors_len; i++) {
+		if (connector_ok && !test_only) {
+			drm_connector_apply_commit(&state->connectors[i], page_flip);
+		} else {
 			drm_connector_rollback_commit(&state->connectors[i]);
 		}
+	}
+	if (result == COMMIT_FAILED) {
 		drm_page_flip_destroy(page_flip);
 	}
-	return ok;
+	return result == COMMIT_SUCCESS;
 }
 
 static void drm_connector_state_init(struct wlr_drm_connector_state *state,
