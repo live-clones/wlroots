@@ -43,6 +43,10 @@ struct wlr_linux_drm_syncobj_manager_v1 {
  * The compositor must be prepared to handle fences coming from clients and to
  * send release fences correctly. In particular, both the renderer and the
  * backend need to support explicit synchronization.
+ *
+ * Fences provided here may not yet be ready to consume. See
+ * wlr_compositor_buffer_waiter_create for a way to wait for fences to be
+ * materialized or completed before application.
  */
 struct wlr_linux_drm_syncobj_manager_v1 *wlr_linux_drm_syncobj_manager_v1_create(
 	struct wl_display *display, uint32_t version, int drm_fd);
