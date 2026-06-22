@@ -62,6 +62,14 @@ bool wlr_box_intersection(struct wlr_box *dest, const struct wlr_box *box_a,
 	const struct wlr_box *box_b);
 
 /**
+ * Gives the intersecting box between two struct wlr_fbox.
+ *
+ * Returns an empty box if the provided boxes don't intersect.
+ */
+bool wlr_fbox_intersection(struct wlr_fbox *dest, const struct wlr_fbox *box_a,
+	const struct wlr_fbox *box_b);
+
+/**
  * Verifies if a point is contained within the bounds of a given struct wlr_box.
  *
  * For example:
@@ -78,6 +86,14 @@ bool wlr_box_contains_point(const struct wlr_box *box, double x, double y);
  * If either of the boxes are empty, false is returned.
  */
 bool wlr_box_contains_box(const struct wlr_box *bigger, const struct wlr_box *smaller);
+
+/**
+ * Verifies that a box is fully contained within another box.
+ *
+ * Returns true if the "smaller" box is fully contained within the "bigger" box.
+ * If either of the boxes are empty, false is returned.
+ */
+bool wlr_fbox_contains_box(const struct wlr_fbox *bigger, const struct wlr_fbox *smaller);
 
 /**
  * Checks whether a box is empty or not.
@@ -113,6 +129,13 @@ void wlr_fbox_transform(struct wlr_fbox *dest, const struct wlr_fbox *box,
  * Returns false if either box is empty.
  */
 bool wlr_box_intersects(const struct wlr_box *a, const struct wlr_box *b);
+
+/**
+ * Checks whether two boxes intersect.
+ *
+ * Returns false if either box is empty.
+ */
+bool wlr_fbox_intersects(const struct wlr_fbox *a, const struct wlr_fbox *b);
 
 /**
  * Returns true if the two boxes are equal, false otherwise.

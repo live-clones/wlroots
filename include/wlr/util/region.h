@@ -45,6 +45,31 @@ void wlr_region_scale_xy(pixman_region32_t *dst, const pixman_region32_t *src,
 	float scale_x, float scale_y);
 
 /**
+ * Scale a fractional region by the specified factor.
+ *
+ * The resulting coordinates are rounded to nearest integer.
+ *
+ * Also see wlr_region_scalef_xy().
+ */
+void wlr_region_scalef(pixman_region32_t *dst, const pixman_region64f_t *src,
+	float scale);
+
+/**
+ * Scale a region by the specified factors.
+ *
+ * The X and Y coordinates are scaled separately by scale_x and scale_y.
+ *
+ * The resulting coordinates are rounded to nearest integer.
+ */
+void wlr_region_scalef_xy(pixman_region32_t *dst, const pixman_region64f_t *src,
+	float scale_x, float scale_y);
+
+/**
+ * Copy an integer region into a fractional region.
+ */
+void wlr_region64f_copy_from_region32(pixman_region64f_t *dst, const pixman_region32_t *src);
+
+/**
  * Applies a transform to a region inside a box of size `width` x `height`.
  */
 void wlr_region_transform(pixman_region32_t *dst, const pixman_region32_t *src,
