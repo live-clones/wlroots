@@ -408,7 +408,7 @@ static void connector_update_layers_feedback(const struct wlr_drm_connector_stat
 	}
 }
 
-static bool commit(struct wlr_drm_backend *drm,
+static enum wlr_drm_commit_result commit(struct wlr_drm_backend *drm,
 		const struct wlr_drm_device_state *state,
 		struct wlr_drm_page_flip *page_flip, uint32_t flags, bool test_only) {
 	bool ok = false;
@@ -496,7 +496,7 @@ out:
 	}
 	wl_array_release(&fb_damage_clips_arr);
 
-	return ok;
+	return ok ? COMMIT_SUCCESS : COMMIT_FAILED;
 }
 
 const struct wlr_drm_interface liftoff_iface = {
