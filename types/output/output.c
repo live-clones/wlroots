@@ -261,6 +261,10 @@ static void output_apply_state(struct wlr_output *output,
 		}
 	}
 
+	if (state->committed & WLR_OUTPUT_STATE_BRIGHTNESS) {
+		output->brightness = state->brightness;
+	}
+
 	bool geometry_updated = state->committed &
 		(WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_TRANSFORM |
 		WLR_OUTPUT_STATE_SUBPIXEL);
@@ -359,6 +363,7 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 		.render_format = DRM_FORMAT_XRGB8888,
 		.transform = WL_OUTPUT_TRANSFORM_NORMAL,
 		.scale = 1,
+		.brightness = 1,
 		.commit_seq = 0,
 	};
 
@@ -590,6 +595,10 @@ static uint32_t output_compare_state(struct wlr_output *output,
 			output->color_range == state->color_range) {
 		fields |= WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
 	}
+	if ((state->committed & WLR_OUTPUT_STATE_BRIGHTNESS) &&
+			output->brightness == state->brightness) {
+		fields |= WLR_OUTPUT_STATE_BRIGHTNESS;
+	}
 	return fields;
 }
 
@@ -687,6 +696,7 @@ static bool output_basic_test(struct wlr_output *output,
 		{ WLR_OUTPUT_STATE_SUBPIXEL, "subpixel" },
 		{ WLR_OUTPUT_STATE_COLOR_TRANSFORM, "color transform" },
 		{ WLR_OUTPUT_STATE_IMAGE_DESCRIPTION, "image description" },
+		{ WLR_OUTPUT_STATE_BRIGHTNESS, "brightness" },
 	};
 	if (!enabled) {
 		for (size_t i = 0; i < sizeof(needs_enabled) / sizeof(needs_enabled[0]); i++) {
@@ -724,6 +734,12 @@ static bool output_basic_test(struct wlr_output *output,
 			wlr_log(WLR_DEBUG, "Unsupported image description transfer function");
 			return false;
 		}
+	}
+
+	if ((state->committed & WLR_OUTPUT_STATE_BRIGHTNESS) &&
+			!output->brightness_supported) {
+		wlr_log(WLR_DEBUG, "Brightness is not supported for this output");
+		return false;
 	}
 
 	return true;

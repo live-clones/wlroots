@@ -42,7 +42,7 @@
     interface version number is reset.
   </description>
 
-  <interface name="zwlr_output_power_manager_v1" version="1">
+  <interface name="zwlr_output_power_manager_v1" version="2">
     <description summary="manager to create per-output power management">
       This interface is a manager that allows creating per-output power
       management mode controls.
@@ -65,7 +65,7 @@
     </request>
   </interface>
 
-  <interface name="zwlr_output_power_v1" version="1">
+  <interface name="zwlr_output_power_v1" version="2">
     <description summary="adjust power management mode for an output">
       This object offers requests to set the power management mode of
       an output.
@@ -123,6 +123,32 @@
       <description summary="destroy this power management">
         Destroys the output power management mode control object.
       </description>
+    </request>
+
+    <!-- Version 2 additions -->
+
+    <event name="brightness" since="2">
+      <description summary="current brightness state">
+        This event advertises the output's current brightness value.
+
+        The brightness is an integer between 0 and UINT32_MAX. 0 indicates
+        lowest light level (while still being powered on) and UINT32_MAX
+        indicates highest light level.
+
+        The brightness event is sent immediately when the object is created if
+        the output supports brightness. This event is also sent when the
+        brightness changes.
+      </description>
+      <arg name="value" type="uint" summary="brightness value between 0 and UINT32_MAX"/>
+    </event>
+
+    <request name="set_brightness" since="2">
+      <description summary="set brightness">
+        Set an output's brightness to the given value. The brightness change
+        is effective immediately. If the output does not support setting
+        brightness, a failed event is sent.
+      </description>
+      <arg name="value" type="uint" summary="brightness value between 0 and UINT32_MAX"/>
     </request>
   </interface>
 </protocol>

@@ -149,6 +149,11 @@ void wlr_output_state_set_color_encoding_and_range(
 	state->color_range = range;
 }
 
+void wlr_output_state_set_brightness(struct wlr_output_state *state, float value) {
+	state->committed |= WLR_OUTPUT_STATE_BRIGHTNESS;
+	state->brightness = value;
+}
+
 bool wlr_output_state_copy(struct wlr_output_state *dst,
 		const struct wlr_output_state *src) {
 	struct wlr_output_state copy = *src;
