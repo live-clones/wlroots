@@ -35,4 +35,5 @@ endforeach
 wlr_files += configure_file(
 	output: 'config.h',
 	configuration: internal_config,
+	macro_name: 'CONFIG_H',
 )
