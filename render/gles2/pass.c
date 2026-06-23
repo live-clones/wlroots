@@ -75,7 +75,7 @@ out:
 	return ok;
 }
 
-static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLint attrib) {
+static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLint attrib, bool scissor) {
 	pixman_region32_t region;
 	pixman_region32_init_rect(&region, box->x, box->y, box->width, box->height);
 
@@ -92,31 +92,55 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 
 	glEnableVertexAttribArray(attrib);
 
-	for (int i = 0; i < rects_len;) {
-		int batch = rects_len - i < MAX_QUADS ? rects_len - i : MAX_QUADS;
-		int batch_end = batch + i;
-
-		size_t vert_index = 0;
-		GLfloat verts[MAX_QUADS * 6 * 2];
-		for (; i < batch_end; i++) {
-			const pixman_box32_t *rect = &rects[i];
-
-			verts[vert_index++] = (GLfloat)(rect->x1 - box->x) / box->width;
-			verts[vert_index++] = (GLfloat)(rect->y1 - box->y) / box->height;
-			verts[vert_index++] = (GLfloat)(rect->x2 - box->x) / box->width;
-			verts[vert_index++] = (GLfloat)(rect->y1 - box->y) / box->height;
-			verts[vert_index++] = (GLfloat)(rect->x1 - box->x) / box->width;
-			verts[vert_index++] = (GLfloat)(rect->y2 - box->y) / box->height;
-			verts[vert_index++] = (GLfloat)(rect->x2 - box->x) / box->width;
-			verts[vert_index++] = (GLfloat)(rect->y1 - box->y) / box->height;
-			verts[vert_index++] = (GLfloat)(rect->x2 - box->x) / box->width;
-			verts[vert_index++] = (GLfloat)(rect->y2 - box->y) / box->height;
-			verts[vert_index++] = (GLfloat)(rect->x1 - box->x) / box->width;
-			verts[vert_index++] = (GLfloat)(rect->y2 - box->y) / box->height;
-		}
-
+	if (scissor) {
+		GLfloat verts[12];
 		glVertexAttribPointer(attrib, 2, GL_FLOAT, GL_FALSE, 0, verts);
-		glDrawArrays(GL_TRIANGLES, 0, batch * 6);
+		glEnable(GL_SCISSOR_TEST);
+		for (int i = 0; i < rects_len; i++) {
+			const pixman_box32_t *rect = &rects[i];
+			verts[0] = (GLfloat)(rect->x1 - box->x) / box->width;
+			verts[1] = (GLfloat)(rect->y1 - box->y) / box->height;
+			verts[2] = (GLfloat)(rect->x2 - box->x) / box->width;
+			verts[3] = (GLfloat)(rect->y1 - box->y) / box->height;
+			verts[4] = (GLfloat)(rect->x1 - box->x) / box->width;
+			verts[5] = (GLfloat)(rect->y2 - box->y) / box->height;
+			verts[6] = (GLfloat)(rect->x2 - box->x) / box->width;
+			verts[7] = (GLfloat)(rect->y1 - box->y) / box->height;
+			verts[8] = (GLfloat)(rect->x2 - box->x) / box->width;
+			verts[9] = (GLfloat)(rect->y2 - box->y) / box->height;
+			verts[10] = (GLfloat)(rect->x1 - box->x) / box->width;
+			verts[11] = (GLfloat)(rect->y2 - box->y) / box->height;
+			glScissor(rect->x1, rect->y1, rect->x2 - rect->x1, rect->y2 - rect->y1);
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+		}
+		glDisable(GL_SCISSOR_TEST);
+	} else {
+		for (int i = 0; i < rects_len;) {
+			int batch = rects_len - i < MAX_QUADS ? rects_len - i : MAX_QUADS;
+			int batch_end = batch + i;
+
+			size_t vert_index = 0;
+			GLfloat verts[MAX_QUADS * 6 * 2];
+			for (; i < batch_end; i++) {
+				const pixman_box32_t *rect = &rects[i];
+
+				verts[vert_index++] = (GLfloat)(rect->x1 - box->x) / box->width;
+				verts[vert_index++] = (GLfloat)(rect->y1 - box->y) / box->height;
+				verts[vert_index++] = (GLfloat)(rect->x2 - box->x) / box->width;
+				verts[vert_index++] = (GLfloat)(rect->y1 - box->y) / box->height;
+				verts[vert_index++] = (GLfloat)(rect->x1 - box->x) / box->width;
+				verts[vert_index++] = (GLfloat)(rect->y2 - box->y) / box->height;
+				verts[vert_index++] = (GLfloat)(rect->x2 - box->x) / box->width;
+				verts[vert_index++] = (GLfloat)(rect->y1 - box->y) / box->height;
+				verts[vert_index++] = (GLfloat)(rect->x2 - box->x) / box->width;
+				verts[vert_index++] = (GLfloat)(rect->y2 - box->y) / box->height;
+				verts[vert_index++] = (GLfloat)(rect->x1 - box->x) / box->width;
+				verts[vert_index++] = (GLfloat)(rect->y2 - box->y) / box->height;
+			}
+
+			glVertexAttribPointer(attrib, 2, GL_FLOAT, GL_FALSE, 0, verts);
+			glDrawArrays(GL_TRIANGLES, 0, batch * 6);
+		}
 	}
 
 	glDisableVertexAttribArray(attrib);
@@ -247,7 +271,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
 	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
 
-	render(&dst_box, options->clip, shader->pos_attrib);
+	render(&dst_box, options->clip, shader->pos_attrib, renderer->scissor);
 
 	glBindTexture(texture->target, 0);
 	pop_gles2_debug(renderer);
@@ -278,7 +302,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		glUseProgram(renderer->shaders.quad.program);
 		set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
 		glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
-		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
+		render(&box, options->clip, renderer->shaders.quad.pos_attrib, renderer->scissor);
 	}
 
 	pop_gles2_debug(renderer);

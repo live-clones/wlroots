@@ -18,6 +18,7 @@
 #include "render/egl.h"
 #include "render/gles2.h"
 #include "render/pixel_format.h"
+#include "util/env.h"
 #include "util/time.h"
 
 #include "common_vert_src.h"
@@ -540,6 +541,11 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 	wlr_log(WLR_INFO, "GL vendor: %s", glGetString(GL_VENDOR));
 	wlr_log(WLR_INFO, "GL renderer: %s", glGetString(GL_RENDERER));
 	wlr_log(WLR_INFO, "Supported GLES2 extensions: %s", exts_str);
+
+	renderer->scissor = env_parse_bool("WLR_GLES2_SCISSOR_CLIP");
+	if (renderer->scissor) {
+		wlr_log(WLR_INFO, "Enabled scissoring clipping");
+	}
 
 	if (!renderer->egl->exts.EXT_image_dma_buf_import) {
 		wlr_log(WLR_ERROR, "EGL_EXT_image_dma_buf_import not supported");
