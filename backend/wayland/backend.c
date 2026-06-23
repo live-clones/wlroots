@@ -87,6 +87,48 @@ static int dispatch_events(int fd, uint32_t mask, void *data) {
 	return count;
 }
 
+static void output_handle_geometry(void *data, struct wl_output *wl_output,
+		int32_t x, int32_t y, int32_t phys_width, int32_t phys_height,
+		int32_t subpixel, const char *make, const char *model,
+		int32_t transform) {
+	// We don't care about geometry for now
+}
+
+static void output_handle_mode(void *data, struct wl_output *wl_output,
+		uint32_t flags, int32_t width, int32_t height, int32_t refresh) {
+	// We don't care about mode for now
+}
+
+static void output_handle_done(void *data, struct wl_output *wl_output) {
+	// Nothing to do
+}
+
+static void output_handle_scale(void *data, struct wl_output *wl_output,
+		int32_t factor) {
+	struct wlr_wl_parent_output *output = data;
+	output->scale = factor;
+
+	wlr_log(WLR_DEBUG, "Parent output scale changed to %d", factor);
+
+	// Update all backend outputs to use the new maximum scale
+	struct wlr_wl_backend *backend = output->backend;
+	int32_t max_scale = 1;
+	struct wlr_wl_parent_output *parent;
+	wl_list_for_each(parent, &backend->parent_outputs, link) {
+		if (parent->scale > max_scale) {
+			max_scale = parent->scale;
+		}
+	}
+	backend->max_parent_scale = max_scale;
+}
+
+static const struct wl_output_listener output_listener = {
+	.geometry = output_handle_geometry,
+	.mode = output_handle_mode,
+	.done = output_handle_done,
+	.scale = output_handle_scale,
+};
+
 static void xdg_wm_base_handle_ping(void *data,
 		struct xdg_wm_base *base, uint32_t serial) {
 	xdg_wm_base_pong(base, serial);
@@ -419,7 +461,28 @@ static void registry_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(iface, wp_linux_drm_syncobj_manager_v1_interface.name) == 0) {
 		wl->drm_syncobj_manager_v1 = wl_registry_bind(registry, name,
 			&wp_linux_drm_syncobj_manager_v1_interface, 1);
+	} else if (strcmp(iface, wl_output_interface.name) == 0) {
+		struct wlr_wl_parent_output *output = calloc(1, sizeof(*output));
+		if (output == NULL) {
+			wlr_log_errno(WLR_ERROR, "Failed to allocate parent output");
+			return;
+		}
+		output->backend = wl;
+		output->wl_output = wl_registry_bind(registry, name,
+			&wl_output_interface, 2);  // version 2 for scale support
+		output->scale = 1;
+		output->global_name = name;
+		wl_output_add_listener(output->wl_output, &output_listener, output);
+		wl_list_insert(&wl->parent_outputs, &output->link);
+
+		wlr_log(WLR_DEBUG, "Bound to parent wl_output");
 	}
+}
+
+static void parent_output_destroy(struct wlr_wl_parent_output *output) {
+	wl_list_remove(&output->link);
+	wl_output_destroy(output->wl_output);
+	free(output);
 }
 
 static void registry_global_remove(void *data, struct wl_registry *registry,
@@ -430,6 +493,24 @@ static void registry_global_remove(void *data, struct wl_registry *registry,
 	wl_list_for_each(seat, &wl->seats, link) {
 		if (seat->global_name == name) {
 			destroy_wl_seat(seat);
+			break;
+		}
+	}
+
+	struct wlr_wl_parent_output *output, *tmp;
+	wl_list_for_each_safe(output, tmp, &wl->parent_outputs, link) {
+		if (output->global_name == name) {
+			parent_output_destroy(output);
+
+			// Recalculate max scale
+			int32_t max_scale = 1;
+			struct wlr_wl_parent_output *parent;
+			wl_list_for_each(parent, &wl->parent_outputs, link) {
+				if (parent->scale > max_scale) {
+					max_scale = parent->scale;
+				}
+			}
+			wl->max_parent_scale = max_scale;
 			break;
 		}
 	}
@@ -483,6 +564,11 @@ static void backend_destroy(struct wlr_backend *backend) {
 	struct wlr_wl_output *output, *tmp_output;
 	wl_list_for_each_safe(output, tmp_output, &wl->outputs, link) {
 		wlr_output_destroy(&output->wlr_output);
+	}
+
+	struct wlr_wl_parent_output *parent_output, *tmp_parent_output;
+	wl_list_for_each_safe(parent_output, tmp_parent_output, &wl->parent_outputs, link) {
+		parent_output_destroy(parent_output);
 	}
 
 	// Avoid using wl_list_for_each_safe() here: destroying a buffer may
@@ -603,6 +689,8 @@ struct wlr_backend *wlr_wl_backend_create(struct wl_event_loop *loop,
 	wl_list_init(&wl->seats);
 	wl_list_init(&wl->buffers);
 	wl_list_init(&wl->drm_syncobj_timelines);
+	wl_list_init(&wl->parent_outputs);
+	wl->max_parent_scale = 1;
 
 	if (remote_display != NULL) {
 		wl->remote_display = remote_display;
