@@ -88,12 +88,13 @@ static void pointer_handle_motion(void *data, struct wl_pointer *wl_pointer,
 		return;
 	}
 
-	struct wlr_output *wlr_output = &pointer->output->wlr_output;
+	// Parent compositor sends coordinates in logical (unscaled) space.
+	struct wlr_wl_output *output = pointer->output;
 	struct wlr_pointer_motion_absolute_event event = {
 		.pointer = &pointer->wlr_pointer,
 		.time_msec = time,
-		.x = wl_fixed_to_double(sx) / wlr_output->width,
-		.y = wl_fixed_to_double(sy) / wlr_output->height,
+		.x = wl_fixed_to_double(sx) / output->logical_width,
+		.y = wl_fixed_to_double(sy) / output->logical_height,
 	};
 	wl_signal_emit_mutable(&pointer->wlr_pointer.events.motion_absolute, &event);
 }

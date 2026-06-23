@@ -534,8 +534,9 @@ static void handle_tablet_tool_motion(void *data, struct zwp_tablet_tool_v2 *id,
 	struct wlr_wl_output *output = tool->output;
 	assert(output);
 
-	tool->x = wl_fixed_to_double(x) / output->wlr_output.width;
-	tool->y = wl_fixed_to_double(y) / output->wlr_output.height;
+	// Parent compositor sends coordinates in logical (unscaled) space.
+	tool->x = wl_fixed_to_double(x) / output->logical_width;
+	tool->y = wl_fixed_to_double(y) / output->logical_height;
 }
 
 static void handle_tablet_tool_pressure(void *data,

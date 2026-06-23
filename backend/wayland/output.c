@@ -566,6 +566,9 @@ static struct wlr_wl_output_layer *get_or_create_output_layer(
 		&output_layer_addon_impl);
 
 	layer->surface = wl_compositor_create_surface(output->backend->compositor);
+
+	wl_surface_set_buffer_scale(layer->surface, output->backend->max_parent_scale);
+
 	layer->subsurface = wl_subcompositor_get_subsurface(
 		output->backend->subcompositor, layer->surface, output->surface);
 
@@ -914,6 +917,8 @@ static bool output_set_cursor(struct wlr_output *wlr_output,
 	if (output->cursor.surface == NULL) {
 		output->cursor.surface =
 			wl_compositor_create_surface(backend->compositor);
+		wl_surface_set_buffer_scale(output->cursor.surface,
+			backend->max_parent_scale);
 	}
 	struct wl_surface *surface = output->cursor.surface;
 
@@ -1005,10 +1010,14 @@ void update_wl_output_cursor(struct wlr_wl_output *output) {
 		assert(pointer->output == output);
 		assert(output->enter_serial);
 
+		// Hotspot must be in logical coordinates when buffer_scale is set.
+		int32_t scale = output->backend->max_parent_scale;
+		int32_t hotspot_x = output->cursor.hotspot_x / scale;
+		int32_t hotspot_y = output->cursor.hotspot_y / scale;
+
 		struct wlr_wl_seat *seat = pointer->seat;
 		wl_pointer_set_cursor(seat->wl_pointer, output->enter_serial,
-			output->cursor.surface, output->cursor.hotspot_x,
-			output->cursor.hotspot_y);
+			output->cursor.surface, hotspot_x, hotspot_y);
 	}
 }
 
@@ -1036,16 +1045,19 @@ static void xdg_surface_handle_configure(void *data,
 	struct wlr_wl_output *output = data;
 	assert(output && output->xdg_surface == xdg_surface);
 
-	int32_t req_width = output->wlr_output.width;
-	int32_t req_height = output->wlr_output.height;
+	int32_t logical_width = output->logical_width;
+	int32_t logical_height = output->logical_height;
 	if (output->requested_width > 0) {
-		req_width = output->requested_width;
+		logical_width = output->requested_width;
 		output->requested_width = 0;
 	}
 	if (output->requested_height > 0) {
-		req_height = output->requested_height;
+		logical_height = output->requested_height;
 		output->requested_height = 0;
 	}
+
+	output->logical_width = logical_width;
+	output->logical_height = logical_height;
 
 	if (output->unmap_callback != NULL) {
 		return;
@@ -1061,9 +1073,11 @@ static void xdg_surface_handle_configure(void *data,
 		return;
 	}
 
+	int32_t scale = output->backend->max_parent_scale;
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
-	wlr_output_state_set_custom_mode(&state, req_width, req_height, 0);
+	wlr_output_state_set_custom_mode(&state, logical_width * scale, logical_height * scale, 0);
+	wlr_output_state_set_scale(&state, (float)scale);
 	wlr_output_send_request_state(&output->wlr_output, &state);
 	wlr_output_state_finish(&state);
 }
@@ -1108,9 +1122,16 @@ static struct wlr_wl_output *output_create(struct wlr_wl_backend *backend,
 	}
 	struct wlr_output *wlr_output = &output->wlr_output;
 
+	// Scale initial dimensions if parent has HiDPI scale
+	int32_t logical_width = 1280;
+	int32_t logical_height = 720;
+	output->logical_width = logical_width;
+	output->logical_height = logical_height;
+
+	int32_t scale = backend->max_parent_scale;
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
-	wlr_output_state_set_custom_mode(&state, 1280, 720, 0);
+	wlr_output_state_set_custom_mode(&state, logical_width * scale, logical_height * scale, 0);
 
 	wlr_output_init(wlr_output, &backend->backend, &output_impl,
 		backend->event_loop, &state);
@@ -1166,6 +1187,10 @@ struct wlr_output *wlr_wl_output_create(struct wlr_backend *wlr_backend) {
 		wlr_log(WLR_ERROR, "Could not create output surface");
 		return NULL;
 	}
+
+	// Set buffer scale to match parent compositor's maximum scale
+	wl_surface_set_buffer_scale(surface, backend->max_parent_scale);
+	wlr_log(WLR_DEBUG, "Set output surface buffer scale to %d", backend->max_parent_scale);
 
 	struct wlr_wl_output *output = output_create(backend, surface);
 	if (output == NULL) {
