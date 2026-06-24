@@ -317,6 +317,13 @@ struct render_data {
 
 	struct wlr_scene_output *output;
 
+	// Tone-mapping target resolved from the output's image description and
+	// EDID HDR metadata (cd/m²). display_reference is the destination
+	// transfer function's reference white.
+	float display_reference;
+	float display_min_luminance;
+	float display_max_luminance;
+
 	struct wlr_render_pass *render_pass;
 	pixman_region32_t damage;
 };
@@ -1143,6 +1150,28 @@ void wlr_scene_buffer_set_color_range(struct wlr_scene_buffer *scene_buffer,
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
+void wlr_scene_buffer_set_bypass_tone_mapping(struct wlr_scene_buffer *scene_buffer,
+		bool bypass) {
+	if (scene_buffer->bypass_tone_mapping == bypass) {
+		return;
+	}
+
+	scene_buffer->bypass_tone_mapping = bypass;
+	scene_node_update(&scene_buffer->node, NULL);
+}
+
+void wlr_scene_buffer_set_content_luminances(struct wlr_scene_buffer *scene_buffer,
+		struct wlr_color_luminances luminances) {
+	if (scene_buffer->content_luminances.min == luminances.min &&
+			scene_buffer->content_luminances.max == luminances.max &&
+			scene_buffer->content_luminances.reference == luminances.reference) {
+		return;
+	}
+
+	scene_buffer->content_luminances = luminances;
+	scene_node_update(&scene_buffer->node, NULL);
+}
+
 static struct wlr_texture *scene_buffer_get_texture(
 		struct wlr_scene_buffer *scene_buffer, struct wlr_renderer *renderer) {
 	if (scene_buffer->buffer == NULL || scene_buffer->texture != NULL) {
@@ -1496,6 +1525,34 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			WLR_COLOR_TRANSFER_FUNCTION_SRGB, &srgb_lum);
 		float luminance_multiplier = get_luminance_multiplier(&src_lum, &srgb_lum);
 
+		// Resolve per-surface tone mapping. ICtCp tone mapping in the shader
+		// works in absolute cd/m²; the content luminances come from the source
+		// transfer function (or the client's content_luminances override), the
+		// display luminances from the output image description / EDID. Tone
+		// mapping is skipped for bypass (windows_*) content and when the content
+		// cannot exceed the display.
+		float content_min = src_lum.min;
+		float content_max = src_lum.max;
+		if (scene_buffer->content_luminances.max > 0) {
+			content_min = scene_buffer->content_luminances.min;
+			content_max = scene_buffer->content_luminances.max;
+		}
+		struct wlr_render_tone_mapping tone_mapping = {
+			.content_reference = src_lum.reference,
+			.content_min = content_min,
+			.content_max = content_max,
+			.display_reference = data->display_reference,
+			.display_min = data->display_min_luminance,
+			.display_max = data->display_max_luminance,
+		};
+		// Compare ranges relative to each reference white (matching KWin's
+		// maxWhiteLuminance > maxOutputLuminance * eta): tone map only when the
+		// content range genuinely exceeds the display range.
+		float input_range = content_max / src_lum.reference;
+		float output_range = data->display_max_luminance / data->display_reference;
+		bool do_tone_map = !scene_buffer->bypass_tone_mapping &&
+			input_range > output_range * 1.001f;
+
 		wlr_render_pass_add_texture(data->render_pass, &(struct wlr_render_texture_options) {
 			.texture = texture,
 			.src_box = scene_buffer->src_box,
@@ -1512,6 +1569,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			.color_encoding = scene_buffer->color_encoding,
 			.color_range = scene_buffer->color_range,
 			.luminance_multiplier = &luminance_multiplier,
+			.tone_mapping = do_tone_map ? &tone_mapping : NULL,
 			.wait_timeline = scene_buffer->wait_timeline,
 			.wait_point = scene_buffer->wait_point,
 		});
@@ -2337,6 +2395,30 @@ bool wlr_scene_output_build_state(struct wlr_scene_output *scene_output,
 
 	render_data.logical.width = render_data.trans_width / render_data.scale;
 	render_data.logical.height = render_data.trans_height / render_data.scale;
+
+	// Resolve the tone-mapping target from the output's image description and
+	// EDID HDR metadata. display_reference is the destination transfer
+	// function's reference white; display_max_luminance is the display's
+	// preferred peak (EDID), falling back to the transfer function default.
+	const struct wlr_output_image_description *out_desc =
+		output_pending_image_description(output, state);
+	enum wlr_color_transfer_function out_tf = out_desc != NULL ?
+		out_desc->transfer_function : WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
+	struct wlr_color_luminances out_lum;
+	wlr_color_transfer_function_get_default_luminance(out_tf, &out_lum);
+	render_data.display_reference = out_lum.reference;
+	render_data.display_min_luminance = out_lum.min;
+	render_data.display_max_luminance = out_lum.max;
+	if (output->hdr_metadata != NULL) {
+		if (output->hdr_metadata->has_desired_content_max_luminance) {
+			render_data.display_max_luminance =
+				output->hdr_metadata->desired_content_max_luminance;
+		}
+		if (output->hdr_metadata->desired_content_min_luminance > 0) {
+			render_data.display_min_luminance =
+				output->hdr_metadata->desired_content_min_luminance;
+		}
+	}
 
 	struct render_list_constructor_data list_con = {
 		.box = render_data.logical,

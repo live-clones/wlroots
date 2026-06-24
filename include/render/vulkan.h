@@ -374,6 +374,14 @@ struct wlr_vk_frag_texture_pcr_data {
 	float matrix[4][4]; // only a 3x3 subset is used
 	float alpha;
 	float luminance_multiplier;
+	// Per-surface ICtCp tone mapping, luminances in cd/m². Tone mapping is
+	// disabled when tm_content_max <= 0.
+	float tm_content_ref;
+	float tm_content_min;
+	float tm_content_max;
+	float tm_display_ref;
+	float tm_display_min;
+	float tm_display_max;
 };
 
 struct wlr_vk_frag_output_pcr_data {
