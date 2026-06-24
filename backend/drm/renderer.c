@@ -157,11 +157,8 @@ bool drm_plane_pick_render_format(struct wlr_drm_plane *plane,
 
 	uint32_t format = DRM_FORMAT_ARGB8888;
 	if (!wlr_drm_format_set_get(&plane->formats, format)) {
-		const struct wlr_pixel_format_info *format_info =
-			drm_get_pixel_format_info(format);
-		assert(format_info != NULL &&
-			format_info->opaque_substitute != DRM_FORMAT_INVALID);
-		format = format_info->opaque_substitute;
+		format = pixel_format_get_opaque_substitute(format);
+		assert(format != DRM_FORMAT_INVALID);
 	}
 
 	const struct wlr_drm_format *render_format =
