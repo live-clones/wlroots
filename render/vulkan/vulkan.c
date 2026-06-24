@@ -82,6 +82,27 @@ static VKAPI_ATTR VkBool32 debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT
 }
 
 struct wlr_vk_instance *vulkan_instance_create(bool debug) {
+	uint32_t api_version = VK_API_VERSION_1_0;
+	PFN_vkEnumerateInstanceVersion enumerate_instance_version =
+		(PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(
+			VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
+	if (enumerate_instance_version) {
+		uint32_t supported_api_version = VK_API_VERSION_1_0;
+		if (enumerate_instance_version(&supported_api_version) == VK_SUCCESS) {
+			api_version = supported_api_version;
+		} else {
+			wlr_log(WLR_INFO,
+				"vkEnumerateInstanceVersion failed, assuming Vulkan 1.0");
+		}
+	}
+	if (api_version >= VK_API_VERSION_1_1) {
+		api_version = VK_API_VERSION_1_1;
+	} else {
+		api_version = VK_API_VERSION_1_0;
+	}
+	wlr_log(WLR_DEBUG, "Using Vulkan instance API version %u.%u.%u",
+		VK_VERSION_MAJOR(api_version), VK_VERSION_MINOR(api_version),
+		VK_VERSION_PATCH(api_version));
 
 	uint32_t avail_extc = 0;
 	VkResult res;
@@ -109,12 +130,15 @@ struct wlr_vk_instance *vulkan_instance_create(bool debug) {
 		wlr_log_errno(WLR_ERROR, "allocation failed");
 		return NULL;
 	}
+	ini->api_version = api_version;
 
 	size_t extensions_len = 0;
 	const char *extensions[8] = {0};
-	extensions[extensions_len++] = VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
-	extensions[extensions_len++] = VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME;
-	extensions[extensions_len++] = VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME;
+	if (api_version < VK_API_VERSION_1_1) {
+		extensions[extensions_len++] = VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
+		extensions[extensions_len++] = VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME;
+		extensions[extensions_len++] = VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME;
+	}
 
 	for (size_t i = 0; i < extensions_len; i++) {
 		if (!check_extension(avail_ext_props, avail_extc, extensions[i])) {
@@ -137,7 +161,7 @@ struct wlr_vk_instance *vulkan_instance_create(bool debug) {
 		.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 		.pEngineName = "wlroots",
 		.engineVersion = WLR_VERSION_NUM,
-		.apiVersion = VK_API_VERSION_1_0,
+		.apiVersion = api_version,
 	};
 
 	VkInstanceCreateInfo instance_info = {
@@ -195,6 +219,44 @@ struct wlr_vk_instance *vulkan_instance_create(bool debug) {
 			wlr_log(WLR_ERROR, "vkCreateDebugUtilsMessengerEXT not found");
 		}
 	}
+
+	if (ini->api_version < VK_API_VERSION_1_1) {
+		ini->vkGetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)
+			vkGetInstanceProcAddr(ini->instance,
+				"vkGetPhysicalDeviceProperties2KHR");
+	} else {
+		ini->vkGetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)
+			vkGetInstanceProcAddr(ini->instance, "vkGetPhysicalDeviceProperties2");
+		if (!ini->vkGetPhysicalDeviceProperties2) {
+			ini->vkGetPhysicalDeviceProperties2 = (PFN_vkGetPhysicalDeviceProperties2)
+				vkGetInstanceProcAddr(ini->instance,
+					"vkGetPhysicalDeviceProperties2KHR");
+		}
+	}
+	if (!ini->vkGetPhysicalDeviceProperties2) {
+		wlr_log(WLR_ERROR, "vkGetPhysicalDeviceProperties2 not found");
+		goto error;
+	}
+
+	if (ini->api_version < VK_API_VERSION_1_1) {
+		ini->vkGetPhysicalDeviceFeatures2 = (PFN_vkGetPhysicalDeviceFeatures2)
+			vkGetInstanceProcAddr(ini->instance,
+				"vkGetPhysicalDeviceFeatures2KHR");
+	} else {
+		ini->vkGetPhysicalDeviceFeatures2 = (PFN_vkGetPhysicalDeviceFeatures2)
+			vkGetInstanceProcAddr(ini->instance, "vkGetPhysicalDeviceFeatures2");
+		if (!ini->vkGetPhysicalDeviceFeatures2) {
+			ini->vkGetPhysicalDeviceFeatures2 = (PFN_vkGetPhysicalDeviceFeatures2)
+				vkGetInstanceProcAddr(ini->instance,
+					"vkGetPhysicalDeviceFeatures2KHR");
+		}
+	}
+	if (!ini->vkGetPhysicalDeviceFeatures2) {
+		wlr_log(WLR_INFO,
+			"vkGetPhysicalDeviceFeatures2 not available, assuming no sampler "
+			"YCbCr conversion support");
+	}
+
 
 	return ini;
 
@@ -328,7 +390,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 			props.pNext = &driver_props;
 		}
 
-		vkGetPhysicalDeviceProperties2(phdev, &props);
+		ini->vkGetPhysicalDeviceProperties2(phdev, &props);
 
 		if (has_driver_props) {
 			wlr_log(WLR_INFO, "  Driver name: %s (%s)", driver_props.driverName, driver_props.driverInfo);
@@ -416,7 +478,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 	return VK_NULL_HANDLE;
 }
 
-int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
+int vulkan_open_phdev_drm_fd(struct wlr_vk_instance *ini, VkPhysicalDevice phdev) {
 	// vulkan_find_drm_phdev() already checks that VK_EXT_physical_device_drm
 	// is supported
 	VkPhysicalDeviceDrmPropertiesEXT drm_props = {
@@ -426,7 +488,7 @@ int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
 		.pNext = &drm_props,
 	};
-	vkGetPhysicalDeviceProperties2(phdev, &props);
+	ini->vkGetPhysicalDeviceProperties2(phdev, &props);
 
 	dev_t devid;
 	if (drm_props.hasRender) {
@@ -607,7 +669,11 @@ struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
 		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
 		.pNext = &phdev_sampler_ycbcr_features,
 	};
-	vkGetPhysicalDeviceFeatures2(phdev, &phdev_features);
+	if (ini->vkGetPhysicalDeviceFeatures2) {
+		ini->vkGetPhysicalDeviceFeatures2(phdev, &phdev_features);
+	} else {
+		phdev_sampler_ycbcr_features.samplerYcbcrConversion = VK_FALSE;
+	}
 
 	dev->sampler_ycbcr_conversion = phdev_sampler_ycbcr_features.samplerYcbcrConversion;
 	wlr_log(WLR_DEBUG, "Sampler YCbCr conversion %s",
