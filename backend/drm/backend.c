@@ -11,6 +11,7 @@
 #include <xf86drm.h>
 #include "backend/drm/drm.h"
 #include "backend/drm/fb.h"
+#include "backend/drm/util.h"
 #include "render/drm_format_set.h"
 
 struct wlr_drm_backend *get_drm_backend_from_backend(
@@ -225,6 +226,9 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 	wlr_log(WLR_INFO, "Initializing DRM backend for %s (%s)", name, version->name);
 	drmFreeVersion(version);
 
+	drmDevice *dev_info = NULL;
+	drmGetDevice2(dev->fd, 0, &dev_info);
+
 	struct wlr_drm_backend *drm = calloc(1, sizeof(*drm));
 	if (!drm) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
@@ -242,6 +246,9 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 	drm->dev = dev;
 	drm->fd = dev->fd;
 	drm->name = name;
+
+	drm->bus = get_drm_bus_str(dev_info);
+	drmFreeDevice(&dev_info);
 
 	if (parent != NULL) {
 		drm->parent = get_drm_backend_from_backend(parent);
