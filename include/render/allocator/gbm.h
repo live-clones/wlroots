@@ -22,6 +22,10 @@ struct wlr_gbm_allocator {
 	struct gbm_device *gbm_device;
 
 	struct wl_list buffers; // wlr_gbm_buffer.link
+
+	struct {
+		bool explicit_upgrade;
+	} WLR_PRIVATE;
 };
 
 /**
