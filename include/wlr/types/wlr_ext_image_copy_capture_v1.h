@@ -12,9 +12,11 @@
 #include <pixman.h>
 #include <wayland-server-protocol.h>
 #include <wayland-protocols/ext-image-copy-capture-v1-enum.h>
+#include <wlr/render/drm_syncobj.h>
 #include <time.h>
 
 struct wlr_renderer;
+struct wlr_drm_syncobj_timeline;
 
 struct wlr_ext_image_copy_capture_manager_v1 {
 	struct wl_global *global;
@@ -43,6 +45,8 @@ struct wlr_ext_image_copy_capture_session_v1 {
 		struct wl_listener source_frame;
 
 		pixman_region32_t damage;
+		struct wlr_drm_syncobj_timeline *copy_timeline;
+		uint64_t copy_point;
 	} WLR_PRIVATE;
 };
 
@@ -58,6 +62,10 @@ struct wlr_ext_image_copy_capture_frame_v1 {
 
 	struct {
 		struct wlr_ext_image_copy_capture_session_v1 *session;
+		enum wl_output_transform pending_transform;
+		struct timespec pending_presentation_time;
+		bool copy_waiter_initialized;
+		struct wlr_drm_syncobj_timeline_waiter copy_waiter;
 	} WLR_PRIVATE;
 };
 
@@ -71,6 +79,17 @@ struct wlr_ext_image_copy_capture_manager_v1 *wlr_ext_image_copy_capture_manager
  */
 void wlr_ext_image_copy_capture_frame_v1_ready(struct wlr_ext_image_copy_capture_frame_v1 *frame,
 	enum wl_output_transform transform, const struct timespec *presentation_time);
+
+/**
+ * Notify the client that the frame is ready, when timeline point is signalled.
+ *
+ * This function causes the frame destruction, and may destroy it synchronously.
+ */
+bool wlr_ext_image_copy_capture_frame_v1_ready_deferred(
+	struct wlr_ext_image_copy_capture_frame_v1 *frame,
+	enum wl_output_transform transform, const struct timespec *presentation_time,
+	struct wlr_drm_syncobj_timeline *timeline, uint64_t point);
+
 /**
  * Notify the client that the frame has failed.
  *
@@ -80,8 +99,14 @@ void wlr_ext_image_copy_capture_frame_v1_fail(struct wlr_ext_image_copy_capture_
 	enum ext_image_copy_capture_frame_v1_failure_reason reason);
 /**
  * Copy a struct wlr_buffer into the client-provided buffer for the frame.
+ *
+ * If the caller obtains a timeline point through `out_copy_timeline` and
+ * `out_copy_timeline`, it must wait for it to signal before sending the
+ * "frame ready" event to the capture client
  */
 bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_capture_frame_v1 *frame,
-	struct wlr_buffer *src, struct wlr_renderer *renderer);
+	struct wlr_buffer *src, struct wlr_renderer *renderer,
+	struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point,
+	struct wlr_drm_syncobj_timeline **out_copy_timeline, uint64_t *out_copy_point);
 
 #endif

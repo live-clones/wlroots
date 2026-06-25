@@ -74,6 +74,9 @@ static void frame_destroy(struct wlr_ext_image_copy_capture_frame_v1 *frame) {
 	if (frame->session->frame == frame) {
 		frame->session->frame = NULL;
 	}
+	if (frame->copy_waiter_initialized) {
+		wlr_drm_syncobj_timeline_waiter_finish(&frame->copy_waiter);
+	}
 	free(frame);
 }
 
@@ -105,16 +108,21 @@ void wlr_ext_image_copy_capture_frame_v1_ready(struct wlr_ext_image_copy_capture
 	frame_destroy(frame);
 }
 
-static bool copy_dmabuf(struct wlr_buffer *dst,
-		struct wlr_buffer *src, struct wlr_renderer *renderer,
-		const pixman_region32_t *clip) {
+static bool copy_dmabuf(struct wlr_buffer *dst, struct wlr_buffer *src,
+		struct wlr_renderer *renderer, const pixman_region32_t *clip,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point,
+		struct wlr_drm_syncobj_timeline *signal_timeline, uint64_t signal_point) {
 	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src);
 	if (texture == NULL) {
 		return false;
 	}
 
 	bool ok = false;
-	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(renderer, dst, NULL);
+	struct wlr_buffer_pass_options options = {
+		.signal_timeline = signal_timeline,
+		.signal_point = signal_point,
+	};
+	struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(renderer, dst, &options);
 	if (!pass) {
 		goto out;
 	}
@@ -123,6 +131,8 @@ static bool copy_dmabuf(struct wlr_buffer *dst,
 		.texture = texture,
 		.clip = clip,
 		.blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+		.wait_timeline = wait_timeline,
+		.wait_point = wait_point,
 	});
 
 	ok = wlr_render_pass_submit(pass);
@@ -133,7 +143,8 @@ out:
 }
 
 static bool copy_shm(void *data, uint32_t format, size_t stride,
-		struct wlr_buffer *src, struct wlr_renderer *renderer) {
+		struct wlr_buffer *src, struct wlr_renderer *renderer,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point) {
 	// TODO: bypass renderer if source buffer supports data ptr access
 	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src);
 	if (!texture) {
@@ -145,6 +156,8 @@ static bool copy_shm(void *data, uint32_t format, size_t stride,
 		.data = data,
 		.format = format,
 		.stride = stride,
+		.wait_timeline = wait_timeline,
+		.wait_point = wait_point,
 	});
 
 	wlr_texture_destroy(texture);
@@ -153,14 +166,36 @@ static bool copy_shm(void *data, uint32_t format, size_t stride,
 }
 
 bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_capture_frame_v1 *frame,
-		struct wlr_buffer *src, struct wlr_renderer *renderer) {
+		struct wlr_buffer *src, struct wlr_renderer *renderer,
+		struct wlr_drm_syncobj_timeline *wait_timeline, uint64_t wait_point,
+		struct wlr_drm_syncobj_timeline **out_copy_timeline, uint64_t *out_copy_point) {
 	struct wlr_buffer *dst = frame->buffer;
+	if (out_copy_timeline) {
+		*out_copy_timeline = NULL;
+	}
+	if (out_copy_point) {
+		*out_copy_point = 0;
+	}
 
 	if (src->width != dst->width || src->height != dst->height) {
 		wlr_ext_image_copy_capture_frame_v1_fail(frame,
 			EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS);
 		return false;
 	}
+
+	struct wlr_drm_syncobj_timeline *copy_timeline = frame->session->copy_timeline;
+	if (copy_timeline == NULL && renderer->features.timeline) {
+		int drm_fd = wlr_renderer_get_drm_fd(renderer);
+		copy_timeline = wlr_drm_syncobj_timeline_create(drm_fd);
+		if (copy_timeline == NULL) {
+			wlr_ext_image_copy_capture_frame_v1_fail(frame,
+				EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
+			return false;
+		}
+		frame->session->copy_timeline = copy_timeline;
+	}
+	frame->session->copy_point++;
+	uint64_t copy_point = frame->session->copy_point;
 
 	bool ok = false;
 	enum ext_image_copy_capture_frame_v1_failure_reason failure_reason =
@@ -174,7 +209,18 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
 			ok = false;
 			failure_reason = EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS;
 		} else {
-			ok = copy_dmabuf(dst, src, renderer, &frame->buffer_damage);
+			if (out_copy_timeline == NULL) {
+				copy_timeline = NULL;
+				copy_point = 0;
+			}
+			ok = copy_dmabuf(dst, src, renderer, &frame->buffer_damage,
+				wait_timeline, wait_point, copy_timeline, copy_point);
+			if (ok && copy_timeline != NULL) {
+				*out_copy_timeline = wlr_drm_syncobj_timeline_ref(frame->session->copy_timeline);
+			}
+			if (ok && out_copy_point != NULL) {
+				*out_copy_point = copy_point;
+			}
 		}
 	} else if (wlr_buffer_begin_data_ptr_access(dst,
 			WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride)) {
@@ -182,7 +228,7 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
 			ok = false;
 			failure_reason = EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS;
 		} else {
-			ok = copy_shm(data, format, stride, src, renderer);
+			ok = copy_shm(data, format, stride, src, renderer, wait_timeline, wait_point);
 		}
 		wlr_buffer_end_data_ptr_access(dst);
 	}
@@ -198,6 +244,37 @@ void wlr_ext_image_copy_capture_frame_v1_fail(struct wlr_ext_image_copy_capture_
 		enum ext_image_copy_capture_frame_v1_failure_reason reason) {
 	ext_image_copy_capture_frame_v1_send_failed(frame->resource, reason);
 	frame_destroy(frame);
+}
+
+static void frame_handle_copy_done(struct wlr_drm_syncobj_timeline_waiter *waiter) {
+	struct wlr_ext_image_copy_capture_frame_v1 *frame = wl_container_of(waiter, frame, copy_waiter);
+	wlr_ext_image_copy_capture_frame_v1_ready(frame, frame->pending_transform,
+		&frame->pending_presentation_time);
+}
+
+bool wlr_ext_image_copy_capture_frame_v1_ready_deferred(
+		struct wlr_ext_image_copy_capture_frame_v1 *frame,
+		enum wl_output_transform transform, const struct timespec *presentation_time,
+		struct wlr_drm_syncobj_timeline *timeline, uint64_t point) {
+	assert(!frame->copy_waiter_initialized);
+
+	frame->pending_transform = transform;
+	frame->pending_presentation_time = *presentation_time;
+	struct wl_display *display = wl_client_get_display(frame->resource->client);
+	struct wl_event_loop *event_loop = wl_display_get_event_loop(display);
+	bool ok = wlr_drm_syncobj_timeline_waiter_init(&frame->copy_waiter, timeline, point,
+		0, event_loop, frame_handle_copy_done);
+	frame->copy_waiter_initialized = ok;
+	if (ok) {
+		if (frame->session->frame == frame) {
+			frame->session->frame = NULL;
+		}
+	} else {
+		wlr_ext_image_copy_capture_frame_v1_fail(frame,
+			EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
+	}
+
+	return ok;
 }
 
 static void frame_handle_destroy(struct wl_client *client,
@@ -397,6 +474,7 @@ static void session_destroy(struct wlr_ext_image_copy_capture_session_v1 *sessio
 	wl_resource_set_user_data(session->resource, NULL);
 
 	pixman_region32_fini(&session->damage);
+	wlr_drm_syncobj_timeline_unref(session->copy_timeline);
 	wl_list_remove(&session->source_destroy.link);
 	wl_list_remove(&session->source_constraints_update.link);
 	wl_list_remove(&session->source_frame.link);
