@@ -98,6 +98,21 @@ static bool img_desc_data_equal(const struct wlr_image_description_v1_data *a,
 			a->max_fall != b->max_fall) {
 		return false;
 	}
+	if (a->has_primaries != b->has_primaries) {
+		return false;
+	}
+	if (a->has_primaries && !primaries_equal(&a->primaries, &b->primaries)) {
+		return false;
+	}
+	if (a->has_luminances != b->has_luminances) {
+		return false;
+	}
+	if (a->has_luminances &&
+			(a->luminances.min != b->luminances.min ||
+			 a->luminances.max != b->luminances.max ||
+			 a->luminances.reference != b->luminances.reference)) {
+		return false;
+	}
 	if (a->has_mastering_display_primaries &&
 			!primaries_equal(&a->mastering_display_primaries, &b->mastering_display_primaries)) {
 		return false;
@@ -143,14 +158,42 @@ static void image_desc_handle_get_information(struct wl_client *client,
 	}
 
 	struct wlr_color_primaries primaries;
-	wlr_color_primaries_from_named(&primaries,
-		wlr_color_manager_v1_primaries_to_wlr(image_desc->data.primaries_named));
+	if (image_desc->data.has_primaries) {
+		primaries = image_desc->data.primaries;
+	} else {
+		wlr_color_primaries_from_named(&primaries,
+			wlr_color_manager_v1_primaries_to_wlr(image_desc->data.primaries_named));
+	}
 
 	struct wlr_color_luminances luminances;
-	wlr_color_transfer_function_get_default_luminance(
-		wlr_color_manager_v1_transfer_function_to_wlr(image_desc->data.tf_named), &luminances);
+	if (image_desc->data.has_luminances) {
+		luminances = image_desc->data.luminances;
+	} else {
+		wlr_color_transfer_function_get_default_luminance(
+			wlr_color_manager_v1_transfer_function_to_wlr(image_desc->data.tf_named),
+			&luminances);
+	}
 
-	wp_image_description_info_v1_send_primaries_named(resource, image_desc->data.primaries_named);
+	wp_image_description_info_v1_send_luminances(resource,
+			round(luminances.min * 10000), round(luminances.max),
+			round(luminances.reference));
+
+	wp_image_description_info_v1_send_target_luminance(resource,
+			round(luminances.min * 10000), round(luminances.max));
+
+	if (image_desc->data.max_cll != 0) {
+		wp_image_description_info_v1_send_target_max_cll(resource,
+				image_desc->data.max_cll);
+	}
+	if (image_desc->data.max_fall != 0) {
+		wp_image_description_info_v1_send_target_max_fall(resource,
+				image_desc->data.max_fall);
+	}
+
+	if (image_desc->data.primaries_named != 0) {
+		wp_image_description_info_v1_send_primaries_named(resource,
+				image_desc->data.primaries_named);
+	}
 	wp_image_description_info_v1_send_primaries(resource,
 		encode_cie1931_coord(primaries.red.x), encode_cie1931_coord(primaries.red.y),
 		encode_cie1931_coord(primaries.green.x), encode_cie1931_coord(primaries.green.y),
@@ -514,10 +557,17 @@ static void image_desc_creator_params_handle_create(struct wl_client *client,
 			"missing transfer function");
 		return;
 	}
-	if (params->data.primaries_named == 0) {
+	if (params->data.primaries_named == 0 && !params->data.has_primaries) {
 		wl_resource_post_error(params_resource,
 			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INCOMPLETE_SET,
 			"missing primaries");
+		return;
+	}
+
+	if (params->data.primaries_named != 0 && params->data.has_primaries) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+			"primaries_named and set_primaries are mutually exclusive");
 		return;
 	}
 
@@ -611,17 +661,58 @@ static void image_desc_creator_params_handle_set_primaries(struct wl_client *cli
 		struct wl_resource *params_resource, int32_t r_x, int32_t r_y,
 		int32_t g_x, int32_t g_y, int32_t b_x, int32_t b_y,
 		int32_t w_x, int32_t w_y) {
-	wl_resource_post_error(params_resource,
-		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
-		"set_primaries is not supported");
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+
+	if (!params->manager->features.set_primaries) {
+		wl_resource_post_error(params_resource,
+				WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+				"set_primaries is not supported");
+		return;
+	}
+
+	if (params->data.primaries_named != 0 || params->data.has_primaries) {
+		wl_resource_post_error(params_resource,
+				WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+				"primaries already set");
+		return;
+	}
+
+	params->data.has_primaries = true;
+	params->data.primaries = (struct wlr_color_primaries) {
+		.red   = { decode_cie1931_coord(r_x), decode_cie1931_coord(r_y) },
+		.green = { decode_cie1931_coord(g_x), decode_cie1931_coord(g_y) },
+		.blue  = { decode_cie1931_coord(b_x), decode_cie1931_coord(b_y) },
+		.white = { decode_cie1931_coord(w_x), decode_cie1931_coord(w_y) },
+	};
 }
 
 static void image_desc_creator_params_handle_set_luminances(struct wl_client *client,
 		struct wl_resource *params_resource, uint32_t min_lum,
 		uint32_t max_lum, uint32_t reference_lum) {
-	wl_resource_post_error(params_resource,
-		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
-		"set_luminances is not supported");
+	struct wlr_image_description_creator_params_v1 *params = 
+		image_desc_creator_params_from_resource(params_resource);
+
+	if(!params->manager->features.set_luminances) {
+		wl_resource_post_error(params_resource,
+				WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+				"set_luminances is not supported");
+		return;
+	}
+
+	if (params->data.has_luminances) {
+		wl_resource_post_error(params_resource,
+				WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+				"luminances already set");
+		return;
+	}
+
+	params->data.has_luminances = true;
+	params->data.luminances = (struct wlr_color_luminances){
+		.min = (float)min_lum / 10000.0f,
+		.max = (float)max_lum / 10000.0f,
+		.reference = (float)reference_lum / 10000.0f,
+	};
 }
 
 static void image_desc_creator_params_handle_set_mastering_display_primaries(
@@ -984,9 +1075,7 @@ struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *disp
 
 	// TODO: add support for all of these features
 	assert(!options->features.icc_v2_v4);
-	assert(!options->features.set_primaries);
 	assert(!options->features.set_tf_power);
-	assert(!options->features.set_luminances);
 	assert(!options->features.extended_target_volume);
 	assert(!options->features.windows_scrgb);
 
