@@ -211,6 +211,22 @@ static void pointer_handle_axis_relative_direction(void *data,
 	pointer->axis_relative_direction = direction;
 }
 
+static void pointer_handle_warp(void *data, struct wl_pointer *wl_pointer,
+		wl_fixed_t sx, wl_fixed_t sy) {
+	struct wlr_wl_seat *seat = data;
+	struct wlr_wl_pointer *pointer = seat->active_pointer;
+	if (pointer == NULL) {
+		return;
+	}
+
+	struct wlr_pointer_warp_event event = {
+		.pointer = &pointer->wlr_pointer,
+		.sx = wl_fixed_to_double(sx),
+		.sy = wl_fixed_to_double(sy),
+	};
+	wl_signal_emit_mutable(&pointer->wlr_pointer.events.warp, &event);
+}
+
 static const struct wl_pointer_listener pointer_listener = {
 	.enter = pointer_handle_enter,
 	.leave = pointer_handle_leave,
@@ -223,6 +239,7 @@ static const struct wl_pointer_listener pointer_listener = {
 	.axis_discrete = pointer_handle_axis_discrete,
 	.axis_value120 = pointer_handle_axis_value120,
 	.axis_relative_direction = pointer_handle_axis_relative_direction,
+	.warp = pointer_handle_warp,
 };
 
 static void gesture_swipe_begin(void *data,
