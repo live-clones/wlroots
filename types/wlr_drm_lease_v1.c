@@ -582,8 +582,21 @@ static void handle_backend_destroy(struct wl_listener *listener, void *data) {
 	drm_lease_device_v1_destroy(device);
 }
 
-static void drm_lease_device_v1_create(struct wlr_drm_lease_v1_manager *manager,
+struct wlr_drm_lease_device_v1 *wlr_drm_lease_device_v1_add_backend(struct wlr_drm_lease_v1_manager *manager,
 		struct wlr_backend *backend) {
+	if (!wlr_backend_is_drm(backend)) {
+		wlr_log(WLR_DEBUG, "Skipping non-DRM backend");
+		return NULL;
+	}
+
+	/* Reuse an existing device for this backend */
+	struct wlr_drm_lease_device_v1 *device;
+	wl_list_for_each(device, &manager->devices, link) {
+		if (device->backend == backend) {
+			return device;
+		}
+	}
+
 	struct wlr_drm_backend *drm_backend = get_drm_backend_from_backend(backend);
 
 	// Make sure we can get a non-master FD for the DRM backend. On some setups
@@ -592,7 +605,7 @@ static void drm_lease_device_v1_create(struct wlr_drm_lease_v1_manager *manager,
 	if (fd < 0) {
 		wlr_log(WLR_INFO, "Skipping %s: failed to get read-only DRM FD",
 			drm_backend->name);
-		return;
+		return NULL;
 	}
 	close(fd);
 
@@ -603,7 +616,7 @@ static void drm_lease_device_v1_create(struct wlr_drm_lease_v1_manager *manager,
 
 	if (!lease_device) {
 		wlr_log(WLR_ERROR, "Failed to allocate wlr_drm_lease_device_v1");
-		return;
+		return NULL;
 	}
 
 	lease_device->manager = manager;
@@ -621,13 +634,15 @@ static void drm_lease_device_v1_create(struct wlr_drm_lease_v1_manager *manager,
 	if (!lease_device->global) {
 		wlr_log(WLR_ERROR, "Failed to allocate wp_drm_lease_device_v1 global");
 		free(lease_device);
-		return;
+		return NULL;
 	}
 
 	lease_device->backend_destroy.notify = handle_backend_destroy;
 	wl_signal_add(&backend->events.destroy, &lease_device->backend_destroy);
 
 	wl_list_insert(&manager->devices, &lease_device->link);
+
+	return lease_device;
 }
 
 static void multi_backend_cb(struct wlr_backend *backend, void *data) {
@@ -636,7 +651,7 @@ static void multi_backend_cb(struct wlr_backend *backend, void *data) {
 	}
 
 	struct wlr_drm_lease_v1_manager *manager = data;
-	drm_lease_device_v1_create(manager, backend);
+	wlr_drm_lease_device_v1_add_backend(manager, backend);
 }
 
 static void handle_display_destroy(struct wl_listener *listener, void *data) {
@@ -657,8 +672,8 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	free(manager);
 }
 
-struct wlr_drm_lease_v1_manager *wlr_drm_lease_v1_manager_create(
-		struct wl_display *display, struct wlr_backend *backend) {
+struct wlr_drm_lease_v1_manager *wlr_drm_lease_v1_manager_create_lazy(
+		struct wl_display *display) {
 	struct wlr_drm_lease_v1_manager *manager = calloc(1, sizeof(*manager));
 	if (!manager) {
 		wlr_log(WLR_ERROR, "Failed to allocate wlr_drm_lease_v1_manager");
@@ -668,25 +683,35 @@ struct wlr_drm_lease_v1_manager *wlr_drm_lease_v1_manager_create(
 	wl_list_init(&manager->devices);
 	manager->display = display;
 
+	manager->display_destroy.notify = handle_display_destroy;
+	wl_display_add_destroy_listener(manager->display, &manager->display_destroy);
+
+	wl_signal_init(&manager->events.destroy);
+	wl_signal_init(&manager->events.request);
+
+	return manager;
+}
+
+struct wlr_drm_lease_v1_manager *wlr_drm_lease_v1_manager_create(
+	struct wl_display *display, struct wlr_backend *backend) {
+	struct wlr_drm_lease_v1_manager *manager = wlr_drm_lease_v1_manager_create_lazy(display);
+	if (!manager)
+		return NULL;
+
 	if (wlr_backend_is_multi(backend)) {
 		/* TODO: handle backends added after the manager is created */
 		wlr_multi_for_each_backend(backend, multi_backend_cb, manager);
 	} else if (wlr_backend_is_drm(backend)) {
-		drm_lease_device_v1_create(manager, backend);
+		wlr_drm_lease_device_v1_add_backend(manager, backend);
 	}
 
 	if (wl_list_empty(&manager->devices)) {
 		wlr_log(WLR_DEBUG, "No DRM backend supplied, failed to create "
 				"wlr_drm_lease_v1_manager");
+		wl_list_remove(&manager->display_destroy.link);
 		free(manager);
 		return NULL;
 	}
-
-	manager->display_destroy.notify = handle_display_destroy;
-	wl_display_add_destroy_listener(display, &manager->display_destroy);
-
-	wl_signal_init(&manager->events.destroy);
-	wl_signal_init(&manager->events.request);
 
 	return manager;
 }
