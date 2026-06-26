@@ -582,6 +582,10 @@ static void atomic_connector_add(struct atomic *atom,
 		if (crtc->props.vrr_enabled != 0) {
 			atomic_add(atom, crtc->id, crtc->props.vrr_enabled, state->vrr_enabled);
 		}
+		if (crtc->props.page_flip_event && state->page_flip_event) {
+			wlr_log(WLR_DEBUG, "YAAAY");
+			atomic_add(atom, crtc->id, crtc->props.page_flip_event, 1);
+		}
 
 		set_plane_props(atom, drm, crtc->primary, state->primary_fb, crtc->id,
 			&state->primary_viewport.dst_box, &state->primary_viewport.src_box);
