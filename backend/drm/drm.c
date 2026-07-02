@@ -1894,8 +1894,12 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 		struct wlr_drm_connector *conn = new_outputs[i];
 
 		wlr_drm_conn_log(conn, WLR_INFO, "Requesting modeset");
-		wl_signal_emit_mutable(&drm->backend.events.new_output,
-			&conn->output);
+
+		struct wlr_backend_event_new_output event = {
+			.output = &conn->output,
+			.requested_state = NULL,
+		};
+		wl_signal_emit_mutable(&drm->backend.events.new_output, &event);
 	}
 }
 
