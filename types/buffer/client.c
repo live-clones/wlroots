@@ -99,6 +99,7 @@ static void client_buffer_handle_renderer_destroy(struct wl_listener *listener,
 		wl_container_of(listener, client_buffer, renderer_destroy);
 	wl_list_remove(&client_buffer->renderer_destroy.link);
 	wl_list_init(&client_buffer->renderer_destroy.link);
+	wlr_texture_destroy(client_buffer->texture);
 	client_buffer->texture = NULL;
 }
 
