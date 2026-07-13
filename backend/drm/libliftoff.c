@@ -328,6 +328,9 @@ static bool add_connector(drmModeAtomicReq *req,
 		if (crtc->props.gamma_lut != 0) {
 			ok = ok && add_prop(req, crtc->id, crtc->props.gamma_lut, state->gamma_lut);
 		}
+		if (crtc->props.ctm != 0) {
+			ok = ok && add_prop(req, crtc->id, crtc->props.ctm, state->ctm);
+		}
 		if (crtc->props.vrr_enabled != 0) {
 			ok = ok && add_prop(req, crtc->id, crtc->props.vrr_enabled, state->vrr_enabled);
 		}
