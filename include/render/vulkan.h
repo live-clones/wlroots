@@ -365,9 +365,10 @@ struct wlr_vk_renderer {
 
 // vertex shader push constant range data
 struct wlr_vk_vert_pcr_data {
-	float mat4[4][4];
+	float proj_packed[6];
 	float uv_off[2];
 	float uv_size[2];
+	float padding[2];
 };
 
 struct wlr_vk_frag_texture_pcr_data {
