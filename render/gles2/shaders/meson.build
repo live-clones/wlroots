@@ -1,5 +1,14 @@
-check = find_program('./check.sh', native: true)
 embed = find_program('./embed.sh', native: true)
+
+glslang_version_info = run_command(glslang, '--version', check: true).stdout()
+glslang_version = glslang_version_info.split('\n')[0].split(':')[-1]
+
+# New enough glslang versions print to stderr and don't need the wrapper script
+check_cmd = []
+if glslang_version.version_compare('<16.4.0')
+	check = find_program('./check.sh', native: true)
+	check_cmd = [check]
+endif
 
 shaders = [
 	'common.vert',
@@ -14,7 +23,7 @@ foreach name : shaders
 		'gles2-' + name,
 		input: name,
 		output: name + '_check',
-		command: [check, glslang, '@INPUT@'],
+		command: check_cmd + [glslang, '@INPUT@'],
 		capture: true,
 		build_by_default: true,
 	)
