@@ -386,6 +386,10 @@ static struct wlr_texture *gles2_texture_from_dmabuf(
 		return NULL;
 	}
 
+	struct wlr_egl_context prev_ctx;
+	wlr_egl_make_current(renderer->egl, &prev_ctx);
+	push_gles2_debug(renderer);
+
 	struct wlr_gles2_buffer *buffer = gles2_buffer_get_or_create(renderer, wlr_buffer);
 	if (!buffer) {
 		return NULL;
@@ -401,10 +405,6 @@ static struct wlr_texture *gles2_texture_from_dmabuf(
 	texture->buffer = buffer;
 	texture->drm_format = DRM_FORMAT_INVALID; // texture can't be written anyways
 	texture->has_alpha = pixel_format_has_alpha(attribs->format);
-
-	struct wlr_egl_context prev_ctx;
-	wlr_egl_make_current(renderer->egl, &prev_ctx);
-	push_gles2_debug(texture->renderer);
 
 	bool invalid;
 	if (!buffer->tex) {
