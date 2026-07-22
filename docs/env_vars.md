@@ -18,6 +18,9 @@ wlroots reads these environment variables
   and Vulkan
 * *WLR_EGL_NO_MODIFIERS*: set to 1 to disable format modifiers in EGL, this can
   be used to understand and work around driver bugs.
+* *WLR_GBM_EXPLICIT_UPGRADE*: set to 1 to attempt to "upgrade" buffers
+  allocated with implicit modifiers to explicit modifiers. May help when a
+  conservative modifier is required, but may not work with all drivers.
 
 ## DRM backend
 
