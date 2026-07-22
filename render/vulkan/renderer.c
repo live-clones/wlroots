@@ -1713,6 +1713,10 @@ static bool init_tex_layouts(struct wlr_vk_renderer *renderer,
 		return false;
 	}
 
+	static_assert(sizeof(struct wlr_vk_vert_pcr_data) +
+		sizeof(struct wlr_vk_frag_texture_pcr_data) < 128,
+		"Expected to need <= 128 bytes of push constants");
+
 	VkPushConstantRange pc_ranges[] = {
 		{
 			.size = sizeof(struct wlr_vk_vert_pcr_data),
@@ -1805,6 +1809,10 @@ static bool init_blend_to_output_layouts(struct wlr_vk_renderer *renderer) {
 		wlr_vk_error("vkCreateDescriptorSetLayout", res);
 		return false;
 	}
+
+	static_assert(sizeof(struct wlr_vk_vert_pcr_data) +
+		sizeof(struct wlr_vk_frag_output_pcr_data) < 128,
+		"Expected to need <= 128 bytes of push constants");
 
 	// pipeline layout -- standard vertex uniforms, no shader uniforms
 	VkPushConstantRange pc_ranges[] = {

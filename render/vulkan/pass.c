@@ -55,15 +55,13 @@ static float color_to_linear_premult(float non_linear, float alpha) {
 	return (alpha == 0) ? 0 : color_to_linear(non_linear / alpha) * alpha;
 }
 
-static void encode_proj_matrix(const float mat3[9], float mat4[4][4]) {
-	float result[4][4] = {
-		{ mat3[0], mat3[1], 0, mat3[2] },
-		{ mat3[3], mat3[4], 0, mat3[5] },
-		{ 0, 0, 1, 0 },
-		{ 0, 0, 0, 1 },
+static void pack_proj_matrix(const float mat3[9], float mat_packed[6]) {
+	float result[6] = {
+		mat3[0], mat3[1], mat3[2], mat3[3],
+		mat3[4], mat3[5],
 	};
 
-	memcpy(mat4, result, sizeof(result));
+	memcpy(mat_packed, result, sizeof(result));
 }
 
 static void encode_color_matrix(const float mat3[9], float mat4[4][4]) {
@@ -204,7 +202,7 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
 		};
-		encode_proj_matrix(final_matrix, vert_pcr_data.mat4);
+		pack_proj_matrix(final_matrix, vert_pcr_data.proj_packed);
 
 		float matrix[9];
 		enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
@@ -712,7 +710,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 			.uv_off = { 0, 0 },
 			.uv_size = { 1, 1 },
 		};
-		encode_proj_matrix(matrix, vert_pcr_data.mat4);
+		pack_proj_matrix(matrix, vert_pcr_data.proj_packed);
 
 		bind_pipeline(pass, pipe->vk);
 		vkCmdPushConstants(cb, pipe->layout->vk,
@@ -819,7 +817,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 			src_box.height / options->texture->height,
 		},
 	};
-	encode_proj_matrix(matrix, vert_pcr_data.mat4);
+	pack_proj_matrix(matrix, vert_pcr_data.proj_packed);
 
 	enum wlr_color_transfer_function tf = options->transfer_function;
 	if (tf == 0) {

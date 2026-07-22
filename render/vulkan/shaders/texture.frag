@@ -7,7 +7,7 @@ layout(location = 0) out vec4 out_color;
 
 // struct wlr_vk_frag_texture_pcr_data
 layout(push_constant, row_major) uniform UBO {
-	layout(offset = 80) mat4 matrix;
+	layout(offset = 48) mat4 matrix;
 	float alpha;
 	float luminance_multiplier;
 } data;
