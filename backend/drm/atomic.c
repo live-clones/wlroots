@@ -511,10 +511,13 @@ static void set_color_encoding_and_range(struct atomic *atom,
 
 	uint32_t color_range;
 	switch (range) {
-	case WLR_COLOR_RANGE_NONE:
 	case WLR_COLOR_RANGE_LIMITED:
 		color_range = WLR_DRM_COLOR_YCBCR_LIMITED_RANGE;
 		break;
+	case WLR_COLOR_RANGE_NONE:
+		// Workaround for the proprietary NVIDIA driver, which defaults to
+		// limited range when COLOR_RANGE is not set, even for RGB content.
+		// See https://github.com/NVIDIA/open-gpu-kernel-modules/discussions/1105
 	case WLR_COLOR_RANGE_FULL:
 		color_range = WLR_DRM_COLOR_YCBCR_FULL_RANGE;
 		break;
