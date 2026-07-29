@@ -628,7 +628,7 @@ static void atomic_connector_add(struct atomic *atom,
 	}
 }
 
-static bool atomic_device_commit(struct wlr_drm_backend *drm,
+static enum wlr_drm_commit_result atomic_device_commit(struct wlr_drm_backend *drm,
 		const struct wlr_drm_device_state *state,
 		struct wlr_drm_page_flip *page_flip, uint32_t flags, bool test_only) {
 	bool ok = false;
@@ -668,7 +668,7 @@ out:
 			drm_atomic_connector_rollback_commit(conn_state);
 		}
 	}
-	return ok;
+	return ok ? COMMIT_SUCCESS : COMMIT_FAILED;
 }
 
 const struct wlr_drm_interface atomic_iface = {
