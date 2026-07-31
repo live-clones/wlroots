@@ -108,4 +108,7 @@ void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, flo
 void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_function tf,
 	struct wlr_color_luminances *lum);
 
+void wlr_color_rgb_to_ycbcr_matrix(enum wlr_color_encoding encoding,
+	enum wlr_color_range range, float matrix[static 16]);
+
 #endif

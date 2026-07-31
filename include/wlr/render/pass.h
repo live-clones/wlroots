@@ -36,6 +36,11 @@ struct wlr_buffer_pass_options {
 	 * sRGB monitors) */
 	struct wlr_color_transform *color_transform;
 
+	/* Color encoding of the destination buffer for RGB to YCbCr conversion */
+	enum wlr_color_encoding color_encoding;
+	/* Color range of the destination buffer */
+	enum wlr_color_range color_range;
+
 	/* Signal a timeline synchronization point when the render pass completes.
 	 *
 	 * When a compositor provides a signal timeline, the renderer may skip

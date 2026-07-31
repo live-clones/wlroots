@@ -6,7 +6,8 @@ precision mediump float;
 
 varying vec2 v_texcoord;
 uniform vec4 color;
+uniform mat4 color_matrix;
 
 void main() {
-	gl_FragColor = color;
+	gl_FragColor = color_matrix * color;
 }

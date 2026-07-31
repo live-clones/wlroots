@@ -5,6 +5,10 @@
 #include "render/color.h"
 #include "util/matrix.h"
 
+struct luma_coefficients {
+	float kr, kb;
+};
+
 // See H.273 ColourPrimaries
 
 static const struct wlr_color_primaries COLOR_PRIMARIES_SRGB = { // code point 1
@@ -20,6 +24,12 @@ static const struct wlr_color_primaries COLOR_PRIMARIES_BT2020 = { // code point
 	.blue = { 0.131, 0.046 },
 	.white = { 0.3127, 0.3290 },
 };
+
+static const struct luma_coefficients LUMA_COEFFICIENTS_BT709 = { 0.2126f, 0.0722f };
+static const struct luma_coefficients LUMA_COEFFICIENTS_FCC = { 0.30f, 0.11f };
+static const struct luma_coefficients LUMA_COEFFICIENTS_BT601 = { 0.299f, 0.114f };
+static const struct luma_coefficients LUMA_COEFFICIENTS_SMPTE240 = { 0.212f, 0.087f };
+static const struct luma_coefficients LUMA_COEFFICIENTS_BT2020 = { 0.2627f, 0.0593f };
 
 void wlr_color_transform_init(struct wlr_color_transform *tr, enum wlr_color_transform_type type) {
 	*tr = (struct wlr_color_transform){
@@ -430,4 +440,82 @@ void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_f
 		};
 		break;
 	}
+}
+
+static const struct luma_coefficients *luma_coefficients_from_encoding(enum wlr_color_encoding encoding) {
+	switch (encoding) {
+	case WLR_COLOR_ENCODING_NONE:
+	case WLR_COLOR_ENCODING_IDENTITY:
+		return NULL;
+	case WLR_COLOR_ENCODING_BT709:
+		return &LUMA_COEFFICIENTS_BT709;
+	case WLR_COLOR_ENCODING_FCC:
+		return &LUMA_COEFFICIENTS_FCC;
+	case WLR_COLOR_ENCODING_BT601:
+		return &LUMA_COEFFICIENTS_BT601;
+	case WLR_COLOR_ENCODING_SMPTE240:
+		return &LUMA_COEFFICIENTS_SMPTE240;
+	case WLR_COLOR_ENCODING_BT2020:
+	case WLR_COLOR_ENCODING_BT2020_CL:
+		return &LUMA_COEFFICIENTS_BT2020;
+	case WLR_COLOR_ENCODING_ICTCP:
+		return NULL;
+	}
+	return NULL;
+}
+
+// https://en.wikipedia.org/w/index.php?title=YCbCr&oldid=1350695871#RGB_conversion
+static void rgb_to_ypbpr(const struct luma_coefficients *coeffs, float out[static 16]) {
+	float kr = coeffs->kr;
+	float kb = coeffs->kb;
+	float kg = 1.0f - kr - kb;
+	float pb_r = -kr / (2.0f * (1.0f - kb));
+	float pb_g = -kg / (2.0f * (1.0f - kb));
+	float pr_g = -kg / (2.0f * (1.0f - kr));
+	float pr_b = -kb / (2.0f * (1.0f - kr));
+
+	// This is column major, but the matrix is row major on wikipedia.
+	float m[16] = {
+		kr, pb_r, 0.5f, 0.0f,
+		kg, pb_g, pr_g, 0.0f,
+		kb, 0.5f, pr_b, 0.0f,
+		0.0f, 0.0f, 0.0f, 1.0f,
+	};
+	memcpy(out, m, sizeof(m));
+}
+
+static void apply_color_range(enum wlr_color_range range, float matrix[static 16]) {
+	float y_scale = 1.0f, y_offset = 0.0f;
+	float c_scale = 1.0f, c_offset = 0.5f;
+	if (range == WLR_COLOR_RANGE_LIMITED) {
+		y_scale = 219.0f / 255.0f;
+		y_offset = 16.0f / 255.0f;
+		c_scale = 224.0f / 255.0f;
+		c_offset = 128.0f / 255.0f;
+	}
+	for (int col = 0; col < 4; col++) {
+		matrix[col * 4 + 0] *= y_scale;
+		matrix[col * 4 + 1] *= c_scale;
+		matrix[col * 4 + 2] *= c_scale;
+	}
+	matrix[12] = y_offset;
+	matrix[13] = c_offset;
+	matrix[14] = c_offset;
+}
+
+void wlr_color_rgb_to_ycbcr_matrix(enum wlr_color_encoding encoding,
+		enum wlr_color_range range, float matrix[static 16]) {
+	const struct luma_coefficients *coeffs = luma_coefficients_from_encoding(encoding);
+	if (coeffs == NULL) {
+		static const float identity[16] = {
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 1.0f,
+		};
+		memcpy(matrix, identity, sizeof(identity));
+		return;
+	}
+	rgb_to_ypbpr(coeffs, matrix);
+	apply_color_range(range, matrix);
 }

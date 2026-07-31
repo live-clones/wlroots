@@ -139,7 +139,7 @@ static bool gles2_texture_bind(struct wlr_gles2_texture *texture) {
 			return false;
 		}
 
-		GLuint fbo = gles2_buffer_get_fbo(texture->buffer);
+		GLuint fbo = gles2_buffer_get_fbo(texture->buffer, 0);
 		if (!fbo) {
 			return false;
 		}
@@ -419,7 +419,7 @@ static struct wlr_texture *gles2_texture_from_dmabuf(
 		glBindTexture(texture->target, buffer->tex);
 		glTexParameteri(texture->target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glTexParameteri(texture->target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		renderer->procs.glEGLImageTargetTexture2DOES(texture->target, buffer->image);
+		renderer->procs.glEGLImageTargetTexture2DOES(texture->target, buffer->image[0]);
 		glBindTexture(texture->target, 0);
 	}
 
