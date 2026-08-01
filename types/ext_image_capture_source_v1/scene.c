@@ -10,6 +10,13 @@
 #include "types/wlr_output.h"
 #include "types/wlr_scene.h"
 
+// While a client is capturing a toplevel, re-present its contents at this
+// floor rate even if the node produced no damage. This keeps the capture
+// stream from going idle, which otherwise leaves static windows black (no
+// first frame is ever delivered) and can stall downstream consumers when an
+// idle window suddenly bursts back to life. Lower = smoother/more wasteful.
+#define SCENE_CAPTURE_HEARTBEAT_MS 100
+
 struct scene_node_source {
 	struct wlr_ext_image_capture_source_v1 base;
 
@@ -20,6 +27,8 @@ struct scene_node_source {
 	struct wlr_scene_output *scene_output;
 
 	size_t num_started;
+
+	struct wl_event_source *heartbeat_timer;
 
 	struct wl_listener node_destroy;
 	struct wl_listener scene_output_destroy;
@@ -75,7 +84,7 @@ static void get_scene_node_extents(struct wlr_scene_node *node, struct wlr_box *
 	box->height = y_max - box->y;
 }
 
-static void source_render(struct scene_node_source *source) {
+static void source_render(struct scene_node_source *source, bool force_full) {
 	struct wlr_scene_output *scene_output = source->scene_output;
 
 	struct wlr_box extents;
@@ -86,6 +95,16 @@ static void source_render(struct scene_node_source *source) {
 	}
 
 	wlr_scene_output_set_position(scene_output, extents.x, extents.y);
+
+	if (force_full) {
+		// Advertise full damage so the committed frame is delivered to
+		// capture clients even when the node itself produced none (used by
+		// the idle heartbeat). The damage ring still tracks per-buffer
+		// redraw regions, so this only affects the damage we report.
+		pixman_region32_union_rect(&scene_output->pending_commit_damage,
+			&scene_output->pending_commit_damage, 0, 0,
+			extents.width, extents.height);
+	}
 
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
@@ -101,6 +120,30 @@ static void source_render(struct scene_node_source *source) {
 	}
 }
 
+static int source_handle_heartbeat(void *data) {
+	struct scene_node_source *source = data;
+
+	// Keep an actively-captured toplevel producing frames while it is idle
+	// and generating no damage. Without this a static window is captured as
+	// black (no initial frame), and when an idle window later bursts back to
+	// life the sudden stream of frames after the gap can stall downstream
+	// consumers (observed hanging the PipeWire screencast node in both
+	// Firefox and Chromium). Any real damage-driven frame defers this timer
+	// (see output_commit()), so the heartbeat only fills idle gaps.
+	if (source->num_started > 0 && source->scene_output != NULL) {
+		source_render(source, true);
+
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		wlr_scene_output_send_frame_done(source->scene_output, &now);
+
+		wl_event_source_timer_update(source->heartbeat_timer,
+			SCENE_CAPTURE_HEARTBEAT_MS);
+	}
+
+	return 0;
+}
+
 static void source_start(struct wlr_ext_image_capture_source_v1 *base, bool with_cursors) {
 	struct scene_node_source *source = wl_container_of(base, source, base);
 
@@ -109,11 +152,14 @@ static void source_start(struct wlr_ext_image_capture_source_v1 *base, bool with
 		return;
 	}
 
-	source_render(source);
+	source_render(source, false);
 
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	wlr_scene_output_send_frame_done(source->scene_output, &now);
+
+	wl_event_source_timer_update(source->heartbeat_timer,
+		SCENE_CAPTURE_HEARTBEAT_MS);
 }
 
 static void source_stop(struct wlr_ext_image_capture_source_v1 *base) {
@@ -123,6 +169,8 @@ static void source_stop(struct wlr_ext_image_capture_source_v1 *base) {
 	if (source->num_started > 0) {
 		return;
 	}
+
+	wl_event_source_timer_update(source->heartbeat_timer, 0);
 
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
@@ -246,6 +294,13 @@ static bool output_commit(struct wlr_output *output, const struct wlr_output_sta
 
 	pixman_region32_fini(&full_damage);
 
+	// A frame was produced; push the idle heartbeat deadline out so it only
+	// fires after a genuine gap with no damage-driven frames.
+	if (source->heartbeat_timer != NULL) {
+		wl_event_source_timer_update(source->heartbeat_timer,
+			SCENE_CAPTURE_HEARTBEAT_MS);
+	}
+
 	return true;
 }
 
@@ -258,6 +313,9 @@ static void source_destroy(struct scene_node_source *source) {
 	wl_list_remove(&source->node_destroy.link);
 	wl_list_remove(&source->scene_output_destroy.link);
 	wl_list_remove(&source->output_frame.link);
+	if (source->heartbeat_timer != NULL) {
+		wl_event_source_remove(source->heartbeat_timer);
+	}
 	wlr_ext_image_capture_source_v1_finish(&source->base);
 	wlr_scene_output_destroy(source->scene_output);
 	wlr_output_finish(&source->output);
@@ -289,7 +347,7 @@ static void source_handle_output_frame(struct wl_listener *listener, void *data)
 
 	// We can only emit frames with damage
 	if (!pixman_region32_empty(&source->scene_output->pending_commit_damage)) {
-		source_render(source);
+		source_render(source, false);
 	}
 
 	struct timespec now;
@@ -332,6 +390,9 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 
 	source->output_frame.notify = source_handle_output_frame;
 	wl_signal_add(&source->output.events.frame, &source->output_frame);
+
+	source->heartbeat_timer = wl_event_loop_add_timer(event_loop,
+		source_handle_heartbeat, source);
 
 	return &source->base;
 }
