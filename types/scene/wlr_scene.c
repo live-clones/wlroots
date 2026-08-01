@@ -1713,17 +1713,12 @@ static void scene_output_handle_commit(struct wl_listener *listener, void *data)
 static void scene_output_handle_damage(struct wl_listener *listener, void *data) {
 	struct wlr_scene_output *scene_output = wl_container_of(listener,
 		scene_output, output_damage);
-	struct wlr_output *output = scene_output->output;
 	struct wlr_output_event_damage *event = data;
-
-	int width, height;
-	wlr_output_transformed_resolution(output, &width, &height);
 
 	pixman_region32_t damage;
 	pixman_region32_init(&damage);
 	pixman_region32_copy(&damage, event->damage);
-	wlr_region_transform(&damage, &damage,
-		wlr_output_transform_invert(output->transform), width, height);
+	output_to_buffer_coords(&damage, scene_output->output);
 	scene_output_damage(scene_output, &damage);
 	pixman_region32_fini(&damage);
 }
