@@ -232,10 +232,6 @@ static void scene_buffer_unmark_client_buffer(struct wlr_scene_buffer *scene_buf
 	}
 }
 
-static int min(int a, int b) {
-	return a < b ? a : b;
-}
-
 static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 	struct wlr_scene_buffer *scene_buffer = scene_surface->buffer;
 	struct wlr_surface *surface = scene_surface->surface;
@@ -250,30 +246,6 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 
 	int width = state->width;
 	int height = state->height;
-
-	if (!wlr_box_empty(&scene_surface->clip)) {
-		struct wlr_box *clip = &scene_surface->clip;
-
-		int buffer_width = state->buffer_width;
-		int buffer_height = state->buffer_height;
-		width = min(clip->width, width - clip->x);
-		height = min(clip->height, height - clip->y);
-
-		wlr_fbox_transform(&src_box, &src_box, state->transform,
-			buffer_width, buffer_height);
-		wlr_output_transform_coords(state->transform, &buffer_width, &buffer_height);
-
-		src_box.x += (double)(clip->x * src_box.width) / state->width;
-		src_box.y += (double)(clip->y * src_box.height) / state->height;
-		src_box.width *= (double)width / state->width;
-		src_box.height *= (double)height / state->height;
-
-		wlr_fbox_transform(&src_box, &src_box, wlr_output_transform_invert(state->transform),
-			buffer_width, buffer_height);
-
-		pixman_region32_translate(&opaque, -clip->x, -clip->y);
-		pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
-	}
 
 	if (width <= 0 || height <= 0) {
 		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
@@ -383,10 +355,6 @@ static bool scene_buffer_point_accepts_input(struct wlr_scene_buffer *scene_buff
 		double *sx, double *sy) {
 	struct wlr_scene_surface *scene_surface =
 		wlr_scene_surface_try_from_buffer(scene_buffer);
-
-	*sx += scene_surface->clip.x;
-	*sy += scene_surface->clip.y;
-
 	return wlr_surface_point_accepts_input(scene_surface->surface, *sx, *sy);
 }
 
@@ -461,18 +429,4 @@ struct wlr_scene_surface *wlr_scene_surface_create(struct wlr_scene_tree *parent
 	surface_reconfigure(surface);
 
 	return surface;
-}
-
-void scene_surface_set_clip(struct wlr_scene_surface *surface, struct wlr_box *clip) {
-	if (wlr_box_equal(clip, &surface->clip)) {
-		return;
-	}
-
-	if (clip) {
-		surface->clip = *clip;
-	} else {
-		surface->clip = (struct wlr_box){0};
-	}
-
-	surface_reconfigure(surface);
 }

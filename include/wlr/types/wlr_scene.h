@@ -141,8 +141,6 @@ struct wlr_scene_surface {
 	struct wlr_surface *surface;
 
 	struct {
-		struct wlr_box clip;
-
 		struct wlr_addon addon;
 
 		struct wl_listener outputs_update;
@@ -711,16 +709,6 @@ void wlr_scene_output_layout_add_output(struct wlr_scene_output_layout *sol,
  */
 struct wlr_scene_tree *wlr_scene_subsurface_tree_create(
 	struct wlr_scene_tree *parent, struct wlr_surface *surface);
-
-/**
- * Sets a cropping region for any subsurface trees that are children of this
- * scene node. The clip coordinate space will be that of the root surface of
- * the subsurface tree.
- *
- * A NULL or empty clip will disable clipping
- */
-void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_node *node,
-	const struct wlr_box *clip);
 
 /**
  * Add a node displaying an xdg_surface and all of its sub-surfaces to the
