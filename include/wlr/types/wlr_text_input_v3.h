@@ -21,6 +21,16 @@ enum wlr_text_input_v3_features {
 	WLR_TEXT_INPUT_V3_FEATURE_CURSOR_RECTANGLE = 1 << 2,
 };
 
+enum wlr_text_input_v3_commit_type {
+        WLR_TEXT_INPUT_V3_COMMIT_TYPE_NONE = 0,
+        WLR_TEXT_INPUT_V3_COMMIT_TYPE_ENABLE,
+        WLR_TEXT_INPUT_V3_COMMIT_TYPE_DISABLE,
+};
+
+struct wlr_text_input_v3_commit_event {
+        enum wlr_text_input_v3_commit_type type;
+};
+
 struct wlr_text_input_v3_state {
 	struct {
 		char *text; // NULL is allowed and equivalent to empty string
@@ -49,17 +59,15 @@ struct wlr_text_input_v3 {
 	struct wlr_text_input_v3_state pending;
 	struct wlr_text_input_v3_state current;
 	uint32_t current_serial; // next in line to send
-	bool pending_enabled;
-	bool current_enabled;
+        enum wlr_text_input_v3_commit_type next_commit_type;
+	bool enabled;
 	// supported in the current text input, more granular than surface
 	uint32_t active_features; // bitfield of enum wlr_text_input_v3_features
 
 	struct wl_list link;
 
 	struct {
-		struct wl_signal enable;
-		struct wl_signal commit;
-		struct wl_signal disable;
+		struct wl_signal commit; // struct wlr_text_input_v3_commit_event
 		struct wl_signal destroy;
 	} events;
 
