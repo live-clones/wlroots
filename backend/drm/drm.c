@@ -1810,6 +1810,7 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 		}
 
 		if (wlr_conn && wlr_conn->lease) {
+			seen[index] = true;
 			continue;
 		}
 
