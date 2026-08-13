@@ -45,6 +45,10 @@ static bool write_pixels(struct wlr_vk_texture *texture,
 
 	const struct wlr_pixel_format_info *format_info = drm_get_pixel_format_info(texture->format->drm);
 	assert(format_info);
+	if (pixel_format_info_pixels_per_block(format_info) != 1) {
+		wlr_log(WLR_ERROR, "Block formats are not supported");
+		return false;
+	}
 
 	uint32_t bsize = 0;
 
