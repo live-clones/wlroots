@@ -279,8 +279,8 @@ struct wlr_xdg_decoration_manager_v1 *
 		return NULL;
 	}
 	manager->global = wl_global_create(display,
-		&zxdg_decoration_manager_v1_interface, DECORATION_MANAGER_VERSION,
-		manager, decoration_manager_bind);
+		&zxdg_decoration_manager_v1_interface, version, manager,
+		decoration_manager_bind);
 	if (manager->global == NULL) {
 		free(manager);
 		return NULL;
