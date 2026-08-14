@@ -271,14 +271,14 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_xdg_decoration_manager_v1 *
-		wlr_xdg_decoration_manager_v1_create(struct wl_display *display) {
+		wlr_xdg_decoration_manager_v1_create(struct wl_display *display, uint32_t version) {
 	struct wlr_xdg_decoration_manager_v1 *manager = calloc(1, sizeof(*manager));
 	if (manager == NULL) {
 		return NULL;
 	}
 	manager->global = wl_global_create(display,
-		&zxdg_decoration_manager_v1_interface, DECORATION_MANAGER_VERSION,
-		manager, decoration_manager_bind);
+		&zxdg_decoration_manager_v1_interface, version, manager,
+		decoration_manager_bind);
 	if (manager->global == NULL) {
 		free(manager);
 		return NULL;
