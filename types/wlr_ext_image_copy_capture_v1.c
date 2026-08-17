@@ -9,7 +9,7 @@
 #include "ext-image-copy-capture-v1-protocol.h"
 #include "render/pixel_format.h"
 
-#define IMAGE_COPY_CAPTURE_MANAGER_V1_VERSION 1
+#define IMAGE_COPY_CAPTURE_MANAGER_V1_VERSION 2
 
 struct wlr_ext_image_copy_capture_cursor_session_v1 {
 	struct wl_resource *resource;
@@ -101,13 +101,25 @@ void wlr_ext_image_copy_capture_frame_v1_ready(struct wlr_ext_image_copy_capture
 	ext_image_copy_capture_frame_v1_send_transform(frame->resource, transform);
 	ext_image_copy_capture_frame_v1_send_presentation_time(frame->resource,
 		pres_time_sec >> 32, (uint32_t)pres_time_sec, presentation_time->tv_nsec);
+
+	if (frame->capture_time_valid &&
+			wl_resource_get_version(frame->resource) >=
+				EXT_IMAGE_COPY_CAPTURE_FRAME_V1_CAPTURE_TIME_SINCE_VERSION) {
+		uint64_t cap_sec = (uint64_t)frame->capture_time.tv_sec;
+		ext_image_copy_capture_frame_v1_send_capture_time(frame->resource,
+			cap_sec >> 32, (uint32_t)cap_sec, frame->capture_time.tv_nsec);
+	}
+
 	ext_image_copy_capture_frame_v1_send_ready(frame->resource);
 	frame_destroy(frame);
 }
 
-static bool copy_dmabuf(struct wlr_buffer *dst,
-		struct wlr_buffer *src, struct wlr_renderer *renderer,
-		const pixman_region32_t *clip) {
+static bool copy_dmabuf(struct wlr_ext_image_copy_capture_frame_v1 *frame,
+		struct wlr_buffer *dst, struct wlr_buffer *src,
+		struct wlr_renderer *renderer, const pixman_region32_t *clip) {
+	clock_gettime(CLOCK_MONOTONIC, &frame->capture_time);
+	frame->capture_time_valid = true;
+
 	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src);
 	if (texture == NULL) {
 		return false;
@@ -132,8 +144,12 @@ out:
 	return ok;
 }
 
-static bool copy_shm(void *data, uint32_t format, size_t stride,
+static bool copy_shm(struct wlr_ext_image_copy_capture_frame_v1 *frame,
+		void *data, uint32_t format, size_t stride,
 		struct wlr_buffer *src, struct wlr_renderer *renderer) {
+	clock_gettime(CLOCK_MONOTONIC, &frame->capture_time);
+	frame->capture_time_valid = true;
+
 	// TODO: bypass renderer if source buffer supports data ptr access
 	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, src);
 	if (!texture) {
@@ -148,7 +164,6 @@ static bool copy_shm(void *data, uint32_t format, size_t stride,
 	});
 
 	wlr_texture_destroy(texture);
-
 	return ok;
 }
 
@@ -174,7 +189,7 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
 			ok = false;
 			failure_reason = EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS;
 		} else {
-			ok = copy_dmabuf(dst, src, renderer, &frame->buffer_damage);
+			ok = copy_dmabuf(frame, dst, src, renderer, &frame->buffer_damage);
 		}
 	} else if (wlr_buffer_begin_data_ptr_access(dst,
 			WLR_BUFFER_DATA_PTR_ACCESS_WRITE, &data, &format, &stride)) {
@@ -182,7 +197,7 @@ bool wlr_ext_image_copy_capture_frame_v1_copy_buffer(struct wlr_ext_image_copy_c
 			ok = false;
 			failure_reason = EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_BUFFER_CONSTRAINTS;
 		} else {
-			ok = copy_shm(data, format, stride, src, renderer);
+			ok = copy_shm(frame, data, format, stride, src, renderer);
 		}
 		wlr_buffer_end_data_ptr_access(dst);
 	}
