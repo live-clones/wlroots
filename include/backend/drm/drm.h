@@ -164,6 +164,7 @@ struct wlr_drm_connector_state {
 	bool vrr_enabled;
 	uint32_t colorspace;
 	uint32_t hdr_output_metadata;
+	uint64_t luminance;
 };
 
 /**
@@ -199,6 +200,7 @@ struct wlr_drm_connector {
 	drmModeConnection status;
 	uint32_t id;
 	uint64_t max_bpc_bounds[2];
+	uint64_t luminance_bounds[2];
 	struct wlr_drm_lease *lease;
 
 	struct wlr_drm_crtc *crtc;

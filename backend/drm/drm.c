@@ -44,7 +44,8 @@ static const uint32_t COMMIT_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_SIGNAL_TIMELINE |
 	WLR_OUTPUT_STATE_COLOR_TRANSFORM |
 	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION |
-	WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
+	WLR_OUTPUT_STATE_COLOR_REPRESENTATION |
+	WLR_OUTPUT_STATE_BRIGHTNESS;
 
 static const uint32_t SUPPORTED_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_BACKEND_OPTIONAL | COMMIT_OUTPUT_STATE;
@@ -116,6 +117,12 @@ bool check_drm_features(struct wlr_drm_backend *drm) {
 #ifdef DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT
 	if (drm->iface == &atomic_iface && drmSetClientCap(drm->fd, DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT, 1) == 0) {
 		wlr_log(WLR_INFO, "DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT supported");
+	}
+#endif
+#define DRM_CLIENT_CAP_LUMINANCE 8
+#ifdef DRM_CLIENT_CAP_LUMINANCE
+	if (drm->iface == &atomic_iface && drmSetClientCap(drm->fd, DRM_CLIENT_CAP_LUMINANCE, 1) == 0) {
+		wlr_log(WLR_INFO, "DRM_CLIENT_CAP_LUMINANCE supported");
 	}
 #endif
 
@@ -1735,6 +1742,15 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 		get_drm_prop(drm->fd, wlr_conn->id, wlr_conn->props.vrr_capable, &vrr_capable);
 	}
 	output->adaptive_sync_supported = vrr_capable;
+
+	if (wlr_conn->props.luminance != 0) {
+		if (introspect_drm_prop_range(drm->fd, wlr_conn->props.luminance,
+				&wlr_conn->luminance_bounds[0], &wlr_conn->luminance_bounds[1])) {
+			output->brightness_supported = true;
+		} else {
+			wlr_log(WLR_ERROR, "Failed to introspect 'LUMINANCE' property");
+		}
+	}
 
 	size_t edid_len = 0;
 	uint8_t *edid = get_drm_prop_blob(drm->fd,
