@@ -409,8 +409,11 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 
 		if (drm_dev->bustype == DRM_BUS_PLATFORM) {
 			wlr_log(WLR_INFO, "Found Vulkan physical device on platform bus: %s", info->name);
+			drmFreeDevice(&drm_dev);
 			return phdev;
 		}
+
+		drmFreeDevice(&drm_dev);
 	}
 
 	return VK_NULL_HANDLE;
