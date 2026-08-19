@@ -943,6 +943,9 @@ static bool set_default_feedback(struct wlr_linux_dmabuf_v1 *linux_dmabuf,
 
 error_formats:
 	wlr_drm_format_set_finish(&formats);
+	if (main_device_fd >= 0) {
+		close(main_device_fd);
+	}
 error_compiled:
 	compiled_feedback_destroy(compiled);
 	return false;
