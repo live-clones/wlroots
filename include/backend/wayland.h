@@ -149,8 +149,21 @@ struct wlr_wl_pointer {
 	struct wl_list link;
 };
 
+struct wlr_wl_touch {
+	struct wlr_touch wlr_touch;
+
+	struct wlr_wl_seat *seat;
+	struct wlr_wl_output *output;
+	bool needs_frame;
+
+	struct wl_listener output_destroy;
+
+	struct wl_list link;
+};
+
 struct wlr_wl_touch_points {
 	int32_t ids[64];
+	struct wlr_wl_touch *touches[64];
 	size_t len;
 };
 
@@ -174,7 +187,7 @@ struct wlr_wl_seat {
 	struct zwp_relative_pointer_v1 *relative_pointer;
 
 	struct wl_touch *wl_touch;
-	struct wlr_touch wlr_touch;
+	struct wl_list touches;
 	struct wlr_wl_touch_points touch_points;
 
 	struct zwp_tablet_seat_v2 *zwp_tablet_seat_v2;
@@ -200,6 +213,8 @@ void finish_seat_pointer(struct wlr_wl_seat *seat);
 void create_pointer(struct wlr_wl_seat *seat, struct wlr_wl_output *output);
 
 void init_seat_touch(struct wlr_wl_seat *seat);
+void finish_seat_touch(struct wlr_wl_seat *seat);
+void create_touch(struct wlr_wl_seat *seat, struct wlr_wl_output *output);
 
 void init_seat_tablet(struct wlr_wl_seat *seat);
 void finish_seat_tablet(struct wlr_wl_seat *seat);
