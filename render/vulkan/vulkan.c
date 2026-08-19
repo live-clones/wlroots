@@ -729,7 +729,7 @@ void vulkan_device_destroy(struct wlr_vk_device *dev) {
 		vkDestroyDevice(dev->dev, NULL);
 	}
 
-	if (dev->drm_fd > 0) {
+	if (dev->drm_fd >= 0) {
 		close(dev->drm_fd);
 	}
 
