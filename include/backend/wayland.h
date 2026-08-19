@@ -53,6 +53,7 @@ struct wlr_wl_backend {
 	struct xdg_activation_v1 *activation_v1;
 	struct wl_subcompositor *subcompositor;
 	struct wp_viewporter *viewporter;
+	struct wp_fractional_scale_manager_v1 *fractional_scale_manager;
 	char *drm_render_name;
 };
 
@@ -99,6 +100,11 @@ struct wlr_wl_output {
 	struct wlr_wl_backend *backend;
 	struct wl_list link;
 
+	// From parent compositor, unscaled.
+	int32_t logical_width, logical_height;
+	// Preferred scale from parent compositor.
+	float scale;
+
 	struct wl_surface *surface;
 	bool own_surface;
 	struct wl_callback *frame_callback;
@@ -106,6 +112,8 @@ struct wlr_wl_output {
 	struct xdg_toplevel *xdg_toplevel;
 	struct zxdg_toplevel_decoration_v1 *zxdg_toplevel_decoration_v1;
 	struct wp_linux_drm_syncobj_surface_v1 *drm_syncobj_surface_v1;
+	struct wp_viewport *viewport;
+	struct wp_fractional_scale_v1 *fractional_scale;
 	struct wl_list presentation_feedbacks;
 
 	char *title;
@@ -130,6 +138,10 @@ struct wlr_wl_output {
 		struct wlr_wl_pointer *pointer;
 		struct wl_surface *surface;
 		int32_t hotspot_x, hotspot_y;
+		float scale;
+		struct wp_fractional_scale_v1 *fractional_scale;
+		struct wp_viewport *viewport;
+		int32_t buffer_width, buffer_height;
 	} cursor;
 };
 

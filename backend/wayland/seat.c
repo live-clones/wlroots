@@ -121,8 +121,9 @@ static void touch_coordinates_to_absolute(struct wlr_wl_seat *seat,
 	 */
 	struct wlr_wl_output *output, *tmp;
 	wl_list_for_each_safe(output, tmp, &seat->backend->outputs, link) {
-		*sx = wl_fixed_to_double(x) / output->wlr_output.width;
-		*sy = wl_fixed_to_double(y) / output->wlr_output.height;
+		// Parent compositor sends coordinates in logical (unscaled) space.
+		*sx = wl_fixed_to_double(x) / output->logical_width;
+		*sy = wl_fixed_to_double(y) / output->logical_height;
 		return; // Choose the first output in the list
 	}
 
