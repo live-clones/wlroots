@@ -92,6 +92,21 @@ struct wlr_scene_tree {
 	struct wlr_scene_node node;
 
 	struct wl_list children; // wlr_scene_node.link
+
+	// The clipping box in the tree-nodes local coordinate space
+	struct wlr_box clip;
+
+	struct {
+		// Either by self and/or an ancestors clip regions
+		bool is_clipped;
+		// The clipping region in layout-local coordinate space.
+		// It is a combination between the parents clip region and its own (if a
+		// clipping box is provided).
+		// Note: If the tree's clipping box is empty and there is no ancestor
+		// clipping, an empty region indicates that the children are fully
+		// visible.
+		pixman_region32_t effective_clip;
+	} WLR_PRIVATE;
 };
 
 /** The root scene-graph node. */
@@ -126,8 +141,6 @@ struct wlr_scene_surface {
 	struct wlr_surface *surface;
 
 	struct {
-		struct wlr_box clip;
-
 		struct wlr_addon addon;
 
 		struct wl_listener outputs_update;
@@ -385,6 +398,17 @@ void wlr_scene_set_color_manager_v1(struct wlr_scene *scene, struct wlr_color_ma
  * Add a node displaying nothing but its children.
  */
 struct wlr_scene_tree *wlr_scene_tree_create(struct wlr_scene_tree *parent);
+
+/**
+ * Sets a cropping region for any nodes that are children of this scene tree.
+ * Note that clip boxes cascade down the tree, as in the clip boxes are
+ * intersected with each other from the root to the leaves.
+ * The clip coordinate space will be that of the tree node.
+ *
+ * A NULL or empty clip will disable clipping.
+ */
+void wlr_scene_tree_set_clip(struct wlr_scene_tree *tree,
+		const struct wlr_box *clip);
 
 /**
  * Add a node displaying a single surface to the scene-graph.
@@ -685,16 +709,6 @@ void wlr_scene_output_layout_add_output(struct wlr_scene_output_layout *sol,
  */
 struct wlr_scene_tree *wlr_scene_subsurface_tree_create(
 	struct wlr_scene_tree *parent, struct wlr_surface *surface);
-
-/**
- * Sets a cropping region for any subsurface trees that are children of this
- * scene node. The clip coordinate space will be that of the root surface of
- * the subsurface tree.
- *
- * A NULL or empty clip will disable clipping
- */
-void wlr_scene_subsurface_tree_set_clip(struct wlr_scene_node *node,
-	const struct wlr_box *clip);
 
 /**
  * Add a node displaying an xdg_surface and all of its sub-surfaces to the
