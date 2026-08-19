@@ -215,6 +215,8 @@ static void security_context_handle_commit(struct wl_client *client,
 		security_context);
 	if (security_context->close_source == NULL) {
 		wl_resource_post_no_memory(resource);
+		wl_event_source_remove(security_context->listen_source);
+		security_context->listen_source = NULL;
 		return;
 	}
 
