@@ -229,6 +229,7 @@ struct wlr_backend *wlr_drm_backend_create(struct wlr_session *session,
 	struct wlr_drm_backend *drm = calloc(1, sizeof(*drm));
 	if (!drm) {
 		wlr_log_errno(WLR_ERROR, "Allocation failed");
+		free(name);
 		return NULL;
 	}
 	wlr_backend_init(&drm->backend, &backend_impl);
