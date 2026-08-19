@@ -19,11 +19,15 @@ struct wlr_vk_texture;
 struct wlr_vk_instance {
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT messenger;
+	uint32_t api_version;
 
 	struct {
 		PFN_vkCreateDebugUtilsMessengerEXT createDebugUtilsMessengerEXT;
 		PFN_vkDestroyDebugUtilsMessengerEXT destroyDebugUtilsMessengerEXT;
 	} api;
+
+	PFN_vkGetPhysicalDeviceProperties2 vkGetPhysicalDeviceProperties2;
+	PFN_vkGetPhysicalDeviceFeatures2 vkGetPhysicalDeviceFeatures2;
 };
 
 // Creates and initializes a vulkan instance.
@@ -75,7 +79,7 @@ struct wlr_vk_device {
 // Tries to find the VkPhysicalDevice for the given drm fd.
 // Might find none and return VK_NULL_HANDLE.
 VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd);
-int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev);
+int vulkan_open_phdev_drm_fd(struct wlr_vk_instance *ini, VkPhysicalDevice phdev);
 
 // Creates a device for the given instance and physical device.
 struct wlr_vk_device *vulkan_device_create(struct wlr_vk_instance *ini,
