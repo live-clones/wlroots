@@ -349,7 +349,8 @@ static bool query_modifier_usage_support(struct wlr_vk_device *dev, VkFormat vk_
 }
 
 static bool query_shm_support(struct wlr_vk_device *dev, VkFormat vk_format,
-		VkFormat vk_format_variant, VkImageFormatProperties *out,
+		VkFormat vk_format_variant, VkImageUsageFlags usage,
+		VkImageFormatProperties *out, bool *out_host_copy_optimal,
 		const char **errmsg) {
 	VkResult res;
 	*errmsg = NULL;
@@ -369,12 +370,16 @@ static bool query_shm_support(struct wlr_vk_device *dev, VkFormat vk_format,
 		.type = VK_IMAGE_TYPE_2D,
 		.format = vk_format,
 		.tiling = VK_IMAGE_TILING_OPTIMAL,
-		.usage = vulkan_shm_tex_usage,
+		.usage = usage,
 		.flags = vk_format_variant ? VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT : 0,
 		.pNext = &listi,
 	};
+	VkHostImageCopyDevicePerformanceQueryEXT perf_query = {
+		.sType = VK_STRUCTURE_TYPE_HOST_IMAGE_COPY_DEVICE_PERFORMANCE_QUERY_EXT,
+	};
 	VkImageFormatProperties2 ifmtp = {
 		.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2,
+		.pNext = out_host_copy_optimal ? &perf_query : NULL,
 	};
 
 	res = vkGetPhysicalDeviceImageFormatProperties2(dev->phdev, &fmti, &ifmtp);
@@ -389,6 +394,9 @@ static bool query_shm_support(struct wlr_vk_device *dev, VkFormat vk_format,
 	}
 
 	*out = ifmtp.imageFormatProperties;
+	if (out_host_copy_optimal) {
+		*out_host_copy_optimal = perf_query.optimalDeviceAccess;
+	}
 	return true;
 }
 
@@ -522,9 +530,13 @@ void vulkan_format_props_query(struct wlr_vk_device *dev,
 	VkDrmFormatModifierPropertiesListEXT modp = {
 		.sType = VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT,
 	};
+	VkFormatProperties3 fmtp3 = {
+		.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3,
+		.pNext = &modp,
+	};
 	VkFormatProperties2 fmtp = {
 		.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2,
-		.pNext = &modp,
+		.pNext = dev->host_image_copy ? (void *)&fmtp3 : (void *)&modp,
 	};
 
 	vkGetPhysicalDeviceFormatProperties2(dev->phdev, format->vk, &fmtp);
@@ -542,12 +554,32 @@ void vulkan_format_props_query(struct wlr_vk_device *dev,
 			!vulkan_format_is_ycbcr(format) && format_info != NULL) {
 		VkImageFormatProperties ifmtp;
 		bool supported = false, has_mutable_srgb = false;
-		if (query_shm_support(dev, format->vk, format->vk_srgb, &ifmtp, &errmsg)) {
+		bool host_copy_optimal = false;
+		if (dev->host_image_copy &&
+				(fmtp3.optimalTilingFeatures & VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT)) {
+			VkImageUsageFlags usage = vulkan_shm_tex_usage |
+				VK_IMAGE_USAGE_HOST_TRANSFER_BIT_EXT;
+			if (query_shm_support(dev, format->vk, format->vk_srgb, usage, &ifmtp,
+						&host_copy_optimal, &errmsg)) {
+				has_mutable_srgb = format->vk_srgb != 0;
+				supported = true;
+			} else if (format->vk_srgb && query_shm_support(dev, format->vk, 0, usage, &ifmtp,
+						&host_copy_optimal, &errmsg)) {
+				supported = true;
+			}
+			if (!host_copy_optimal) {
+				has_mutable_srgb = false;
+				supported = false;
+			}
+		}
+		if (!supported && query_shm_support(dev, format->vk, format->vk_srgb,
+				vulkan_shm_tex_usage, &ifmtp, NULL, &errmsg)) {
 			supported = true;
 			has_mutable_srgb = format->vk_srgb != 0;
 		}
 		if (!supported && format->vk_srgb) {
-			supported = query_shm_support(dev, format->vk, 0, &ifmtp, &errmsg);
+			supported = query_shm_support(dev, format->vk, 0,
+				vulkan_shm_tex_usage, &ifmtp, NULL, &errmsg);
 		}
 
 		if (supported) {
@@ -555,6 +587,7 @@ void vulkan_format_props_query(struct wlr_vk_device *dev,
 			props.shm.max_extent.height = ifmtp.maxExtent.height;
 			props.shm.features = fmtp.formatProperties.optimalTilingFeatures;
 			props.shm.has_mutable_srgb = has_mutable_srgb;
+			props.shm.host_image_copy = host_copy_optimal;
 
 			wlr_drm_format_set_add(&dev->shm_texture_formats,
 				format->drm, DRM_FORMAT_MOD_LINEAR);
