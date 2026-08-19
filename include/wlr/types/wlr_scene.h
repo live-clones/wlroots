@@ -229,6 +229,7 @@ struct wlr_scene_output {
 	struct wlr_damage_ring damage_ring;
 
 	int x, y;
+	int width, height; // zero when using output size
 
 	struct {
 		struct wl_signal destroy;
@@ -592,6 +593,16 @@ void wlr_scene_output_destroy(struct wlr_scene_output *scene_output);
  */
 void wlr_scene_output_set_position(struct wlr_scene_output *scene_output,
 	int lx, int ly);
+/**
+ * Set the output's size in the scene-graph.
+ *
+ * By default, the output's effective resolution is used. This function
+ * overrides the default, which is useful for using a scene-graph size aspect
+ * ratio different from the output resolution. Setting a zero size restores the
+ * default.
+ */
+void wlr_scene_output_set_size(struct wlr_scene_output *scene_output,
+	int width, int height);
 
 struct wlr_scene_output_state_options {
 	struct wlr_scene_timer *timer;
