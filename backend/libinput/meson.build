@@ -14,6 +14,9 @@ if not (libinput.found() and features['session'])
 	subdir_done()
 endif
 
+# libinput has a hardcoded udev dependency in its API
+wlr_deps += dependency('libudev')
+
 wlr_files += files(
 	'backend.c',
 	'events.c',

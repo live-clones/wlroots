@@ -7,6 +7,7 @@
 #include <wlr/util/log.h>
 #include "backend/libinput.h"
 #include "util/env.h"
+#include <libudev.h>
 
 static struct wlr_libinput_backend *get_libinput_backend_from_backend(
 		struct wlr_backend *wlr_backend) {
@@ -192,7 +193,7 @@ struct wlr_backend *wlr_libinput_backend_create(struct wlr_session *session) {
 	backend->session = session;
 
 	backend->libinput_context = libinput_udev_create_context(&libinput_impl,
-		backend, backend->session->udev);
+		backend, udev_new());
 	if (!backend->libinput_context) {
 		wlr_log(WLR_ERROR, "Failed to create libinput context");
 		wlr_backend_finish(&backend->backend);

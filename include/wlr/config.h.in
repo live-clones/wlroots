@@ -16,6 +16,13 @@
  */
 #mesondefine WLR_HAS_LIBINPUT_BACKEND
 /**
+ * Whether the wscons backend is compile-time enabled. Equivalent to the
+ * pkg-config "have_wscons_backend" vartiable.
+ *
+ * Required for <wlr/backend/wscons.h>.
+ */
+#mesondefine WLR_HAS_WSCONS_BACKEND
+/**
  * Whether the X11 backend is compile-time enabled. Equivalent to the
  * pkg-config "have_x11_backend" variable.
  *
