@@ -38,6 +38,7 @@ protocols = {
 	'ext-session-lock-v1': wl_protocol_dir / 'staging/ext-session-lock/ext-session-lock-v1.xml',
 	'ext-data-control-v1': wl_protocol_dir / 'staging/ext-data-control/ext-data-control-v1.xml',
 	'ext-workspace-v1': wl_protocol_dir / 'staging/ext-workspace/ext-workspace-v1.xml',
+	'fifo-v1': wl_protocol_dir / 'staging/fifo/fifo-v1.xml',
 	'fractional-scale-v1': wl_protocol_dir / 'staging/fractional-scale/fractional-scale-v1.xml',
 	'linux-drm-syncobj-v1': wl_protocol_dir / 'staging/linux-drm-syncobj/linux-drm-syncobj-v1.xml',
 	'pointer-warp-v1': wl_protocol_dir / 'staging/pointer-warp/pointer-warp-v1.xml',

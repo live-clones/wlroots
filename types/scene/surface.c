@@ -5,6 +5,7 @@
 #include <wlr/types/wlr_color_representation_v1.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_fifo_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_linux_drm_syncobj_v1.h>
 #include <wlr/types/wlr_output.h>
@@ -100,6 +101,12 @@ static void handle_scene_buffer_outputs_update(
 	// If the surface is no longer visible on any output in the scene, keep the
 	// last sent preferred configuration to avoid unnecessary redraws
 	bool suspend = event->size == 0;
+	if (suspend && surface->fifo) {
+		if (surface->fifo) {
+			wlr_fifo_v1_set_output(surface->fifo, NULL);
+		}
+		return;
+	}
 
 	// To avoid sending redundant leave/enter events when a surface is hidden and then shown
 	// without moving to a different output the following policy is implemented:
@@ -152,6 +159,9 @@ static void handle_scene_buffer_outputs_update(
 		get_surface_preferred_image_description(surface->surface, &img_desc);
 		wlr_color_manager_v1_set_surface_preferred_image_description(scene->color_manager_v1,
 			surface->surface, &img_desc);
+	}
+	if (surface->fifo) {
+		wlr_fifo_v1_set_output(surface->fifo, surface->buffer->primary_output->output);
 	}
 }
 
