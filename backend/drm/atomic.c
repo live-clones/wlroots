@@ -292,6 +292,237 @@ static uint64_t pick_max_bpc(struct wlr_drm_connector *conn, struct wlr_drm_fb *
 	return target_bpc;
 }
 
+/** Convert a double to S31.32 sign-magnitude format */
+static uint64_t to_fixed_s31_32(double v) {
+	uint64_t u = fabs(v) * ((uint64_t)1 << 32);
+	if (v < 0) {
+		u |= (uint64_t)1 << 63;
+	}
+	return u;
+}
+
+enum colorop_setup_status {
+	COLOROP_SETUP_SUCCESS,
+	COLOROP_SETUP_FAILURE,
+	COLOROP_SETUP_INCOMPATIBLE,
+};
+
+static enum colorop_setup_status setup_inverse_eotf_colorop(struct wlr_drm_backend *drm,
+		struct wlr_drm_colorop *colorop,
+		struct wlr_color_transform_inverse_eotf *inv_eotf,
+		struct wlr_drm_colorop_state *state) {
+	if (colorop->type != DRM_COLOROP_1D_CURVE) {
+		return COLOROP_SETUP_INCOMPATIBLE;
+	}
+
+	enum wlr_drm_colorop_curve_1d_type type = (uint32_t)-1;
+	switch (inv_eotf->tf) {
+	case WLR_COLOR_TRANSFER_FUNCTION_SRGB:
+		type = WLR_DRM_COLOROP_1D_CURVE_SRGB_INV_EOTF;
+		break;
+	case WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ:
+		break; // TODO: account for 125x scale
+	case WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR:
+		if (!colorop->props.bypass) {
+			return COLOROP_SETUP_INCOMPATIBLE;
+		}
+		state->bypass = true;
+		return COLOROP_SETUP_SUCCESS;
+	case WLR_COLOR_TRANSFER_FUNCTION_GAMMA22:
+		type = WLR_DRM_COLOROP_1D_CURVE_GAMMA22_INV;
+		break;
+	case WLR_COLOR_TRANSFER_FUNCTION_BT1886:
+		break; // not supported by KMS yet
+	}
+	assert(type != (uint32_t)-1);
+
+	if (!(colorop->curve_1d_types & (1 << type))) {
+		return COLOROP_SETUP_INCOMPATIBLE;
+	}
+
+	state->curve_1d_type = type;
+	return COLOROP_SETUP_SUCCESS;
+}
+
+static enum colorop_setup_status setup_matrix_colorop(struct wlr_drm_backend *drm,
+		struct wlr_drm_colorop *colorop,
+		const struct wlr_color_transform_matrix *tr_matrix,
+		struct wlr_drm_colorop_state *state) {
+	if (colorop->type != DRM_COLOROP_CTM_3X4) {
+		return COLOROP_SETUP_INCOMPATIBLE;
+	}
+	const float *matrix = tr_matrix->matrix;
+	struct drm_color_ctm_3x4 data = {
+		.matrix = {
+			to_fixed_s31_32(matrix[0]), to_fixed_s31_32(matrix[1]), to_fixed_s31_32(matrix[2]), 0,
+			to_fixed_s31_32(matrix[3]), to_fixed_s31_32(matrix[4]), to_fixed_s31_32(matrix[5]), 0,
+			to_fixed_s31_32(matrix[6]), to_fixed_s31_32(matrix[7]), to_fixed_s31_32(matrix[8]), 0,
+		},
+	};
+	uint32_t blob_id = 0;
+	if (drmModeCreatePropertyBlob(drm->fd, &data, sizeof(data), &blob_id) != 0) {
+		wlr_log_errno(WLR_ERROR, "Failed to create DATA property");
+		return COLOROP_SETUP_FAILURE;
+	}
+	state->data = blob_id;
+	return COLOROP_SETUP_SUCCESS;
+}
+
+static enum colorop_setup_status setup_lut_3x1d_colorop(struct wlr_drm_backend *drm,
+		struct wlr_drm_colorop *colorop,
+		const struct wlr_color_transform_lut_3x1d *lut_3x1d,
+		struct wlr_drm_colorop_state *state) {
+	if (colorop->type != DRM_COLOROP_1D_LUT || colorop->size != lut_3x1d->dim) {
+		return COLOROP_SETUP_INCOMPATIBLE;
+	}
+
+	size_t size = lut_3x1d->dim * sizeof(struct drm_color_lut32);
+	struct drm_color_lut32 *data = malloc(size);
+	if (data == NULL) {
+		return COLOROP_SETUP_FAILURE;
+	}
+
+	for (size_t i = 0; i < lut_3x1d->dim; i++) {
+		uint32_t factor = UINT32_MAX / UINT16_MAX;
+		data[i] = (struct drm_color_lut32){
+			.red = lut_3x1d->lut_3x1d[0 * lut_3x1d->dim + i] * factor,
+			.green = lut_3x1d->lut_3x1d[1 * lut_3x1d->dim + i] * factor,
+			.blue = lut_3x1d->lut_3x1d[2 * lut_3x1d->dim + i] * factor,
+		};
+	}
+
+	uint32_t blob_id = 0;
+	int ret = drmModeCreatePropertyBlob(drm->fd, data, size, &blob_id);
+	free(data);
+	if (ret != 0) {
+		wlr_log_errno(WLR_ERROR, "Failed to create DATA property");
+		return COLOROP_SETUP_FAILURE;
+	}
+
+	state->data = blob_id;
+	return COLOROP_SETUP_SUCCESS;
+}
+
+static enum colorop_setup_status setup_colorop(struct wlr_drm_backend *drm,
+		struct wlr_drm_colorop *colorop, struct wlr_color_transform *tr,
+		struct wlr_drm_colorop_state *state) {
+	switch (tr->type) {
+	case COLOR_TRANSFORM_INVERSE_EOTF:;
+		struct wlr_color_transform_inverse_eotf *inv_eotf =
+			wl_container_of(tr, inv_eotf, base);
+		return setup_inverse_eotf_colorop(drm, colorop, inv_eotf, state);
+	case COLOR_TRANSFORM_LCMS2:
+		return COLOROP_SETUP_INCOMPATIBLE; // TODO: setup 3D LUT
+	case COLOR_TRANSFORM_LUT_3X1D:;
+		struct wlr_color_transform_lut_3x1d *lut_3x1d =
+			wl_container_of(tr, lut_3x1d, base);
+		return setup_lut_3x1d_colorop(drm, colorop, lut_3x1d, state);
+	case COLOR_TRANSFORM_MATRIX:;
+		struct wlr_color_transform_matrix *matrix =
+			wl_container_of(tr, matrix, base);
+		return setup_matrix_colorop(drm, colorop, matrix, state);
+	case COLOR_TRANSFORM_PIPELINE:
+		break; // nested pipelines are not supported
+	}
+	return COLOROP_SETUP_INCOMPATIBLE;
+}
+
+static enum colorop_setup_status setup_color_pipeline(struct wlr_drm_backend *drm,
+		struct wl_list *pipeline, struct wlr_color_transform **transforms,
+		size_t transforms_len, struct wl_array *out_state_arr) {
+	struct wl_array state_arr = {0};
+
+	size_t i = 0;
+	struct wlr_drm_colorop *colorop;
+	wl_list_for_each(colorop, pipeline, link) {
+		struct wlr_drm_colorop_state *state = wl_array_add(&state_arr, sizeof(*state));
+		if (state == NULL) {
+			wl_array_release(&state_arr);
+			return COLOROP_SETUP_FAILURE;
+		}
+		state->colorop = colorop;
+
+		enum colorop_setup_status status = COLOROP_SETUP_INCOMPATIBLE;
+		if (i < transforms_len) {
+			status = setup_colorop(drm, colorop, transforms[i], state);
+		}
+		switch (status) {
+		case COLOROP_SETUP_SUCCESS:
+			i++;
+			break;
+		case COLOROP_SETUP_FAILURE:
+			return status;
+		case COLOROP_SETUP_INCOMPATIBLE:
+			if (!colorop->props.bypass) {
+				wl_array_release(&state_arr);
+				return COLOROP_SETUP_INCOMPATIBLE;
+			}
+			state->bypass = true;
+			break;
+		}
+	}
+
+	if (i < transforms_len) {
+		wl_array_release(&state_arr);
+		return COLOROP_SETUP_INCOMPATIBLE;
+	}
+
+	*out_state_arr = state_arr;
+	return COLOROP_SETUP_SUCCESS;
+}
+
+static bool pick_plane_color_pipeline(struct wlr_drm_backend *drm,
+		struct wlr_drm_plane *plane, struct wlr_drm_connector_state *state,
+		uint32_t *out_pipeline_id) {
+	struct wlr_color_transform *base_tr = state->base->pre_color_transform;
+	struct wlr_color_transform *tr = NULL;
+	if (!color_transform_compose(&tr, &base_tr, 1)) {
+		return false;
+	}
+
+	if (tr == NULL) {
+		*out_pipeline_id = 0;
+		return true;
+	}
+
+	struct wlr_color_transform **transforms;
+	size_t transforms_len;
+	if (tr->type == COLOR_TRANSFORM_PIPELINE) {
+		struct wlr_color_transform_pipeline *tr_pipeline =
+			wl_container_of(tr, tr_pipeline, base);
+		transforms = tr_pipeline->transforms;
+		transforms_len = tr_pipeline->len;
+	} else {
+		transforms = &tr;
+		transforms_len = 1;
+	}
+
+	for (size_t i = 0; i < plane->color_pipelines_len; i++) {
+		struct wl_list *pipeline = &plane->color_pipelines[i];
+		struct wl_array colorops = {0};
+		enum colorop_setup_status status =
+			setup_color_pipeline(drm, pipeline, transforms, transforms_len, &colorops);
+		switch (status) {
+		case COLOROP_SETUP_SUCCESS:;
+			struct wlr_drm_colorop *colorop =
+				wl_container_of(&pipeline->next, colorop, link);
+			*out_pipeline_id = colorop->id;
+			assert(state->colorops.size == 0);
+			state->colorops = colorops;
+			wlr_color_transform_unref(tr);
+			return true;
+		case COLOROP_SETUP_FAILURE:
+			wlr_color_transform_unref(tr);
+			return false;
+		case COLOROP_SETUP_INCOMPATIBLE:
+			break; // try the next pipeline
+		}
+	}
+
+	wlr_color_transform_unref(tr);
+	return false;
+}
+
 static void destroy_blob(struct wlr_drm_backend *drm, uint32_t id) {
 	if (id == 0) {
 		return;
@@ -332,12 +563,12 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	}
 
 	uint32_t gamma_lut = crtc->gamma_lut;
-	if (state->base->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) {
+	if (state->base->committed & WLR_OUTPUT_STATE_POST_COLOR_TRANSFORM) {
 		size_t dim = 0;
 		uint16_t *lut = NULL;
-		if (state->base->color_transform != NULL) {
+		if (state->base->post_color_transform != NULL) {
 			struct wlr_color_transform_lut_3x1d *tr =
-				color_transform_lut_3x1d_from_base(state->base->color_transform);
+				color_transform_lut_3x1d_from_base(state->base->post_color_transform);
 			dim = tr->dim;
 			lut = tr->lut_3x1d;
 		}
@@ -353,6 +584,13 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 			if (!create_gamma_lut_blob(drm, dim, lut, &gamma_lut)) {
 				return false;
 			}
+		}
+	}
+
+	uint32_t primary_color_pipeline = crtc->primary->color_pipeline;
+	if (state->base->committed & WLR_OUTPUT_STATE_PRE_COLOR_TRANSFORM) {
+		if (!pick_plane_color_pipeline(drm, crtc->primary, state, &primary_color_pipeline)) {
+			return false;
 		}
 	}
 
@@ -401,6 +639,7 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	state->vrr_enabled = vrr_enabled;
 	state->colorspace = colorspace;
 	state->hdr_output_metadata = hdr_output_metadata;
+	state->primary_color_pipeline = primary_color_pipeline;
 	return true;
 }
 
@@ -426,6 +665,13 @@ void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state) {
 	}
 
 	conn->colorspace = state->colorspace;
+	crtc->primary->color_pipeline = state->primary_color_pipeline;
+
+	struct wlr_drm_colorop_state *colorop_state;
+	wl_array_for_each(colorop_state, &state->colorops) {
+		commit_blob(drm, &colorop_state->colorop->data, colorop_state->data);
+	}
+	wl_array_release(&state->colorops);
 }
 
 void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state) {
@@ -441,6 +687,12 @@ void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state)
 	if (state->primary_in_fence_fd >= 0) {
 		close(state->primary_in_fence_fd);
 	}
+
+	struct wlr_drm_colorop_state *colorop_state;
+	wl_array_for_each(colorop_state, &state->colorops) {
+		destroy_blob(drm, colorop_state->data);
+	}
+	wl_array_release(&state->colorops);
 }
 
 static void plane_disable(struct atomic *atom, struct wlr_drm_plane *plane) {
@@ -596,6 +848,10 @@ static void atomic_connector_add(struct atomic *atom,
 		if (state->primary_in_fence_fd >= 0) {
 			set_plane_in_fence_fd(atom, crtc->primary, state->primary_in_fence_fd);
 		}
+		if (crtc->primary->props.color_pipeline != 0) {
+			atomic_add(atom, crtc->primary->id,
+				crtc->primary->props.color_pipeline, state->primary_color_pipeline);
+		}
 		if (crtc->cursor) {
 			if (drm_connector_is_cursor_visible(conn)) {
 				struct wlr_fbox cursor_src = {
@@ -618,6 +874,23 @@ static void atomic_connector_add(struct atomic *atom,
 				}
 			} else {
 				plane_disable(atom, crtc->cursor);
+			}
+		}
+
+		struct wlr_drm_colorop_state *colorop_state;
+		wl_array_for_each(colorop_state, &state->colorops) {
+			struct wlr_drm_colorop *colorop = colorop_state->colorop;
+			if (colorop->props.bypass != 0) {
+				atomic_add(atom, colorop->id, colorop->props.bypass,
+					colorop_state->bypass);
+			}
+			if (colorop->props.curve_1d_type != 0) {
+				atomic_add(atom, colorop->id, colorop->props.curve_1d_type,
+					colorop_state->curve_1d_type);
+			}
+			if (colorop->props.data != 0) {
+				atomic_add(atom, colorop->id, colorop->props.data,
+					colorop_state->data);
 			}
 		}
 	} else {

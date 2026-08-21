@@ -51,6 +51,7 @@ static const struct prop_info crtc_info[] = {
 static const struct prop_info plane_info[] = {
 #define INDEX(name) (offsetof(struct wlr_drm_plane_props, name) / sizeof(uint32_t))
 	{ "COLOR_ENCODING", INDEX(color_encoding) },
+	{ "COLOR_PIPELINE", INDEX(color_pipeline) },
 	{ "COLOR_RANGE", INDEX(color_range) },
 	{ "CRTC_H", INDEX(crtc_h) },
 	{ "CRTC_ID", INDEX(crtc_id) },
@@ -70,6 +71,18 @@ static const struct prop_info plane_info[] = {
 	{ "SRC_Y", INDEX(src_y) },
 	{ "rotation", INDEX(rotation) },
 	{ "type", INDEX(type) },
+#undef INDEX
+};
+
+static const struct prop_info colorop_info[] = {
+#define INDEX(name) (offsetof(struct wlr_drm_colorop_props, name) / sizeof(uint32_t))
+	{ "BYPASS", INDEX(bypass) },
+	{ "CURVE_1D_TYPE", INDEX(curve_1d_type) },
+	{ "DATA", INDEX(data) },
+	{ "MULTIPLIER", INDEX(multiplier) },
+	{ "NEXT", INDEX(next) },
+	{ "SIZE", INDEX(size) },
+	{ "TYPE", INDEX(type) },
 #undef INDEX
 };
 
@@ -121,6 +134,11 @@ bool get_drm_crtc_props(int fd, uint32_t id, struct wlr_drm_crtc_props *out) {
 bool get_drm_plane_props(int fd, uint32_t id, struct wlr_drm_plane_props *out) {
 	return scan_properties(fd, id, DRM_MODE_OBJECT_PLANE, (uint32_t *)out,
 		plane_info, sizeof(plane_info) / sizeof(plane_info[0]));
+}
+
+bool get_drm_colorop_props(int fd, uint32_t id, struct wlr_drm_colorop_props *out) {
+	return scan_properties(fd, id, DRM_MODE_OBJECT_COLOROP, (uint32_t *)out,
+		colorop_info, sizeof(colorop_info) / sizeof(colorop_info[0]));
 }
 
 bool get_drm_prop(int fd, uint32_t obj, uint32_t prop, uint64_t *ret) {
@@ -211,6 +229,28 @@ bool introspect_drm_prop_range(int fd, uint32_t prop_id,
 	}
 	if (max != NULL) {
 		*max = prop->values[1];
+	}
+
+	drmModeFreeProperty(prop);
+	return true;
+}
+
+bool introspect_drm_prop_enum(int fd, uint32_t prop_id, uint64_t *bitmask) {
+	drmModePropertyRes *prop = drmModeGetProperty(fd, prop_id);
+	if (!prop) {
+		return false;
+	}
+
+	if (drmModeGetPropertyType(prop) != DRM_MODE_PROP_ENUM) {
+		drmModeFreeProperty(prop);
+		return false;
+	}
+
+	*bitmask = 0;
+	for (int i = 0; i < prop->count_enums; i++) {
+		uint64_t value = prop->enums[i].value;
+		assert(value < 64);
+		*bitmask |= 1 << value;
 	}
 
 	drmModeFreeProperty(prop);
