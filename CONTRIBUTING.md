@@ -128,6 +128,27 @@ Note that as a project hosted on freedesktop.org, wlroots follows its
 in a respectful and civilized manner when communicating with community members
 on IRC and bug tracker.
 
+## Use of LLMs
+
+Patches written with the help of tools such as large language models (LLMs)
+aren't outright rejected as long as:
+
+- The patch author has a full understanding of the submitted code. The author
+  has carefully reviewed the output of the tool used to generate the patch.
+  Autonomously acting tools are not allowed to contribute.
+- The patch (and assorted description) is indistinguishable from one fully
+  written by a human. In particular, the submission doesn't contain huge walls
+  of unnecessary text or code.
+- The patch author agrees to the [Developer Certificate of Origin]. In
+  particular, the author certifies that they have the right to submit the patch
+  under the project's open-source license. This can be achieved by adding a
+  `Signed-off-by` trailer to the commit description.
+- The patch author discloses their use of LLMs in the description. This can be
+  achieved by adding an `Assisted-by` trailer to the commit description.
+
+The reviewer may still decide to reject the patch without further
+justification.
+
 ## Style Reference
 
 wlroots is written in C with a style similar to the [kernel style], but with a
@@ -477,3 +498,4 @@ static void subsurface_handle_surface_destroy(struct wl_listener *listener,
 [Code of Conduct]: https://www.freedesktop.org/wiki/CodeOfConduct/
 [How to Write a Git Commit Message]: https://chris.beams.io/posts/git-commit/
 [kernel style]: https://www.kernel.org/doc/Documentation/process/coding-style.rst
+[Developer Certificate of Origin]: https://developercertificate.org/
