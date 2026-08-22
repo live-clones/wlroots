@@ -893,6 +893,12 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 		return false;
 	}
 
+	if ((state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) &&
+			conn->backend->iface != &atomic_iface) {
+		wlr_log(WLR_DEBUG, "Color representation is only supported by the atomic interface");
+		return false;
+	}
+
 	if (test_only && conn->backend->mgpu_renderer.wlr_rend) {
 		// If we're running as a secondary GPU, we can't perform an atomic
 		// commit without blitting a buffer.
