@@ -134,30 +134,30 @@ static bool unwrap_color_transform(struct wlr_color_transform *transform,
 	struct wlr_color_transform_matrix *as_matrix;
 	struct wlr_color_transform_pipeline *pipeline;
 	switch (transform->type) {
-	case COLOR_TRANSFORM_INVERSE_EOTF:
+	case WLR_COLOR_TRANSFORM_INVERSE_EOTF:
 		eotf = wlr_color_transform_inverse_eotf_from_base(transform);
 		wlr_matrix_identity(matrix);
 		*tf = eotf->tf;
 		return true;
-	case COLOR_TRANSFORM_MATRIX:
-		as_matrix = wl_container_of(transform, as_matrix, base);
+	case WLR_COLOR_TRANSFORM_MATRIX:
+		as_matrix = wlr_color_transform_matrix_from_base(transform);
 		memcpy(matrix, as_matrix->matrix, sizeof(float[9]));
 		*tf = WLR_COLOR_TRANSFER_FUNCTION_EXT_LINEAR;
 		return true;
-	case COLOR_TRANSFORM_PIPELINE:
-		pipeline = wl_container_of(transform, pipeline, base);
+	case WLR_COLOR_TRANSFORM_PIPELINE:
+		pipeline = wlr_color_transform_pipeline_from_base(transform);
 		if (pipeline->len != 2
-				|| pipeline->transforms[0]->type != COLOR_TRANSFORM_MATRIX
-				|| pipeline->transforms[1]->type != COLOR_TRANSFORM_INVERSE_EOTF) {
+				|| pipeline->transforms[0]->type != WLR_COLOR_TRANSFORM_MATRIX
+				|| pipeline->transforms[1]->type != WLR_COLOR_TRANSFORM_INVERSE_EOTF) {
 			return false;
 		}
-		as_matrix = wl_container_of(pipeline->transforms[0], as_matrix, base);
+		as_matrix = wlr_color_transform_matrix_from_base(pipeline->transforms[0]);
 		eotf = wlr_color_transform_inverse_eotf_from_base(pipeline->transforms[1]);
 		memcpy(matrix, as_matrix->matrix, sizeof(float[9]));
 		*tf = eotf->tf;
 		return true;
-	case COLOR_TRANSFORM_LCMS2:
-	case COLOR_TRANSFORM_LUT_3X1D:
+	case WLR_COLOR_TRANSFORM_LCMS2:
+	case WLR_COLOR_TRANSFORM_LUT_3X1D:
 		return false;
 	}
 	return false;
@@ -1214,7 +1214,7 @@ struct wlr_vk_render_pass *vulkan_begin_render_pass(struct wlr_vk_renderer *rend
 		struct wlr_vk_render_buffer *buffer, const struct wlr_buffer_pass_options *options) {
 	uint32_t inv_eotf;
 	if (options != NULL && options->color_transform != NULL) {
-		if (options->color_transform->type == COLOR_TRANSFORM_INVERSE_EOTF) {
+		if (options->color_transform->type == WLR_COLOR_TRANSFORM_INVERSE_EOTF) {
 			struct wlr_color_transform_inverse_eotf *tr =
 				wlr_color_transform_inverse_eotf_from_base(options->color_transform);
 			inv_eotf = tr->tf;
