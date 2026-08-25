@@ -10,10 +10,12 @@
 #include "types/wlr_output.h"
 #include "types/wlr_scene.h"
 
-struct scene_node_source {
+struct scene_source_interface;
+
+struct scene_source {
 	struct wlr_ext_image_capture_source_v1 base;
 
-	struct wlr_scene_node *node;
+	const struct scene_source_interface *impl;
 
 	struct wlr_backend backend;
 	struct wlr_output output;
@@ -21,9 +23,12 @@ struct scene_node_source {
 
 	size_t num_started;
 
-	struct wl_listener node_destroy;
 	struct wl_listener scene_output_destroy;
 	struct wl_listener output_frame;
+};
+
+struct scene_source_interface {
+	void (*get_extents)(const struct scene_source *source, struct wlr_box *extents);
 };
 
 struct scene_node_source_frame_event {
@@ -75,11 +80,11 @@ static void get_scene_node_extents(struct wlr_scene_node *node, struct wlr_box *
 	box->height = y_max - box->y;
 }
 
-static void source_render(struct scene_node_source *source) {
+static void source_render(struct scene_source *source) {
 	struct wlr_scene_output *scene_output = source->scene_output;
 
 	struct wlr_box extents;
-	get_scene_node_extents(source->node, &extents);
+	source->impl->get_extents(source, &extents);
 
 	if (extents.width == 0 || extents.height == 0) {
 		return;
@@ -102,7 +107,7 @@ static void source_render(struct scene_node_source *source) {
 }
 
 static void source_start(struct wlr_ext_image_capture_source_v1 *base, bool with_cursors) {
-	struct scene_node_source *source = wl_container_of(base, source, base);
+	struct scene_source *source = wl_container_of(base, source, base);
 
 	source->num_started++;
 	if (source->num_started > 1) {
@@ -117,7 +122,7 @@ static void source_start(struct wlr_ext_image_capture_source_v1 *base, bool with
 }
 
 static void source_stop(struct wlr_ext_image_capture_source_v1 *base) {
-	struct scene_node_source *source = wl_container_of(base, source, base);
+	struct scene_source *source = wl_container_of(base, source, base);
 
 	source->num_started--;
 	if (source->num_started > 0) {
@@ -133,7 +138,7 @@ static void source_stop(struct wlr_ext_image_capture_source_v1 *base) {
 
 static void source_request_frame(struct wlr_ext_image_capture_source_v1 *base,
 		bool schedule_frame) {
-	struct scene_node_source *source = wl_container_of(base, source, base);
+	struct scene_source *source = wl_container_of(base, source, base);
 	if (source->output.frame_pending) {
 		wlr_output_send_frame(&source->output);
 	}
@@ -145,7 +150,7 @@ static void source_request_frame(struct wlr_ext_image_capture_source_v1 *base,
 static void source_copy_frame(struct wlr_ext_image_capture_source_v1 *base,
 		struct wlr_ext_image_copy_capture_frame_v1 *frame,
 		struct wlr_ext_image_capture_source_v1_frame_event *base_event) {
-	struct scene_node_source *source = wl_container_of(base, source, base);
+	struct scene_source *source = wl_container_of(base, source, base);
 	struct scene_node_source_frame_event *event = wl_container_of(base_event, event, base);
 
 	if (wlr_ext_image_copy_capture_frame_v1_copy_buffer(frame,
@@ -164,7 +169,7 @@ static const struct wlr_ext_image_capture_source_v1_interface source_impl = {
 
 static const struct wlr_backend_impl backend_impl = {0};
 
-static void source_update_buffer_constraints(struct scene_node_source *source,
+static void source_update_buffer_constraints(struct scene_source *source,
 		const struct wlr_output_state *state) {
 	struct wlr_output *output = &source->output;
 
@@ -207,7 +212,7 @@ static bool output_test(struct wlr_output *output, const struct wlr_output_state
 }
 
 static bool output_commit(struct wlr_output *output, const struct wlr_output_state *state) {
-	struct scene_node_source *source = wl_container_of(output, source, output);
+	struct scene_source *source = wl_container_of(output, source, output);
 
 	if ((state->committed & WLR_OUTPUT_STATE_ENABLED) && !state->enabled) {
 		return true;
@@ -254,31 +259,24 @@ static const struct wlr_output_impl output_impl = {
 	.commit = output_commit,
 };
 
-static void source_destroy(struct scene_node_source *source) {
-	wl_list_remove(&source->node_destroy.link);
+static void source_finish(struct scene_source *source) {
 	wl_list_remove(&source->scene_output_destroy.link);
 	wl_list_remove(&source->output_frame.link);
 	wlr_ext_image_capture_source_v1_finish(&source->base);
 	wlr_scene_output_destroy(source->scene_output);
 	wlr_output_finish(&source->output);
 	wlr_backend_finish(&source->backend);
-	free(source);
-}
-
-static void source_handle_node_destroy(struct wl_listener *listener, void *data) {
-	struct scene_node_source *source = wl_container_of(listener, source, node_destroy);
-	source_destroy(source);
 }
 
 static void source_handle_scene_output_destroy(struct wl_listener *listener, void *data) {
-	struct scene_node_source *source = wl_container_of(listener, source, scene_output_destroy);
+	struct scene_source *source = wl_container_of(listener, source, scene_output_destroy);
 	source->scene_output = NULL;
 	wl_list_remove(&source->scene_output_destroy.link);
 	wl_list_init(&source->scene_output_destroy.link);
 }
 
 static void source_handle_output_frame(struct wl_listener *listener, void *data) {
-	struct scene_node_source *source = wl_container_of(listener, source, output_frame);
+	struct scene_source *source = wl_container_of(listener, source, output_frame);
 	if (source->scene_output == NULL) {
 		return;
 	}
@@ -297,16 +295,9 @@ static void source_handle_output_frame(struct wl_listener *listener, void *data)
 	wlr_scene_output_send_frame_done(source->scene_output, &now);
 }
 
-struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_node(
-		struct wlr_scene_node *node, struct wl_event_loop *event_loop,
-		struct wlr_allocator *allocator, struct wlr_renderer *renderer) {
-	struct scene_node_source *source = calloc(1, sizeof(*source));
-	if (source == NULL) {
-		return NULL;
-	}
-
-	source->node = node;
-
+static void source_init(struct scene_source *source, struct wlr_scene *scene,
+		struct wl_event_loop *event_loop, struct wlr_allocator *allocator,
+		struct wlr_renderer *renderer) {
 	wlr_ext_image_capture_source_v1_init(&source->base, &source_impl);
 
 	wlr_backend_init(&source->backend, &backend_impl);
@@ -321,17 +312,56 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 
 	wlr_output_init_render(&source->output, allocator, renderer);
 
-	struct wlr_scene *scene = scene_node_get_root(node);
 	source->scene_output = wlr_scene_output_create(scene, &source->output);
-
-	source->node_destroy.notify = source_handle_node_destroy;
-	wl_signal_add(&node->events.destroy, &source->node_destroy);
 
 	source->scene_output_destroy.notify = source_handle_scene_output_destroy;
 	wl_signal_add(&source->scene_output->events.destroy, &source->scene_output_destroy);
 
 	source->output_frame.notify = source_handle_output_frame;
 	wl_signal_add(&source->output.events.frame, &source->output_frame);
+}
 
-	return &source->base;
+struct scene_node_source {
+	struct scene_source base;
+	struct wlr_scene_node *node;
+
+	struct wl_listener node_destroy;
+};
+
+static void scene_node_source_get_extents(const struct scene_source *source,
+		struct wlr_box *extents) {
+	struct scene_node_source *node_source = wl_container_of(source, node_source, base);
+	get_scene_node_extents(node_source->node, extents);
+}
+
+static struct scene_source_interface scene_node_source_impl = {
+	.get_extents = scene_node_source_get_extents,
+};
+
+static void node_source_handle_node_destroy(struct wl_listener *listener, void *data) {
+	struct scene_node_source *source = wl_container_of(listener, source, node_destroy);
+	wl_list_remove(&source->node_destroy.link);
+	source_finish(&source->base);
+	free(source);
+}
+
+struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_node(
+		struct wlr_scene_node *node, struct wl_event_loop *event_loop,
+		struct wlr_allocator *allocator, struct wlr_renderer *renderer) {
+	struct scene_node_source *source = calloc(1, sizeof(*source));
+	if (source == NULL) {
+		return NULL;
+	}
+
+	struct wlr_scene *scene = scene_node_get_root(node);
+
+	source_init(&source->base, scene, event_loop, allocator, renderer);
+	source->base.impl = &scene_node_source_impl;
+
+	source->node = node;
+
+	source->node_destroy.notify = node_source_handle_node_destroy;
+	wl_signal_add(&node->events.destroy, &source->node_destroy);
+
+	return &source->base.base;
 }
