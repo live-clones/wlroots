@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
+#include <wlr/util/addon.h>
 
 /**
  * Well-known color primaries.
@@ -105,6 +106,17 @@ struct wlr_color_luminances {
 };
 
 /**
+ * The representation used by a color transform.
+ */
+enum wlr_color_transform_type {
+	WLR_COLOR_TRANSFORM_INVERSE_EOTF,
+	WLR_COLOR_TRANSFORM_LCMS2,
+	WLR_COLOR_TRANSFORM_LUT_3X1D,
+	WLR_COLOR_TRANSFORM_MATRIX,
+	WLR_COLOR_TRANSFORM_PIPELINE,
+};
+
+/**
  * A color transformation formula, which maps a linear color space with
  * sRGB primaries to an output color space.
  *
@@ -116,9 +128,83 @@ struct wlr_color_luminances {
  * and this API provides no functions to modify them after creation.
  *
  * This formula may be implemented using a 3d look-up table, or some other
- * means.
+ * means. Renderer implementations may inspect the type and the corresponding
+ * concrete transform structure below.
  */
-struct wlr_color_transform;
+struct wlr_color_transform {
+	enum wlr_color_transform_type type;
+
+	struct {
+		int ref_count;
+		struct wlr_addon_set addons; // per-renderer helper state
+	} WLR_PRIVATE;
+};
+
+struct wlr_color_transform_inverse_eotf {
+	struct wlr_color_transform base;
+
+	enum wlr_color_transfer_function tf;
+};
+
+/**
+ * The formula is approximated via three 1D look-up tables. The flat lut_3x1d
+ * array has a length of 3 * dim.
+ *
+ * The offset of a color value for a given channel and color index is:
+ *
+ *     offset = channel_index * dim + color_index
+ */
+struct wlr_color_transform_lut_3x1d {
+	struct wlr_color_transform base;
+
+	uint16_t *lut_3x1d;
+	size_t dim;
+};
+
+struct wlr_color_transform_matrix {
+	struct wlr_color_transform base;
+
+	float matrix[9];
+};
+
+struct wlr_color_transform_pipeline {
+	struct wlr_color_transform base;
+
+	struct wlr_color_transform **transforms;
+	size_t len;
+};
+
+/**
+ * Get a struct wlr_color_transform_inverse_eotf from a generic
+ * struct wlr_color_transform. Asserts that the base type is
+ * WLR_COLOR_TRANSFORM_INVERSE_EOTF.
+ */
+struct wlr_color_transform_inverse_eotf *wlr_color_transform_inverse_eotf_from_base(
+	struct wlr_color_transform *tr);
+
+/**
+ * Get a struct wlr_color_transform_lut_3x1d from a generic
+ * struct wlr_color_transform. Asserts that the base type is
+ * WLR_COLOR_TRANSFORM_LUT_3X1D.
+ */
+struct wlr_color_transform_lut_3x1d *wlr_color_transform_lut_3x1d_from_base(
+	struct wlr_color_transform *tr);
+
+/**
+ * Get a struct wlr_color_transform_matrix from a generic
+ * struct wlr_color_transform. Asserts that the base type is
+ * WLR_COLOR_TRANSFORM_MATRIX.
+ */
+struct wlr_color_transform_matrix *wlr_color_transform_matrix_from_base(
+	struct wlr_color_transform *tr);
+
+/**
+ * Get a struct wlr_color_transform_pipeline from a generic
+ * struct wlr_color_transform. Asserts that the base type is
+ * WLR_COLOR_TRANSFORM_PIPELINE.
+ */
+struct wlr_color_transform_pipeline *wlr_color_transform_pipeline_from_base(
+	struct wlr_color_transform *tr);
 
 /**
  * Initialize a color transformation to convert linear

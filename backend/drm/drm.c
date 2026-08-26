@@ -881,7 +881,7 @@ static bool drm_connector_prepare(struct wlr_drm_connector_state *conn_state, bo
 	}
 
 	if ((state->committed & WLR_OUTPUT_STATE_COLOR_TRANSFORM) && state->color_transform != NULL &&
-			state->color_transform->type != COLOR_TRANSFORM_LUT_3X1D) {
+			state->color_transform->type != WLR_COLOR_TRANSFORM_LUT_3X1D) {
 		wlr_drm_conn_log(conn, WLR_DEBUG,
 			"Only 3x1D LUT color transforms are supported");
 		return false;

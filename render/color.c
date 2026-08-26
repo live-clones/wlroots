@@ -35,7 +35,7 @@ struct wlr_color_transform *wlr_color_transform_init_linear_to_inverse_eotf(
 	if (!tx) {
 		return NULL;
 	}
-	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_INVERSE_EOTF);
+	wlr_color_transform_init(&tx->base, WLR_COLOR_TRANSFORM_INVERSE_EOTF);
 	tx->tf = tf;
 	return &tx->base;
 }
@@ -56,7 +56,7 @@ struct wlr_color_transform *wlr_color_transform_init_lut_3x1d(size_t dim,
 		free(lut_3x1d);
 		return NULL;
 	}
-	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_LUT_3X1D);
+	wlr_color_transform_init(&tx->base, WLR_COLOR_TRANSFORM_LUT_3X1D);
 	tx->lut_3x1d = lut_3x1d;
 	tx->dim = dim;
 	return &tx->base;
@@ -67,7 +67,7 @@ struct wlr_color_transform *wlr_color_transform_init_matrix(const float matrix[s
 	if (!tx) {
 		return NULL;
 	}
-	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_MATRIX);
+	wlr_color_transform_init(&tx->base, WLR_COLOR_TRANSFORM_MATRIX);
 	memcpy(tx->matrix, matrix, sizeof(tx->matrix));
 	return &tx->base;
 }
@@ -86,7 +86,7 @@ struct wlr_color_transform *wlr_color_transform_init_pipeline(
 		free(copy);
 		return NULL;
 	}
-	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_PIPELINE);
+	wlr_color_transform_init(&tx->base, WLR_COLOR_TRANSFORM_PIPELINE);
 
 	for (size_t i = 0; i < len; i++) {
 		assert(transforms[i] != NULL);
@@ -101,19 +101,20 @@ struct wlr_color_transform *wlr_color_transform_init_pipeline(
 
 static void color_transform_destroy(struct wlr_color_transform *tr) {
 	switch (tr->type) {
-	case COLOR_TRANSFORM_INVERSE_EOTF:
-	case COLOR_TRANSFORM_MATRIX:
+	case WLR_COLOR_TRANSFORM_INVERSE_EOTF:
+	case WLR_COLOR_TRANSFORM_MATRIX:
 		break;
-	case COLOR_TRANSFORM_LCMS2:
+	case WLR_COLOR_TRANSFORM_LCMS2:
 		color_transform_lcms2_finish(color_transform_lcms2_from_base(tr));
 		break;
-	case COLOR_TRANSFORM_LUT_3X1D:;
-		struct wlr_color_transform_lut_3x1d *lut_3x1d = color_transform_lut_3x1d_from_base(tr);
+	case WLR_COLOR_TRANSFORM_LUT_3X1D:;
+		struct wlr_color_transform_lut_3x1d *lut_3x1d =
+			wlr_color_transform_lut_3x1d_from_base(tr);
 		free(lut_3x1d->lut_3x1d);
 		break;
-	case COLOR_TRANSFORM_PIPELINE:;
+	case WLR_COLOR_TRANSFORM_PIPELINE:;
 		struct wlr_color_transform_pipeline *pipeline =
-			wl_container_of(tr, pipeline, base);
+			wlr_color_transform_pipeline_from_base(tr);
 		for (size_t i = 0; i < pipeline->len; i++) {
 			wlr_color_transform_unref(pipeline->transforms[i]);
 		}
@@ -142,16 +143,30 @@ void wlr_color_transform_unref(struct wlr_color_transform *tr) {
 
 struct wlr_color_transform_inverse_eotf *wlr_color_transform_inverse_eotf_from_base(
 		struct wlr_color_transform *tr) {
-	assert(tr->type == COLOR_TRANSFORM_INVERSE_EOTF);
+	assert(tr->type == WLR_COLOR_TRANSFORM_INVERSE_EOTF);
 	struct wlr_color_transform_inverse_eotf *inverse_eotf = wl_container_of(tr, inverse_eotf, base);
 	return inverse_eotf;
 }
 
-struct wlr_color_transform_lut_3x1d *color_transform_lut_3x1d_from_base(
+struct wlr_color_transform_lut_3x1d *wlr_color_transform_lut_3x1d_from_base(
 		struct wlr_color_transform *tr) {
-	assert(tr->type == COLOR_TRANSFORM_LUT_3X1D);
+	assert(tr->type == WLR_COLOR_TRANSFORM_LUT_3X1D);
 	struct wlr_color_transform_lut_3x1d *lut_3x1d = wl_container_of(tr, lut_3x1d, base);
 	return lut_3x1d;
+}
+
+struct wlr_color_transform_matrix *wlr_color_transform_matrix_from_base(
+		struct wlr_color_transform *tr) {
+	assert(tr->type == WLR_COLOR_TRANSFORM_MATRIX);
+	struct wlr_color_transform_matrix *matrix = wl_container_of(tr, matrix, base);
+	return matrix;
+}
+
+struct wlr_color_transform_pipeline *wlr_color_transform_pipeline_from_base(
+		struct wlr_color_transform *tr) {
+	assert(tr->type == WLR_COLOR_TRANSFORM_PIPELINE);
+	struct wlr_color_transform_pipeline *pipeline = wl_container_of(tr, pipeline, base);
+	return pipeline;
 }
 
 static float srgb_eval_inverse_eotf(float x) {
@@ -242,22 +257,23 @@ static void multiply_matrix_vector(float out[static 3], float m[static 9], const
 void wlr_color_transform_eval(struct wlr_color_transform *tr,
 		float out[static 3], const float in[static 3]) {
 	switch (tr->type) {
-	case COLOR_TRANSFORM_INVERSE_EOTF:
+	case WLR_COLOR_TRANSFORM_INVERSE_EOTF:
 		color_transform_inverse_eotf_eval(wlr_color_transform_inverse_eotf_from_base(tr), out, in);
 		break;
-	case COLOR_TRANSFORM_LCMS2:
+	case WLR_COLOR_TRANSFORM_LCMS2:
 		color_transform_lcms2_eval(color_transform_lcms2_from_base(tr), out, in);
 		break;
-	case COLOR_TRANSFORM_LUT_3X1D:
-		color_transform_lut_3x1d_eval(color_transform_lut_3x1d_from_base(tr), out, in);
+	case WLR_COLOR_TRANSFORM_LUT_3X1D:
+		color_transform_lut_3x1d_eval(wlr_color_transform_lut_3x1d_from_base(tr), out, in);
 		break;
-	case COLOR_TRANSFORM_MATRIX:;
-		struct wlr_color_transform_matrix *matrix = wl_container_of(tr, matrix, base);
+	case WLR_COLOR_TRANSFORM_MATRIX:;
+		struct wlr_color_transform_matrix *matrix =
+			wlr_color_transform_matrix_from_base(tr);
 		multiply_matrix_vector(out, matrix->matrix, in);
 		break;
-	case COLOR_TRANSFORM_PIPELINE:;
+	case WLR_COLOR_TRANSFORM_PIPELINE:;
 		struct wlr_color_transform_pipeline *pipeline =
-			wl_container_of(tr, pipeline, base);
+			wlr_color_transform_pipeline_from_base(tr);
 		float color[3];
 		memcpy(color, in, sizeof(color));
 		for (size_t i = 0; i < pipeline->len; i++) {
@@ -277,9 +293,9 @@ static size_t color_transform_compose_collect(struct wlr_color_transform **out,
 			continue;
 		}
 
-		if (transform->type == COLOR_TRANSFORM_PIPELINE) {
-			struct wlr_color_transform_pipeline *pipeline = wl_container_of(transform,
-				pipeline, base);
+		if (transform->type == WLR_COLOR_TRANSFORM_PIPELINE) {
+			struct wlr_color_transform_pipeline *pipeline =
+				wlr_color_transform_pipeline_from_base(transform);
 			count += color_transform_compose_collect(out, out_capacity,
 				pipeline->transforms, pipeline->len);
 		} else {

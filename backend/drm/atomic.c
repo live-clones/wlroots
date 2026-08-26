@@ -337,7 +337,7 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 		uint16_t *lut = NULL;
 		if (state->base->color_transform != NULL) {
 			struct wlr_color_transform_lut_3x1d *tr =
-				color_transform_lut_3x1d_from_base(state->base->color_transform);
+				wlr_color_transform_lut_3x1d_from_base(state->base->color_transform);
 			dim = tr->dim;
 			lut = tr->lut_3x1d;
 		}

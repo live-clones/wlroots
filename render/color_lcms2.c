@@ -81,7 +81,7 @@ struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
 		cmsDeleteTransform(lcms_tr);
 		goto error_ctx;
 	}
-	wlr_color_transform_init(&tx->base, COLOR_TRANSFORM_LCMS2);
+	wlr_color_transform_init(&tx->base, WLR_COLOR_TRANSFORM_LCMS2);
 
 	tx->ctx = ctx;
 	tx->lcms = lcms_tr;
@@ -102,7 +102,7 @@ void color_transform_lcms2_finish(struct wlr_color_transform_lcms2 *tr) {
 
 struct wlr_color_transform_lcms2 *color_transform_lcms2_from_base(
 		struct wlr_color_transform *tr) {
-	assert(tr->type == COLOR_TRANSFORM_LCMS2);
+	assert(tr->type == WLR_COLOR_TRANSFORM_LCMS2);
 	struct wlr_color_transform_lcms2 *lcms2 = wl_container_of(tr, lcms2, base);
 	return lcms2;
 }
