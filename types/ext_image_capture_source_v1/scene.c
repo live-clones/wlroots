@@ -5,6 +5,7 @@
 #include <wlr/interfaces/wlr_ext_image_capture_source_v1.h>
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/types/wlr_ext_image_copy_capture_v1.h>
+#include <wlr/types/wlr_output_layout.h>
 #include <wlr/util/log.h>
 
 #include "types/wlr_output.h"
@@ -362,6 +363,67 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 
 	source->node_destroy.notify = node_source_handle_node_destroy;
 	wl_signal_add(&node->events.destroy, &source->node_destroy);
+
+	return &source->base.base;
+}
+
+struct scene_output_source {
+	struct scene_source base;
+
+	struct wlr_output *ref_output;
+	struct wlr_output_layout *ref_output_layout;
+
+	struct wl_listener ref_output_destroy;
+	struct wl_listener ref_output_layout_destroy;
+};
+
+static void scene_output_source_get_extents(const struct scene_source *source,
+		struct wlr_box *extents) {
+	struct scene_output_source *output_source = wl_container_of(source, output_source, base);
+	wlr_output_layout_get_box(output_source->ref_output_layout, output_source->ref_output, extents);
+}
+
+static struct scene_source_interface scene_output_source_impl = {
+	.get_extents = scene_output_source_get_extents,
+};
+
+static void output_source_destroy(struct scene_output_source *source) {
+	wl_list_remove(&source->ref_output_destroy.link);
+	wl_list_remove(&source->ref_output_layout_destroy.link);
+	source_finish(&source->base);
+	free(source);
+}
+
+static void output_source_handle_ref_output_destroy(struct wl_listener *listener, void *data) {
+	struct scene_output_source *source = wl_container_of(listener, source, ref_output_destroy);
+	output_source_destroy(source);
+}
+
+static void output_source_handle_ref_output_layout_destroy(struct wl_listener *listener, void *data) {
+	struct scene_output_source *source = wl_container_of(listener, source, ref_output_layout_destroy);
+	output_source_destroy(source);
+}
+
+struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_output(
+		struct wlr_scene *scene, struct wlr_output *reference_output,
+		struct wlr_output_layout *layout) {
+	struct scene_output_source *source = calloc(1, sizeof(*source));
+	if (source == NULL) {
+		return NULL;
+	}
+
+	source_init(&source->base, scene, reference_output->event_loop,
+		reference_output->allocator, reference_output->renderer);
+	source->base.impl = &scene_output_source_impl;
+
+	source->ref_output = reference_output;
+	source->ref_output_layout = layout;
+
+	source->ref_output_destroy.notify = output_source_handle_ref_output_destroy;
+	wl_signal_add(&reference_output->events.destroy, &source->ref_output_destroy);
+
+	source->ref_output_layout_destroy.notify = output_source_handle_ref_output_layout_destroy;
+	wl_signal_add(&layout->events.destroy, &source->ref_output_layout_destroy);
 
 	return &source->base.base;
 }
