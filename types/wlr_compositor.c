@@ -1138,6 +1138,18 @@ void wlr_surface_send_frame_done(struct wlr_surface *surface,
 	}
 }
 
+struct wlr_output *wlr_surface_get_frame_pacing_output(struct wlr_surface *surface) {
+	struct wlr_output *frame_pacing_output = NULL;
+	struct wlr_surface_output *surface_output;
+	wl_list_for_each(surface_output, &surface->current_outputs, link) {
+		if (!surface_output->suspended && (frame_pacing_output == NULL ||
+				surface_output->output->refresh > frame_pacing_output->refresh)) {
+			frame_pacing_output = surface_output->output;
+		}
+	}
+	return frame_pacing_output;
+}
+
 static void surface_for_each_surface(struct wlr_surface *surface, int x, int y,
 		wlr_surface_iterator_func_t iterator, void *user_data) {
 	struct wlr_subsurface *subsurface;
