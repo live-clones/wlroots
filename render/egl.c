@@ -541,6 +541,9 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
 	drmFreeDevice(&selected_drm_device);
 	free(devices);
 
+	if (egl_device == EGL_NO_DEVICE_EXT) {
+		wlr_log(WLR_DEBUG, "No matching EGL device found");
+	}
 	return egl_device;
 }
 
