@@ -39,7 +39,7 @@
     interface version number is reset.
   </description>
 
-  <interface name="zwlr_output_manager_v1" version="4">
+  <interface name="zwlr_output_manager_v1" version="5">
     <description summary="output device configuration manager">
       This interface is a manager that allows reading and writing the current
       output device configuration.
@@ -125,7 +125,7 @@
     </event>
   </interface>
 
-  <interface name="zwlr_output_head_v1" version="4">
+  <interface name="zwlr_output_head_v1" version="5">
     <description summary="output device">
       A head is an output device. The difference between a wl_output object and
       a head is that heads are advertised even if they are turned off. A head
@@ -364,6 +364,27 @@
       </description>
       <arg name="state" type="uint" enum="adaptive_sync_state"/>
     </event>
+
+    <!-- Version 5 additions -->
+
+    <enum name="feature" since="5" bitfield="true">
+      <description summary="head features">
+        These flags describe optional features supported by the head.
+      </description>
+      <entry name="adaptive_sync" value="1"
+        summary="adaptive sync can be enabled"/>
+    </enum>
+
+    <event name="features" since="5">
+      <description summary="supported features">
+        This event describes optional features supported by the head.
+
+        The set of supported features may change over the lifetime of the head.
+        For instance, it might depend on the currently connected display or
+        backend capabilities.
+      </description>
+      <arg name="features" type="uint" enum="feature"/>
+    </event>
   </interface>
 
   <interface name="zwlr_output_mode_v1" version="3">
@@ -421,7 +442,7 @@
     </request>
   </interface>
 
-  <interface name="zwlr_output_configuration_v1" version="4">
+  <interface name="zwlr_output_configuration_v1" version="5">
     <description summary="output configuration">
       This object is used by the client to describe a full output configuration.
 
@@ -539,7 +560,7 @@
     </request>
   </interface>
 
-  <interface name="zwlr_output_configuration_head_v1" version="4">
+  <interface name="zwlr_output_configuration_head_v1" version="5">
     <description summary="head configuration">
       This object is used by the client to update a single head's configuration.
 

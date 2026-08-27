@@ -59,6 +59,7 @@ struct wlr_output_head_v1_state {
 	enum wl_output_transform transform;
 	float scale;
 	bool adaptive_sync_enabled;
+	uint32_t features;
 };
 
 struct wlr_output_head_v1 {

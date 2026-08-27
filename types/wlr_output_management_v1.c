@@ -6,7 +6,7 @@
 #include <wlr/util/log.h>
 #include "wlr-output-management-unstable-v1-protocol.h"
 
-#define OUTPUT_MANAGER_VERSION 4
+#define OUTPUT_MANAGER_VERSION 5
 
 enum {
 	HEAD_STATE_ENABLED = 1 << 0,
@@ -15,11 +15,12 @@ enum {
 	HEAD_STATE_TRANSFORM = 1 << 3,
 	HEAD_STATE_SCALE = 1 << 4,
 	HEAD_STATE_ADAPTIVE_SYNC = 1 << 5,
+	HEAD_STATE_FEATURES = 1 << 6,
 };
 
 static const uint32_t HEAD_STATE_ALL = HEAD_STATE_ENABLED | HEAD_STATE_MODE |
 	HEAD_STATE_POSITION | HEAD_STATE_TRANSFORM | HEAD_STATE_SCALE |
-	HEAD_STATE_ADAPTIVE_SYNC;
+	HEAD_STATE_ADAPTIVE_SYNC | HEAD_STATE_FEATURES;
 
 static const struct zwlr_output_head_v1_interface head_impl;
 
@@ -162,6 +163,9 @@ struct wlr_output_configuration_head_v1 *
 	config_head->state.scale = output->scale;
 	config_head->state.adaptive_sync_enabled =
 		output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
+	if (output->adaptive_sync_supported) {
+		config_head->state.features |= ZWLR_OUTPUT_HEAD_V1_FEATURE_ADAPTIVE_SYNC;
+	}
 	return config_head;
 }
 
@@ -760,6 +764,13 @@ static void head_send_state(struct wlr_output_head_v1 *head,
 		state = HEAD_STATE_ALL;
 	}
 
+	if ((state & HEAD_STATE_FEATURES) &&
+			wl_resource_get_version(head_resource) >=
+			ZWLR_OUTPUT_HEAD_V1_FEATURES_SINCE_VERSION) {
+		zwlr_output_head_v1_send_features(head_resource,
+			head->state.features);
+	}
+
 	if (!head->state.enabled) {
 		return;
 	}
@@ -910,6 +921,9 @@ static bool manager_update_head(struct wlr_output_manager_v1 *manager,
 	}
 	if (current->adaptive_sync_enabled != next->adaptive_sync_enabled) {
 		state |= HEAD_STATE_ADAPTIVE_SYNC;
+	}
+	if (current->features != next->features) {
+		state |= HEAD_STATE_FEATURES;
 	}
 
 	// If  a mode was added to wlr_output.modes we need to add the new mode
