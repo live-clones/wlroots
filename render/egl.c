@@ -477,6 +477,10 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
 		wlr_log(WLR_ERROR, "Failed to query EGL devices");
 		return EGL_NO_DEVICE_EXT;
 	}
+	if (nb_devices == 0) {
+		wlr_log(WLR_DEBUG, "No EGL device found");
+		return EGL_NO_DEVICE_EXT;
+	}
 
 	EGLDeviceEXT *devices = calloc(nb_devices, sizeof(*devices));
 	if (devices == NULL) {
