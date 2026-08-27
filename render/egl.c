@@ -504,7 +504,7 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
 		}
 	}
 
-	EGLDeviceEXT egl_device = NULL;
+	EGLDeviceEXT egl_device = EGL_NO_DEVICE_EXT;
 	for (int i = 0; i < nb_devices; i++) {
 		const char *device_exts_str = egl->procs.eglQueryDeviceStringEXT(devices[i], EGL_EXTENSIONS);
 		if (device_exts_str == NULL) {
