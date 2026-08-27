@@ -23,13 +23,14 @@ struct scene_source {
 	struct wlr_scene_output *scene_output;
 
 	size_t num_started;
+	bool with_cursors;
 
 	struct wl_listener scene_output_destroy;
 	struct wl_listener output_frame;
 };
 
 struct scene_source_interface {
-	void (*get_extents)(const struct scene_source *source, struct wlr_box *extents);
+	void (*update_extents)(struct scene_source *source, struct wlr_box *extents);
 };
 
 struct scene_node_source_frame_event {
@@ -85,7 +86,7 @@ static void source_render(struct scene_source *source) {
 	struct wlr_scene_output *scene_output = source->scene_output;
 
 	struct wlr_box extents;
-	source->impl->get_extents(source, &extents);
+	source->impl->update_extents(source, &extents);
 
 	if (extents.width == 0 || extents.height == 0) {
 		return;
@@ -115,6 +116,8 @@ static void source_start(struct wlr_ext_image_capture_source_v1 *base, bool with
 		return;
 	}
 
+	source->with_cursors = with_cursors;
+
 	source_render(source);
 
 	struct timespec now;
@@ -128,6 +131,12 @@ static void source_stop(struct wlr_ext_image_capture_source_v1 *base) {
 	source->num_started--;
 	if (source->num_started > 0) {
 		return;
+	}
+
+	if (source->with_cursors) {
+		source->with_cursors = false;
+		struct wlr_box extents;
+		source->impl->update_extents(source, &extents);
 	}
 
 	struct wlr_output_state state;
@@ -329,14 +338,14 @@ struct scene_node_source {
 	struct wl_listener node_destroy;
 };
 
-static void scene_node_source_get_extents(const struct scene_source *source,
+static void scene_node_source_update_extents(struct scene_source *source,
 		struct wlr_box *extents) {
 	struct scene_node_source *node_source = wl_container_of(source, node_source, base);
 	get_scene_node_extents(node_source->node, extents);
 }
 
 static struct scene_source_interface scene_node_source_impl = {
-	.get_extents = scene_node_source_get_extents,
+	.update_extents = scene_node_source_update_extents,
 };
 
 static void node_source_handle_node_destroy(struct wl_listener *listener, void *data) {
@@ -377,14 +386,21 @@ struct scene_output_source {
 	struct wl_listener ref_output_layout_destroy;
 };
 
-static void scene_output_source_get_extents(const struct scene_source *source,
+static void scene_output_source_update_extents(struct scene_source *source,
 		struct wlr_box *extents) {
 	struct scene_output_source *output_source = wl_container_of(source, output_source, base);
 	wlr_output_layout_get_box(output_source->ref_output_layout, output_source->ref_output, extents);
+
+	if (source->with_cursors) {
+		wlr_output_layout_add(output_source->ref_output_layout,
+			&output_source->base.output, extents->x, extents->y);
+	} else {
+		wlr_output_layout_remove(output_source->ref_output_layout, &output_source->base.output);
+	}
 }
 
 static struct scene_source_interface scene_output_source_impl = {
-	.get_extents = scene_output_source_get_extents,
+	.update_extents = scene_output_source_update_extents,
 };
 
 static void output_source_destroy(struct scene_output_source *source) {
