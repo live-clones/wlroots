@@ -477,6 +477,10 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
 		wlr_log(WLR_ERROR, "Failed to query EGL devices");
 		return EGL_NO_DEVICE_EXT;
 	}
+	if (nb_devices == 0) {
+		wlr_log(WLR_DEBUG, "No EGL device found");
+		return EGL_NO_DEVICE_EXT;
+	}
 
 	EGLDeviceEXT *devices = calloc(nb_devices, sizeof(*devices));
 	if (devices == NULL) {
@@ -500,7 +504,7 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
 		}
 	}
 
-	EGLDeviceEXT egl_device = NULL;
+	EGLDeviceEXT egl_device = EGL_NO_DEVICE_EXT;
 	for (int i = 0; i < nb_devices; i++) {
 		const char *device_exts_str = egl->procs.eglQueryDeviceStringEXT(devices[i], EGL_EXTENSIONS);
 		if (device_exts_str == NULL) {
@@ -537,6 +541,9 @@ static EGLDeviceEXT get_egl_device_from_drm_fd(struct wlr_egl *egl,
 	drmFreeDevice(&selected_drm_device);
 	free(devices);
 
+	if (egl_device == EGL_NO_DEVICE_EXT) {
+		wlr_log(WLR_DEBUG, "No matching EGL device found");
+	}
 	return egl_device;
 }
 
