@@ -164,6 +164,7 @@ struct wlr_drm_connector_state {
 	bool vrr_enabled;
 	uint32_t colorspace;
 	uint32_t hdr_output_metadata;
+	bool page_flip_event;
 };
 
 /**
