@@ -14,6 +14,7 @@ struct wlr_drm_fb {
 	struct wl_list link; // wlr_drm_backend.fbs
 
 	uint32_t id;
+	bool has_alpha;
 };
 
 bool drm_fb_import(struct wlr_drm_fb **fb, struct wlr_drm_backend *drm,

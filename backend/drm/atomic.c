@@ -474,6 +474,11 @@ static void set_plane_props(struct atomic *atom, struct wlr_drm_backend *drm,
 	atomic_add(atom, id, props->crtc_y, dst_box->y);
 	atomic_add(atom, id, props->crtc_w, dst_box->width);
 	atomic_add(atom, id, props->crtc_h, dst_box->height);
+	if (props->pixel_blend_mode != 0) {
+		enum wlr_drm_pixel_blend_mode blend_mode = fb->has_alpha ?
+			WLR_DRM_BLEND_PREMULTI : WLR_DRM_BLEND_PIXEL_NONE;
+		atomic_add(atom, id, props->pixel_blend_mode, blend_mode);
+	}
 }
 
 static void set_color_encoding_and_range(struct atomic *atom,

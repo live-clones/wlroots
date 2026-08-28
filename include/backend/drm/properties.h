@@ -48,6 +48,7 @@ struct wlr_drm_plane_props {
 	uint32_t rotation; // Not guaranteed to exist
 	uint32_t in_formats; // Not guaranteed to exist
 	uint32_t size_hints; // Not guaranteed to exist
+	uint32_t pixel_blend_mode; // Not guaranteed to exist
 
 	// atomic-modesetting only
 
@@ -81,6 +82,13 @@ enum wlr_drm_color_encoding {
 enum wlr_drm_color_range {
 	WLR_DRM_COLOR_YCBCR_FULL_RANGE,
 	WLR_DRM_COLOR_YCBCR_LIMITED_RANGE,
+};
+
+// Equivalent to drm_mode_blend_mode defined in the kernel
+enum wlr_drm_pixel_blend_mode {
+	WLR_DRM_BLEND_PREMULTI,
+	WLR_DRM_BLEND_COVERAGE,
+	WLR_DRM_BLEND_PIXEL_NONE,
 };
 
 bool get_drm_connector_props(int fd, uint32_t id,
