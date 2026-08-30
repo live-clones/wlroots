@@ -286,12 +286,18 @@ struct wlr_scene_tree *wlr_scene_tree_create(struct wlr_scene_tree *parent) {
 	return tree;
 }
 
-typedef bool (*scene_node_box_iterator_func_t)(struct wlr_scene_node *node,
-	int sx, int sy, void *data);
-
 static bool _scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box,
 		scene_node_box_iterator_func_t iterator, void *user_data, int lx, int ly) {
 	if (!node->enabled) {
+		return false;
+	}
+
+	struct wlr_box bounding_box;
+	scene_node_get_bounding_box(node, &bounding_box);
+	bounding_box.x += lx;
+	bounding_box.y += ly;
+
+	if (!wlr_box_intersects(&bounding_box, box)) {
 		return false;
 	}
 
@@ -307,20 +313,13 @@ static bool _scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box
 		break;
 	case WLR_SCENE_NODE_RECT:
 	case WLR_SCENE_NODE_BUFFER:;
-		struct wlr_box node_box = { .x = lx, .y = ly };
-		scene_node_get_size(node, &node_box.width, &node_box.height);
-
-		if (wlr_box_intersects(&node_box, box) &&
-				iterator(node, lx, ly, user_data)) {
-			return true;
-		}
-		break;
+		return iterator(node, lx, ly, user_data);
 	}
 
 	return false;
 }
 
-static bool scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box,
+bool scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box,
 		scene_node_box_iterator_func_t iterator, void *user_data) {
 	int x, y;
 	wlr_scene_node_coords(node, &x, &y);
