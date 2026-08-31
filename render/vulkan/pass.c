@@ -286,6 +286,18 @@ static bool render_pass_submit(struct wlr_render_pass *wlr_pass) {
 				goto error;
 			}
 
+			/**
+			 * The scissor step is only relevant beneath a certain threshold. Here it is 16 because
+			 * that is the most common scissor limits in the mesa driver.
+			 */
+			if (clip_rects_len < 16) {
+				VkRect2D scissors[16] = {0};
+				for (int i = 0; i < clip_rects_len; ++i) {
+					convert_pixman_box_to_vk_rect(&clip_rects[i], &scissors[i]);
+				}
+				vkCmdSetScissor(render_cb->vk, 0, clip_rects_len, scissors);
+			}
+
 			float *instance_data = (float *)((char *)span.buffer->cpu_mapping + span.offset);
 			for (int i = 0; i < clip_rects_len; i++) {
 				const pixman_box32_t *b = &clip_rects[i];
