@@ -15,11 +15,21 @@ struct wlr_drm_connector_state;
 struct wlr_drm_fb;
 struct wlr_drm_page_flip;
 
+enum wlr_drm_commit_result {
+	COMMIT_SUCCESS,
+	COMMIT_FAILED,
+
+	// For the legacy backend: commit failed after some parts of it were applied.
+	// Page-flip DRM events are pending for all connectors remaining in the
+	// wlr_drm_page_flip object.
+	COMMIT_PARTIAL,
+};
+
 // Used to provide atomic or legacy DRM functions
 struct wlr_drm_interface {
 	bool (*init)(struct wlr_drm_backend *drm);
 	void (*finish)(struct wlr_drm_backend *drm);
-	bool (*commit)(struct wlr_drm_backend *drm,
+	enum wlr_drm_commit_result (*commit)(struct wlr_drm_backend *drm,
 		const struct wlr_drm_device_state *state,
 		struct wlr_drm_page_flip *page_flip, uint32_t flags, bool test_only);
 };

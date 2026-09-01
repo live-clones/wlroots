@@ -213,30 +213,33 @@ static bool legacy_crtc_commit(const struct wlr_drm_connector_state *state,
 	return true;
 }
 
-static bool legacy_commit(struct wlr_drm_backend *drm,
+static enum wlr_drm_commit_result legacy_commit(struct wlr_drm_backend *drm,
 		const struct wlr_drm_device_state *state,
 		struct wlr_drm_page_flip *page_flip, uint32_t flags,
 		bool test_only) {
 	for (size_t i = 0; i < state->connectors_len; i++) {
 		const struct wlr_drm_connector_state *conn_state = &state->connectors[i];
 		if (!legacy_crtc_test(conn_state, state->modeset)) {
-			return false;
+			return COMMIT_FAILED;
 		}
 	}
 
 	if (test_only) {
-		return true;
+		return COMMIT_SUCCESS;
 	}
 
+	enum wlr_drm_commit_result result = COMMIT_SUCCESS;
 	for (size_t i = 0; i < state->connectors_len; i++) {
 		const struct wlr_drm_connector_state *conn_state = &state->connectors[i];
 		if (!legacy_crtc_commit(conn_state, page_flip, flags,
 				state->modeset)) {
-			return false;
+			page_flip->connectors_len = i;
+			result = i > 0 ? COMMIT_PARTIAL : COMMIT_FAILED;
+			break;
 		}
 	}
 
-	return true;
+	return result;
 }
 
 static void fill_empty_gamma_table(size_t size,
