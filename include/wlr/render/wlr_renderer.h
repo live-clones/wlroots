@@ -42,6 +42,8 @@ struct wlr_renderer {
 		struct wl_signal lost;
 	} events;
 
+	void *data;
+
 	struct {
 		/**
 		 * Whether color transforms are supported for input textures
