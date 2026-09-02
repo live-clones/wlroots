@@ -2815,6 +2815,7 @@ struct wlr_xwm *xwm_create(struct wlr_xwayland *xwayland, int wm_fd) {
 		xwm->atoms[NET_WM_STATE_DEMANDS_ATTENTION],
 		xwm->atoms[NET_CLIENT_LIST],
 		xwm->atoms[NET_CLIENT_LIST_STACKING],
+		xwm->atoms[NET_WORKAREA],
 	};
 	xcb_change_property(xwm->xcb_conn,
 		XCB_PROP_MODE_REPLACE,
