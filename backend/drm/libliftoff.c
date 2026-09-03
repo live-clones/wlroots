@@ -141,15 +141,6 @@ static void finish(struct wlr_drm_backend *drm) {
 	liftoff_device_destroy(drm->liftoff);
 }
 
-static bool add_prop(drmModeAtomicReq *req, uint32_t obj,
-		uint32_t prop, uint64_t val) {
-	if (drmModeAtomicAddProperty(req, obj, prop, val) < 0) {
-		wlr_log_errno(WLR_ERROR, "drmModeAtomicAddProperty failed");
-		return false;
-	}
-	return true;
-}
-
 static bool set_plane_props(struct wlr_drm_plane *plane,
 		struct liftoff_layer *layer, struct wlr_drm_fb *fb, uint64_t zpos,
 		const struct wlr_box *dst_box, const struct wlr_fbox *src_box) {
@@ -158,12 +149,11 @@ static bool set_plane_props(struct wlr_drm_plane *plane,
 		return false;
 	}
 
-	// The src_* properties are in 16.16 fixed point
 	return liftoff_layer_set_property(layer, "zpos", zpos) == 0 &&
-		liftoff_layer_set_property(layer, "SRC_X", src_box->x * (1 << 16)) == 0 &&
-		liftoff_layer_set_property(layer, "SRC_Y", src_box->y * (1 << 16)) == 0 &&
-		liftoff_layer_set_property(layer, "SRC_W", src_box->width * (1 << 16)) == 0 &&
-		liftoff_layer_set_property(layer, "SRC_H", src_box->height * (1 << 16)) == 0 &&
+		liftoff_layer_set_property(layer, "SRC_X", to_fp16(src_box->x)) == 0 &&
+		liftoff_layer_set_property(layer, "SRC_Y", to_fp16(src_box->y)) == 0 &&
+		liftoff_layer_set_property(layer, "SRC_W", to_fp16(src_box->width)) == 0 &&
+		liftoff_layer_set_property(layer, "SRC_H", to_fp16(src_box->height)) == 0 &&
 		liftoff_layer_set_property(layer, "CRTC_X", dst_box->x) == 0 &&
 		liftoff_layer_set_property(layer, "CRTC_Y", dst_box->y) == 0 &&
 		liftoff_layer_set_property(layer, "CRTC_W", dst_box->width) == 0 &&
@@ -171,12 +161,31 @@ static bool set_plane_props(struct wlr_drm_plane *plane,
 		liftoff_layer_set_property(layer, "FB_ID", fb->id) == 0;
 }
 
-static bool disable_plane(struct wlr_drm_plane *plane) {
-	return liftoff_layer_set_property(plane->liftoff_layer, "FB_ID", 0) == 0;
+static bool set_primary_plane_props(const struct wlr_drm_connector_state *state,
+		struct liftoff_layer *layer) {
+	if (!set_plane_props(state->connector->crtc->primary, layer,
+			state->primary_fb, 0,
+			&state->primary_viewport.dst_box,
+			&state->primary_viewport.src_box)) {
+		return false;
+	}
+
+	liftoff_layer_set_property(layer, "FB_DAMAGE_CLIPS", state->fb_damage_clips);
+
+	if (state->primary_in_fence_fd >= 0) {
+		liftoff_layer_set_property(layer, "IN_FENCE_FD", state->primary_in_fence_fd);
+	}
+
+	if (state->base->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) {
+		liftoff_layer_set_property(layer, "COLOR_ENCODING", state->primary_color_encoding);
+		liftoff_layer_set_property(layer, "COLOR_RANGE", state->primary_color_range);
+	}
+
+	return true;
 }
 
-static uint64_t to_fp16(double v) {
-	return (uint64_t)round(v * (1 << 16));
+static bool disable_plane(struct wlr_drm_plane *plane) {
+	return liftoff_layer_set_property(plane->liftoff_layer, "FB_ID", 0) == 0;
 }
 
 static bool set_layer_props(struct wlr_drm_backend *drm,
@@ -245,6 +254,38 @@ static bool set_layer_props(struct wlr_drm_backend *drm,
 		liftoff_layer_set_property(layer->liftoff, "FB_DAMAGE_CLIPS", fb_damage_clips) == 0;
 }
 
+static bool set_cursor_plane_props(const struct wlr_drm_connector_state *state) {
+	struct wlr_drm_connector *conn = state->connector;
+	struct wlr_drm_plane *plane = conn->crtc->cursor;
+
+	if (!drm_connector_is_cursor_visible(conn)) {
+		return disable_plane(plane);
+	}
+
+	struct wlr_fbox cursor_src = {
+		.width = state->cursor_fb->wlr_buf->width,
+		.height = state->cursor_fb->wlr_buf->height,
+	};
+	struct wlr_box cursor_dst = {
+		.x = conn->cursor_x,
+		.y = conn->cursor_y,
+		.width = state->cursor_fb->wlr_buf->width,
+		.height = state->cursor_fb->wlr_buf->height,
+	};
+	if (!set_plane_props(plane, plane->liftoff_layer,
+			state->cursor_fb, wl_list_length(&conn->crtc->layers) + 1,
+			&cursor_dst, &cursor_src)) {
+		return false;
+	}
+
+	if (conn->backend->has_cursor_plane_hotspot) {
+		liftoff_layer_set_property(plane->liftoff_layer, "HOTSPOT_X", conn->cursor_hotspot_x);
+		liftoff_layer_set_property(plane->liftoff_layer, "HOTSPOT_Y", conn->cursor_hotspot_y);
+	}
+
+	return true;
+}
+
 static bool devid_from_fd(int fd, dev_t *devid) {
 	struct stat stat;
 	if (fstat(fd, &stat) != 0) {
@@ -310,48 +351,11 @@ static bool add_connector(drmModeAtomicReq *req,
 	bool active = state->active;
 	bool ok = true;
 
-	ok = ok && add_prop(req, conn->id, conn->props.crtc_id,
-		active ? crtc->id : 0);
-	if (modeset && active && conn->props.link_status != 0) {
-		ok = ok && add_prop(req, conn->id, conn->props.link_status,
-			DRM_MODE_LINK_STATUS_GOOD);
-	}
-	if (active && conn->props.content_type != 0) {
-		ok = ok && add_prop(req, conn->id, conn->props.content_type,
-			DRM_MODE_CONTENT_TYPE_GRAPHICS);
-	}
-	// TODO: set "max bpc"
-	ok = ok &&
-		add_prop(req, crtc->id, crtc->props.mode_id, state->mode_id) &&
-		add_prop(req, crtc->id, crtc->props.active, active);
+	ok = ok && drm_atomic_connector_set_props(req, state, modeset);
+	ok = ok && drm_atomic_crtc_set_props(req, state);
 	if (active) {
-		if (crtc->props.gamma_lut != 0) {
-			ok = ok && add_prop(req, crtc->id, crtc->props.gamma_lut, state->gamma_lut);
-		}
-		if (crtc->props.vrr_enabled != 0) {
-			ok = ok && add_prop(req, crtc->id, crtc->props.vrr_enabled, state->vrr_enabled);
-		}
-
-		ok = ok && set_plane_props(crtc->primary,
-			crtc->primary->liftoff_layer, state->primary_fb, 0,
-			&state->primary_viewport.dst_box,
-			&state->primary_viewport.src_box);
-		ok = ok && set_plane_props(crtc->primary,
-			crtc->liftoff_composition_layer, state->primary_fb, 0,
-			&state->primary_viewport.dst_box,
-			&state->primary_viewport.src_box);
-
-		liftoff_layer_set_property(crtc->primary->liftoff_layer,
-			"FB_DAMAGE_CLIPS", state->fb_damage_clips);
-		liftoff_layer_set_property(crtc->liftoff_composition_layer,
-			"FB_DAMAGE_CLIPS", state->fb_damage_clips);
-
-		if (state->primary_in_fence_fd >= 0) {
-			liftoff_layer_set_property(crtc->primary->liftoff_layer,
-				"IN_FENCE_FD", state->primary_in_fence_fd);
-			liftoff_layer_set_property(crtc->liftoff_composition_layer,
-				"IN_FENCE_FD", state->primary_in_fence_fd);
-		}
+		ok = ok && set_primary_plane_props(state, crtc->primary->liftoff_layer);
+		ok = ok && set_primary_plane_props(state, crtc->liftoff_composition_layer);
 
 		if (state->base->committed & WLR_OUTPUT_STATE_LAYERS) {
 			for (size_t i = 0; i < state->base->layers_len; i++) {
@@ -362,23 +366,7 @@ static bool add_connector(drmModeAtomicReq *req,
 		}
 
 		if (crtc->cursor) {
-			if (drm_connector_is_cursor_visible(conn)) {
-				struct wlr_fbox cursor_src = {
-					.width = state->cursor_fb->wlr_buf->width,
-					.height = state->cursor_fb->wlr_buf->height,
-				};
-				struct wlr_box cursor_dst = {
-					.x = conn->cursor_x,
-					.y = conn->cursor_y,
-					.width = state->cursor_fb->wlr_buf->width,
-					.height = state->cursor_fb->wlr_buf->height,
-				};
-				ok = ok && set_plane_props(crtc->cursor, crtc->cursor->liftoff_layer,
-					state->cursor_fb, wl_list_length(&crtc->layers) + 1,
-					&cursor_dst, &cursor_src);
-			} else {
-				ok = ok && disable_plane(crtc->cursor);
-			}
+			ok = ok && set_cursor_plane_props(state);
 		}
 	} else {
 		ok = ok && disable_plane(crtc->primary);

@@ -33,11 +33,15 @@ bool drm_legacy_crtc_set_gamma(struct wlr_drm_backend *drm,
 
 bool create_fb_damage_clips_blob(struct wlr_drm_backend *drm,
 	int width, int height, const pixman_region32_t *damage, uint32_t *blob_id);
-bool drm_atomic_reset(struct wlr_drm_backend *drm);
+uint64_t to_fp16(double v);
 
 bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state,
 	bool modeset);
 void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state);
 void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state);
+bool drm_atomic_connector_set_props(drmModeAtomicReq *req,
+	const struct wlr_drm_connector_state *state, bool modeset);
+bool drm_atomic_crtc_set_props(drmModeAtomicReq *req,
+	const struct wlr_drm_connector_state *state);
 
 #endif
