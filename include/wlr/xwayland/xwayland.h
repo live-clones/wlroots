@@ -194,7 +194,9 @@ struct wlr_xwayland_surface {
 
 	bool has_alpha;
 	bool has_input_shape;
+	bool has_shape;
 	pixman_region32_t input_shape;
+	pixman_region32_t shape;
 
 	struct {
 		struct wl_signal destroy;
@@ -231,6 +233,7 @@ struct wlr_xwayland_surface {
 		struct wl_signal set_geometry;
 		struct wl_signal set_opacity;
 		struct wl_signal set_icon;
+		struct wl_signal set_shape;
 		struct wl_signal set_input_shape;
 		struct wl_signal focus_in;
 		struct wl_signal grab_focus;

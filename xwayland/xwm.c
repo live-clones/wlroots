@@ -181,6 +181,66 @@ static bool read_surface_shape_region(struct wlr_xwm *xwm,
 	return true;
 }
 
+static bool read_surface_clip_shape(struct wlr_xwm *xwm,
+		struct wlr_xwayland_surface *xsurface) {
+	if (xwm->shape == NULL || !xwm->shape->present) {
+		return false;
+	}
+
+	pixman_region32_t bounding_region, clip_region;
+	pixman_region32_init(&bounding_region);
+	pixman_region32_init(&clip_region);
+
+	xcb_shape_get_rectangles_cookie_t bounding_cookie =
+		xcb_shape_get_rectangles(xwm->xcb_conn, xsurface->window_id,
+			XCB_SHAPE_SK_BOUNDING);
+	xcb_shape_get_rectangles_cookie_t clip_cookie =
+		xcb_shape_get_rectangles(xwm->xcb_conn, xsurface->window_id,
+			XCB_SHAPE_SK_CLIP);
+
+	bool bounding_ok = read_surface_shape_region(xwm, bounding_cookie,
+		&bounding_region);
+	bool clip_ok = read_surface_shape_region(xwm, clip_cookie,
+		&clip_region);
+	if (!bounding_ok || !clip_ok) {
+		pixman_region32_fini(&clip_region);
+		pixman_region32_fini(&bounding_region);
+		return false;
+	}
+
+	// The effective clip region is the intersection of the client clip,
+	// default clip and client bounding regions. The default clip is the
+	// surface rectangle for Xwayland windows (the border is zero-width).
+	pixman_region32_intersect_rect(&bounding_region, &bounding_region, 0, 0,
+		xsurface->width, xsurface->height);
+	pixman_region32_intersect_rect(&clip_region, &clip_region, 0, 0,
+		xsurface->width, xsurface->height);
+	pixman_region32_intersect(&clip_region, &clip_region, &bounding_region);
+
+	pixman_region32_t full_region;
+	pixman_region32_init_rect(&full_region, 0, 0,
+		xsurface->width, xsurface->height);
+
+	bool has_shape = !pixman_region32_equal(&clip_region, &full_region);
+	bool changed = xsurface->has_shape != has_shape ||
+		(has_shape && !pixman_region32_equal(&xsurface->shape, &clip_region));
+
+	if (changed) {
+		xsurface->has_shape = has_shape;
+		if (has_shape) {
+			pixman_region32_copy(&xsurface->shape, &clip_region);
+		} else {
+			pixman_region32_clear(&xsurface->shape);
+		}
+		wl_signal_emit_mutable(&xsurface->events.set_shape, NULL);
+	}
+
+	pixman_region32_fini(&full_region);
+	pixman_region32_fini(&clip_region);
+	pixman_region32_fini(&bounding_region);
+	return true;
+}
+
 static void read_surface_input_shape(struct wlr_xwm *xwm,
 		struct wlr_xwayland_surface *xsurface) {
 	if (!xwm->shape_input_supported) {
@@ -313,6 +373,7 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 	wl_list_init(&surface->stack_link);
 	wl_list_init(&surface->parent_link);
 	wl_list_init(&surface->unpaired_link);
+	pixman_region32_init(&surface->shape);
 	pixman_region32_init(&surface->input_shape);
 
 	wl_signal_init(&surface->events.destroy);
@@ -347,6 +408,7 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 	wl_signal_init(&surface->events.set_geometry);
 	wl_signal_init(&surface->events.set_opacity);
 	wl_signal_init(&surface->events.set_icon);
+	wl_signal_init(&surface->events.set_shape);
 	wl_signal_init(&surface->events.set_input_shape);
 	wl_signal_init(&surface->events.focus_in);
 	wl_signal_init(&surface->events.grab_focus);
@@ -360,9 +422,12 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 	}
 	free(geometry_reply);
 
-	if (xwm->shape_input_supported) {
+	if (xwm->shape != NULL && xwm->shape->present) {
 		xcb_shape_select_input(xwm->xcb_conn, window_id, true);
-		read_surface_input_shape(xwm, surface);
+		read_surface_clip_shape(surface->xwm, surface);
+		if (xwm->shape_input_supported) {
+			read_surface_input_shape(xwm, surface);
+		}
 	}
 
 	struct wl_display *display = xwm->xwayland->wl_display;
@@ -370,6 +435,7 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 	surface->ping_timer = wl_event_loop_add_timer(loop,
 		xwayland_surface_handle_ping_timeout, surface);
 	if (surface->ping_timer == NULL) {
+		pixman_region32_fini(&surface->shape);
 		pixman_region32_fini(&surface->input_shape);
 		free(surface);
 		wlr_log(WLR_ERROR, "Could not add timer to event loop");
@@ -717,6 +783,7 @@ static void xwayland_surface_destroy(struct wlr_xwayland_surface *xsurface) {
 	assert(wl_list_empty(&xsurface->events.set_geometry.listener_list));
 	assert(wl_list_empty(&xsurface->events.set_opacity.listener_list));
 	assert(wl_list_empty(&xsurface->events.set_icon.listener_list));
+	assert(wl_list_empty(&xsurface->events.set_shape.listener_list));
 	assert(wl_list_empty(&xsurface->events.set_input_shape.listener_list));
 	assert(wl_list_empty(&xsurface->events.focus_in.listener_list));
 	assert(wl_list_empty(&xsurface->events.grab_focus.listener_list));
@@ -756,6 +823,7 @@ static void xwayland_surface_destroy(struct wlr_xwayland_surface *xsurface) {
 	free(xsurface->hints);
 	free(xsurface->size_hints);
 	free(xsurface->strut_partial);
+	pixman_region32_fini(&xsurface->shape);
 	pixman_region32_fini(&xsurface->input_shape);
 	free(xsurface);
 }
@@ -1424,9 +1492,10 @@ static void xwm_handle_configure_notify(struct wlr_xwm *xwm,
 		return;
 	}
 
+	bool size_changed =
+		xsurface->width != ev->width || xsurface->height != ev->height;
 	bool geometry_changed =
-		(xsurface->x != ev->x || xsurface->y != ev->y ||
-		xsurface->width != ev->width || xsurface->height != ev->height);
+		(xsurface->x != ev->x || xsurface->y != ev->y || size_changed);
 
 	if (geometry_changed) {
 		xsurface->x = ev->x;
@@ -1435,6 +1504,9 @@ static void xwm_handle_configure_notify(struct wlr_xwm *xwm,
 		xsurface->height = ev->height;
 	}
 
+	if (xwm->shape != NULL && xwm->shape->present && size_changed) {
+		read_surface_clip_shape(xsurface->xwm, xsurface);
+	}
 	xwm_update_override_redirect(xsurface, ev->override_redirect);
 
 	if (geometry_changed) {
@@ -1444,8 +1516,7 @@ static void xwm_handle_configure_notify(struct wlr_xwm *xwm,
 
 static void xwm_handle_shape_notify(struct wlr_xwm *xwm,
 		xcb_shape_notify_event_t *ev) {
-	if (ev->shape_kind != XCB_SHAPE_SK_BOUNDING &&
-			ev->shape_kind != XCB_SHAPE_SK_INPUT) {
+	if (xwm->shape == NULL || !xwm->shape->present) {
 		return;
 	}
 
@@ -1455,7 +1526,24 @@ static void xwm_handle_shape_notify(struct wlr_xwm *xwm,
 		return;
 	}
 
-	read_surface_input_shape(xwm, xsurface);
+	switch (ev->shape_kind) {
+	case XCB_SHAPE_SK_BOUNDING:
+		read_surface_clip_shape(xsurface->xwm, xsurface);
+		if (xwm->shape_input_supported) {
+			read_surface_input_shape(xwm, xsurface);
+		}
+		break;
+	case XCB_SHAPE_SK_CLIP:
+		read_surface_clip_shape(xsurface->xwm, xsurface);
+		break;
+	case XCB_SHAPE_SK_INPUT:
+		if (xwm->shape_input_supported) {
+			read_surface_input_shape(xwm, xsurface);
+		}
+		break;
+	default:
+		break;
+	}
 }
 
 static void xsurface_set_wm_state(struct wlr_xwayland_surface *xsurface) {
@@ -2157,7 +2245,7 @@ static int read_x11_events(struct wlr_xwm *xwm) {
 			continue;
 		}
 
-		if (xwm->shape_input_supported &&
+		if (xwm->shape != NULL && xwm->shape->present &&
 				(event->response_type & XCB_EVENT_RESPONSE_TYPE_MASK) ==
 					xwm->shape->first_event + XCB_SHAPE_NOTIFY) {
 			xwm_handle_shape_notify(xwm, (xcb_shape_notify_event_t *)event);
