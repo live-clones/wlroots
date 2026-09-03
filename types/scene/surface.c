@@ -30,20 +30,6 @@ static double get_surface_preferred_buffer_scale(struct wlr_surface *surface) {
 	return scale;
 }
 
-// Output used for frame pacing (surface frame callbacks, presentation
-// time feedback, etc), may be NULL
-static struct wlr_output *get_surface_frame_pacing_output(struct wlr_surface *surface) {
-	struct wlr_output *frame_pacing_output = NULL;
-	struct wlr_surface_output *surface_output;
-	wl_list_for_each(surface_output, &surface->current_outputs, link) {
-		if (!surface_output->suspended && (frame_pacing_output == NULL ||
-				surface_output->output->refresh > frame_pacing_output->refresh)) {
-			frame_pacing_output = surface_output->output;
-		}
-	}
-	return frame_pacing_output;
-}
-
 static int get_tf_preference(enum wlr_color_transfer_function tf) {
 	switch (tf) {
 	case WLR_COLOR_TRANSFER_FUNCTION_GAMMA22:
@@ -175,7 +161,7 @@ static void handle_scene_buffer_output_sample(
 			event->release_timeline, event->release_point, output->event_loop);
 	}
 
-	if (get_surface_frame_pacing_output(surface->surface) != output) {
+	if (wlr_surface_get_frame_pacing_output(surface->surface) != output) {
 		return;
 	}
 
@@ -191,7 +177,7 @@ static void handle_scene_buffer_frame_done(
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, frame_done);
 	struct wlr_scene_frame_done_event *event = data;
-	if (get_surface_frame_pacing_output(surface->surface) != event->output->output) {
+	if (wlr_surface_get_frame_pacing_output(surface->surface) != event->output->output) {
 		return;
 	}
 
@@ -379,7 +365,7 @@ static void handle_scene_surface_surface_commit(
 	// the surface anyway.
 	int lx, ly;
 	bool enabled = wlr_scene_node_coords(&scene_buffer->node, &lx, &ly);
-	struct wlr_output *output = get_surface_frame_pacing_output(surface->surface);
+	struct wlr_output *output = wlr_surface_get_frame_pacing_output(surface->surface);
 	if (!wl_list_empty(&surface->surface->current.frame_callback_list) && output && enabled) {
 		wlr_output_schedule_frame(output);
 	}

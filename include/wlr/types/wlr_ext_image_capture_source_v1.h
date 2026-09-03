@@ -13,9 +13,11 @@
 #include <wayland-server-core.h>
 #include <wlr/render/drm_format_set.h>
 
+struct wlr_scene;
 struct wlr_scene_node;
 struct wlr_allocator;
 struct wlr_renderer;
+struct wlr_output_layout;
 
 /**
  * A screen capture source.
@@ -81,7 +83,28 @@ struct wlr_ext_output_image_capture_source_manager_v1 {
 	struct wl_global *global;
 
 	struct {
+		struct wl_signal destroy;
+		struct wl_signal capture_request; // struct wlr_ext_output_image_capture_source_manager_v1_request_event
+	} events;
+
+	struct {
 		struct wl_listener display_destroy;
+	} WLR_PRIVATE;
+};
+
+/**
+ * Request to capture an output.
+ *
+ * The compositor should call
+ * wlr_ext_output_image_capture_source_manager_v1_request_accept() to accept
+ * the request.
+ */
+struct wlr_ext_output_image_capture_source_manager_v1_request_event {
+	struct wlr_output *output;
+	struct wl_client *client;
+
+	struct {
+		uint32_t new_id;
 	} WLR_PRIVATE;
 };
 
@@ -121,6 +144,38 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_from_res
 
 struct wlr_ext_output_image_capture_source_manager_v1 *wlr_ext_output_image_capture_source_manager_v1_create(
 	struct wl_display *display, uint32_t version);
+
+/**
+ * Accept an output capture request.
+ *
+ * The source can be created via e.g.
+ * wlr_ext_image_capture_source_v1_create_with_raw_output().
+ */
+bool wlr_ext_output_image_capture_source_manager_v1_request_accept(
+	struct wlr_ext_output_image_capture_source_manager_v1_request_event *request,
+	struct wlr_ext_image_capture_source_v1 *source);
+
+/**
+ * Create a capture source from an output's raw buffers.
+ *
+ * Capturing directly an output's buffers has a few limitations:
+ *
+ * - Direct scanout is disabled while capturing.
+ * - No color management support.
+ */
+struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_raw_output(
+	struct wlr_output *output);
+
+/**
+ * Create a capture source using a headless virtual output. The provided output
+ * is used for tracking capture size and position.
+ *
+ * The scene will be composited again independently for this virtual output,
+ * which is desirable if color management is in use for the real output.
+ */
+struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_output(
+	struct wlr_scene *scene, struct wlr_output *reference_output,
+	struct wlr_output_layout *layout);
 
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *
 wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(struct wl_display *display, uint32_t version);
