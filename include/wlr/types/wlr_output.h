@@ -78,6 +78,21 @@ enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_COLOR_TRANSFORM = 1 << 12,
 	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION = 1 << 13,
 	WLR_OUTPUT_STATE_COLOR_REPRESENTATION = 1 << 14,
+	WLR_OUTPUT_STATE_COLOR_FORMAT = 1 << 15,
+};
+
+/**
+ * DRM color format for output connectors.
+ *
+ * These values match enum drm_connector_color_format in the kernel.
+ * AUTO (0) is the default and lets the driver pick.
+ */
+enum wlr_output_color_format {
+	WLR_OUTPUT_COLOR_FORMAT_AUTO = 0,
+	WLR_OUTPUT_COLOR_FORMAT_RGB444,
+	WLR_OUTPUT_COLOR_FORMAT_YCBCR444,
+	WLR_OUTPUT_COLOR_FORMAT_YCBCR422,
+	WLR_OUTPUT_COLOR_FORMAT_YCBCR420,
 };
 
 enum wlr_output_state_mode_type {
@@ -165,6 +180,8 @@ struct wlr_output_state {
 	struct wlr_color_transform *color_transform;
 
 	struct wlr_output_image_description *image_description;
+
+	uint32_t color_format; // enum wlr_output_color_format
 };
 
 struct wlr_output_impl;
@@ -210,6 +227,7 @@ struct wlr_output {
 	enum wl_output_transform transform;
 	enum wlr_output_adaptive_sync_status adaptive_sync_status;
 	uint32_t render_format;
+	enum wlr_output_color_format color_format;
 	enum wlr_color_encoding color_encoding;
 	enum wlr_color_range color_range;
 	const struct wlr_output_image_description *image_description;
@@ -640,6 +658,20 @@ bool wlr_output_state_set_image_description(struct wlr_output_state *state,
 void wlr_output_state_set_color_encoding_and_range(
 	struct wlr_output_state *state,
 	enum wlr_color_encoding encoding, enum wlr_color_range range);
+
+/**
+ * Sets the color format for an output. The color format determines the color
+ * encoding sent to the display (RGB, YCbCr 4:4:4, YCbCr 4:2:2, YCbCr 4:2:0).
+ *
+ * The default value is WLR_OUTPUT_COLOR_FORMAT_AUTO.
+ *
+ * Not all connectors support all color formats. If the connector doesn't
+ * support the "color format" DRM property, this setting is ignored.
+ *
+ * This state will be applied once wlr_output_commit_state() is called.
+ */
+void wlr_output_state_set_color_format(struct wlr_output_state *state,
+	enum wlr_output_color_format color_format);
 
 /**
  * Copies the output state from src to dst. It is safe to then
