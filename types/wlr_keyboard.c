@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <linux/input-event-codes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -322,6 +321,10 @@ bool wlr_keyboard_keymaps_match(struct xkb_keymap *km1,
 	free(km2_str);
 	return result;
 }
+
+#define BTN_LEFT		0x110
+#define BTN_RIGHT		0x111
+#define BTN_MIDDLE		0x112
 
 uint32_t wlr_keyboard_keysym_to_pointer_button(xkb_keysym_t keysym) {
 	switch (keysym) {

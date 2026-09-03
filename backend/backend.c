@@ -32,6 +32,10 @@
 #include <wlr/backend/x11.h>
 #endif
 
+#if WLR_HAS_WSCONS_BACKEND
+#include <wlr/backend/wscons.h>
+#endif
+
 #define WAIT_SESSION_TIMEOUT 10000 // ms
 
 void wlr_backend_init(struct wlr_backend *backend,
@@ -287,6 +291,15 @@ static struct wlr_backend *attempt_libinput_backend(struct wlr_session *session)
 #endif
 }
 
+static struct wlr_backend *attempt_wscons_backend(struct wlr_session *session) {
+#if WLR_HAS_WSCONS_BACKEND
+	return wlr_wscons_backend_create(session);
+#else
+	wlr_log(WLR_ERROR, "Cannot create wscons backend: disabled at compile-time");
+	return NULL;
+#endif
+}
+
 static bool attempt_backend_by_name(struct wl_event_loop *loop,
 		struct wlr_backend *multi, char *name,
 		struct wlr_session **session_ptr) {
@@ -297,8 +310,9 @@ static bool attempt_backend_by_name(struct wl_event_loop *loop,
 		backend = attempt_x11_backend(loop, NULL);
 	} else if (strcmp(name, "headless") == 0) {
 		backend = attempt_headless_backend(loop);
-	} else if (strcmp(name, "drm") == 0 || strcmp(name, "libinput") == 0) {
-		// DRM and libinput need a session
+	} else if (strcmp(name, "drm") == 0 || strcmp(name, "libinput") == 0
+			|| strcmp(name, "wscons") == 0) {
+		// DRM and libinput/wscons need a session
 		if (*session_ptr == NULL) {
 			*session_ptr = session_create_and_wait(loop);
 			if (*session_ptr == NULL) {
@@ -309,6 +323,8 @@ static bool attempt_backend_by_name(struct wl_event_loop *loop,
 
 		if (strcmp(name, "libinput") == 0) {
 			backend = attempt_libinput_backend(*session_ptr);
+		} else if (strcmp(name, "wscons") == 0) {
+			backend = attempt_wscons_backend(*session_ptr);
 		} else {
 			// attempt_drm_backend() adds the multi drm backends itself
 			return attempt_drm_backend(multi, *session_ptr) != NULL;
@@ -393,13 +409,24 @@ struct wlr_backend *wlr_backend_autocreate(struct wl_event_loop *loop,
 		goto success;
 	}
 
-	// Attempt DRM+libinput
+	// Attempt DRM+libinput/wscons
 	session = session_create_and_wait(loop);
 	if (!session) {
 		wlr_log(WLR_ERROR, "Failed to start a DRM session");
 		goto error;
 	}
 
+#if WLR_HAS_WSCONS_BACKEND
+	struct wlr_backend *wscons = attempt_wscons_backend(session);
+	if (!wscons) {
+		wlr_log(WLR_ERROR, "Failed to start wscons backend");
+		goto error;
+	}
+	wlr_multi_backend_add(multi, wscons);
+	if (!auto_backend_monitor_create(multi, wscons)) {
+		goto error;
+	}
+#else
 	struct wlr_backend *libinput = attempt_libinput_backend(session);
 	if (libinput) {
 		wlr_multi_backend_add(multi, libinput);
@@ -414,6 +441,7 @@ struct wlr_backend *wlr_backend_autocreate(struct wl_event_loop *loop,
 		wlr_log(WLR_ERROR, "Set WLR_LIBINPUT_NO_DEVICES=1 to skip libinput");
 		goto error;
 	}
+#endif
 
 	struct wlr_backend *primary_drm = attempt_drm_backend(multi, session);
 	if (primary_drm == NULL) {
