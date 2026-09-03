@@ -59,6 +59,8 @@ static const char *const atom_map[ATOM_LAST] = {
 	[NET_WM_STATE_BELOW] = "_NET_WM_STATE_BELOW",
 	[NET_WM_STATE_DEMANDS_ATTENTION] = "_NET_WM_STATE_DEMANDS_ATTENTION",
 	[NET_WM_PING] = "_NET_WM_PING",
+	[NET_FRAME_EXTENTS] = "_NET_FRAME_EXTENTS",
+	[NET_REQUEST_FRAME_EXTENTS] = "_NET_REQUEST_FRAME_EXTENTS",
 	[WM_CHANGE_STATE] = "WM_CHANGE_STATE",
 	[WM_STATE] = "WM_STATE",
 	[CLIPBOARD] = "CLIPBOARD",
@@ -137,6 +139,19 @@ static struct wlr_xwayland_surface *lookup_surface(struct wlr_xwm *xwm,
 		}
 	}
 	return NULL;
+}
+
+static void xwm_set_net_frame_extents(struct wlr_xwm *xwm,
+		xcb_window_t window_id, const uint32_t extents[4]) {
+	xcb_change_property(xwm->xcb_conn, XCB_PROP_MODE_REPLACE,
+		window_id, xwm->atoms[NET_FRAME_EXTENTS], XCB_ATOM_CARDINAL,
+		32, 4, extents);
+}
+
+static void xsurface_set_net_frame_extents(
+		struct wlr_xwayland_surface *xsurface) {
+	xwm_set_net_frame_extents(xsurface->xwm, xsurface->window_id,
+		xsurface->frame_extents);
 }
 
 void wlr_xwayland_surface_get_input_region(const struct wlr_xwayland_surface *xsurface,
@@ -377,6 +392,7 @@ static struct wlr_xwayland_surface *xwayland_surface_create(
 	}
 
 	wl_list_insert(&xwm->surfaces, &surface->link);
+	xsurface_set_net_frame_extents(surface);
 
 	if (xwm->xres) {
 		read_surface_client_id(xwm, surface, client_id_cookie);
@@ -1203,6 +1219,8 @@ static void read_surface_property(struct wlr_xwm *xwm,
 		read_surface_parent(xwm, xsurface, reply);
 	} else if (property == xwm->atoms[NET_WM_PID]) {
 		// intentionally ignored
+	} else if (property == xwm->atoms[NET_FRAME_EXTENTS]) {
+		// managed by the XWM
 	} else if (property == xwm->atoms[NET_WM_WINDOW_TYPE]) {
 		read_surface_window_type(xwm, xsurface, reply);
 	} else if (property == xwm->atoms[NET_WM_ICON]) {
@@ -1242,6 +1260,7 @@ static void xwayland_surface_handle_commit(struct wl_listener *listener, void *d
 
 static void xwayland_surface_handle_map(struct wl_listener *listener, void *data) {
 	struct wlr_xwayland_surface *xsurface = wl_container_of(listener, xsurface, surface_map);
+	xsurface_set_net_frame_extents(xsurface);
 	xwm_set_net_client_list(xsurface->xwm);
 }
 
@@ -1906,6 +1925,20 @@ static void xwm_handle_net_close_window_message(struct wlr_xwm *xwm,
 	wl_signal_emit_mutable(&surface->events.request_close, NULL);
 }
 
+static void xwm_handle_net_request_frame_extents_message(
+		struct wlr_xwm *xwm, xcb_client_message_event_t *ev) {
+	if (ev->format != 32) {
+		return;
+	}
+
+	struct wlr_xwayland_surface *xsurface = lookup_surface(xwm, ev->window);
+	if (xsurface == NULL) {
+		return;
+	}
+
+	xsurface_set_net_frame_extents(xsurface);
+}
+
 static void pending_startup_id_destroy(struct pending_startup_id *pending) {
 	wl_list_remove(&pending->link);
 	free(pending->msg);
@@ -2016,6 +2049,8 @@ static void xwm_handle_client_message(struct wlr_xwm *xwm,
 		xwm_handle_net_active_window_message(xwm, ev);
 	} else if (ev->type == xwm->atoms[NET_CLOSE_WINDOW]) {
 		xwm_handle_net_close_window_message(xwm, ev);
+	} else if (ev->type == xwm->atoms[NET_REQUEST_FRAME_EXTENTS]) {
+		xwm_handle_net_request_frame_extents_message(xwm, ev);
 	} else if (ev->type == xwm->atoms[NET_STARTUP_INFO] ||
 			ev->type == xwm->atoms[NET_STARTUP_INFO_BEGIN]) {
 		xwm_handle_net_startup_info_message(xwm, ev);
@@ -2346,6 +2381,17 @@ void wlr_xwayland_surface_configure(struct wlr_xwayland_surface *xsurface,
 	}
 
 	xwm_schedule_flush(xwm);
+}
+
+void wlr_xwayland_surface_set_frame_extents(
+		struct wlr_xwayland_surface *xsurface,
+		uint32_t left, uint32_t right, uint32_t top, uint32_t bottom) {
+	xsurface->frame_extents[0] = left;
+	xsurface->frame_extents[1] = right;
+	xsurface->frame_extents[2] = top;
+	xsurface->frame_extents[3] = bottom;
+	xsurface_set_net_frame_extents(xsurface);
+	xwm_schedule_flush(xsurface->xwm);
 }
 
 void wlr_xwayland_surface_close(struct wlr_xwayland_surface *xsurface) {
@@ -2815,6 +2861,8 @@ struct wlr_xwm *xwm_create(struct wlr_xwayland *xwayland, int wm_fd) {
 		xwm->atoms[NET_WM_STATE_DEMANDS_ATTENTION],
 		xwm->atoms[NET_CLIENT_LIST],
 		xwm->atoms[NET_CLIENT_LIST_STACKING],
+		xwm->atoms[NET_FRAME_EXTENTS],
+		xwm->atoms[NET_REQUEST_FRAME_EXTENTS],
 	};
 	xcb_change_property(xwm->xcb_conn,
 		XCB_PROP_MODE_REPLACE,
