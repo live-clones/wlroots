@@ -114,6 +114,7 @@ enum wlr_color_transform_type {
 	WLR_COLOR_TRANSFORM_LUT_3X1D,
 	WLR_COLOR_TRANSFORM_MATRIX,
 	WLR_COLOR_TRANSFORM_PIPELINE,
+	WLR_COLOR_TRANSFORM_EOTF,
 };
 
 /**
@@ -138,6 +139,12 @@ struct wlr_color_transform {
 		int ref_count;
 		struct wlr_addon_set addons; // per-renderer helper state
 	} WLR_PRIVATE;
+};
+
+struct wlr_color_transform_eotf {
+	struct wlr_color_transform base;
+
+	enum wlr_color_transfer_function tf;
 };
 
 struct wlr_color_transform_inverse_eotf {
@@ -173,6 +180,13 @@ struct wlr_color_transform_pipeline {
 	struct wlr_color_transform **transforms;
 	size_t len;
 };
+
+/**
+ * Gets a wlr_color_transform_eotf from a generic wlr_color_transform.
+ * Asserts that the base type is COLOR_TRANSFORM_EOTF
+ */
+struct wlr_color_transform_eotf *wlr_color_transform_eotf_from_base(
+	struct wlr_color_transform *tr);
 
 /**
  * Get a struct wlr_color_transform_inverse_eotf from a generic
@@ -212,6 +226,13 @@ struct wlr_color_transform_pipeline *wlr_color_transform_pipeline_from_base(
  */
 struct wlr_color_transform *wlr_color_transform_init_linear_to_icc(
 	const void *data, size_t size);
+
+/**
+ * Initialize a color transformation to apply EOTF decoding. Returns
+ * NULL on failure.
+ */
+struct wlr_color_transform *wlr_color_transform_init_eotf_to_linear(
+	enum wlr_color_transfer_function tf);
 
 /**
  * Initialize a color transformation to apply EOTF⁻¹ encoding. Returns
