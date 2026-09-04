@@ -12,6 +12,7 @@ wlr_files += files(
 	'region.c',
 	'set.c',
 	'shm.c',
+	'signal.c',
 	'time.c',
 	'token.c',
 	'transform.c',
