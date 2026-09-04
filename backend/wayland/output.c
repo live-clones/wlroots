@@ -18,8 +18,10 @@
 
 #include "backend/wayland.h"
 #include "render/pixel_format.h"
+#include "types/wlr_color_management_v1.h"
 #include "types/wlr_output.h"
 
+#include "color-management-v1-client-protocol.h"
 #include "linux-dmabuf-v1-client-protocol.h"
 #include "linux-drm-syncobj-v1-client-protocol.h"
 #include "presentation-time-client-protocol.h"
@@ -35,7 +37,8 @@ static const uint32_t SUPPORTED_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_MODE |
 	WLR_OUTPUT_STATE_ADAPTIVE_SYNC_ENABLED |
 	WLR_OUTPUT_STATE_WAIT_TIMELINE |
-	WLR_OUTPUT_STATE_SIGNAL_TIMELINE;
+	WLR_OUTPUT_STATE_SIGNAL_TIMELINE |
+	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION;
 
 static size_t last_output_num = 0;
 
@@ -532,6 +535,9 @@ static void output_layer_handle_addon_destroy(struct wlr_addon *addon) {
 	struct wlr_wl_output_layer *layer = wl_container_of(addon, layer, addon);
 
 	wlr_addon_finish(&layer->addon);
+	if (layer->color_management_surface_v1 != NULL) {
+		wp_color_management_surface_v1_destroy(layer->color_management_surface_v1);
+	}
 	if (layer->viewport != NULL) {
 		wp_viewport_destroy(layer->viewport);
 	}
@@ -545,15 +551,27 @@ static const struct wlr_addon_interface output_layer_addon_impl = {
 	.destroy = output_layer_handle_addon_destroy,
 };
 
-static struct wlr_wl_output_layer *get_or_create_output_layer(
+static struct wlr_wl_output_layer *get_output_layer(
 		struct wlr_wl_output *output, struct wlr_output_layer *wlr_layer) {
 	assert(output->backend->subcompositor != NULL);
 
-	struct wlr_wl_output_layer *layer;
 	struct wlr_addon *addon = wlr_addon_find(&wlr_layer->addons, output,
 		&output_layer_addon_impl);
-	if (addon != NULL) {
-		layer = wl_container_of(addon, layer, addon);
+	if (addon == NULL) {
+		return NULL;
+	}
+
+	struct wlr_wl_output_layer *layer = wl_container_of(addon, layer, addon);
+	return layer;
+}
+
+static void set_surface_image_description(struct wlr_wl_output *output,
+	struct wp_color_management_surface_v1 *color_management_surface);
+
+static struct wlr_wl_output_layer *get_or_create_output_layer(
+		struct wlr_wl_output *output, struct wlr_output_layer *wlr_layer) {
+	struct wlr_wl_output_layer *layer = get_output_layer(output, wlr_layer);
+	if (layer != NULL) {
 		return layer;
 	}
 
@@ -577,6 +595,12 @@ static struct wlr_wl_output_layer *get_or_create_output_layer(
 
 	if (output->backend->viewporter != NULL) {
 		layer->viewport = wp_viewporter_get_viewport(output->backend->viewporter, layer->surface);
+	}
+
+	if (output->backend->color_manager_v1 != NULL) {
+		layer->color_management_surface_v1 =
+			wp_color_manager_v1_get_surface(output->backend->color_manager_v1, layer->surface);
+		set_surface_image_description(output, layer->color_management_surface_v1);
 	}
 
 	return layer;
@@ -606,7 +630,6 @@ static void output_layer_unmap(struct wlr_wl_output_layer *layer) {
 	}
 
 	wl_surface_attach(layer->surface, NULL, 0, 0);
-	wl_surface_commit(layer->surface);
 	layer->mapped = false;
 }
 
@@ -627,7 +650,7 @@ static void damage_surface(struct wl_surface *surface,
 	}
 }
 
-static bool output_layer_commit(struct wlr_wl_output *output,
+static bool output_layer_update(struct wlr_wl_output *output,
 		struct wlr_wl_output_layer *layer,
 		const struct wlr_output_layer_state *state) {
 	if (state->layer->dst_box.x != state->dst_box.x ||
@@ -671,12 +694,11 @@ static bool output_layer_commit(struct wlr_wl_output *output,
 
 	wl_surface_attach(layer->surface, buffer->wl_buffer, 0, 0);
 	damage_surface(layer->surface, state->damage);
-	wl_surface_commit(layer->surface);
 	layer->mapped = true;
 	return true;
 }
 
-static bool commit_layers(struct wlr_wl_output *output,
+static bool update_layers(struct wlr_wl_output *output,
 		struct wlr_output_layer_state *layers, size_t layers_len) {
 	if (output->backend->subcompositor == NULL) {
 		return true;
@@ -702,7 +724,7 @@ static bool commit_layers(struct wlr_wl_output *output,
 				prev_layer->surface);
 		}
 
-		if (!output_layer_commit(output, layer, &layers[i])) {
+		if (!output_layer_update(output, layer, &layers[i])) {
 			return false;
 		}
 
@@ -710,6 +732,17 @@ static bool commit_layers(struct wlr_wl_output *output,
 	}
 
 	return true;
+}
+
+static void commit_layers(struct wlr_wl_output *output) {
+	struct wlr_output_layer *wlr_layer;
+	wl_list_for_each(wlr_layer, &output->wlr_output.layers, link) {
+		struct wlr_wl_output_layer *layer = get_output_layer(output, wlr_layer);
+		if (layer == NULL) {
+			continue;
+		}
+		wl_surface_commit(layer->surface);
+	}
 }
 
 static void unmap_callback_handle_done(void *data, struct wl_callback *callback,
@@ -722,6 +755,97 @@ static void unmap_callback_handle_done(void *data, struct wl_callback *callback,
 static const struct wl_callback_listener unmap_callback_listener = {
 	.done = unmap_callback_handle_done,
 };
+
+static int32_t encode_cie1931_coord(float value) {
+	return round(value * 1000 * 1000);
+}
+
+static struct wp_image_description_v1 *create_image_description_v1(
+		struct wlr_wl_backend *wl,
+		const struct wlr_output_image_description *img_desc) {
+	struct wp_image_description_creator_params_v1 *param_creator =
+		wp_color_manager_v1_create_parametric_creator(wl->color_manager_v1);
+
+	wp_image_description_creator_params_v1_set_tf_named(param_creator,
+		wlr_color_manager_v1_transfer_function_from_wlr(img_desc->transfer_function));
+	wp_image_description_creator_params_v1_set_primaries_named(param_creator,
+		wlr_color_manager_v1_primaries_from_wlr(img_desc->primaries));
+
+	const struct wlr_color_primaries *mast_primaries =
+		&img_desc->mastering_display_primaries;
+	bool has_mast_primaries = memcmp(mast_primaries,
+		&(struct wlr_color_primaries){0}, sizeof(*mast_primaries)) != 0;
+	if (wl->color_manager_v1_features.set_mastering_display_primaries &&
+			has_mast_primaries) {
+		wp_image_description_creator_params_v1_set_mastering_display_primaries(
+			param_creator,
+			encode_cie1931_coord(mast_primaries->red.x),
+			encode_cie1931_coord(mast_primaries->red.y),
+			encode_cie1931_coord(mast_primaries->green.x),
+			encode_cie1931_coord(mast_primaries->green.y),
+			encode_cie1931_coord(mast_primaries->blue.x),
+			encode_cie1931_coord(mast_primaries->blue.y),
+			encode_cie1931_coord(mast_primaries->white.x),
+			encode_cie1931_coord(mast_primaries->white.y));
+	}
+	if (wl->color_manager_v1_features.set_mastering_display_primaries &&
+			img_desc->mastering_luminance.min != 0 &&
+			img_desc->mastering_luminance.max != 0) {
+		wp_image_description_creator_params_v1_set_mastering_luminance(
+			param_creator,
+			round(img_desc->mastering_luminance.min * 10000),
+			round(img_desc->mastering_luminance.max));
+	}
+
+	if (img_desc->max_cll != 0) {
+		wp_image_description_creator_params_v1_set_max_cll(param_creator,
+			img_desc->max_cll);
+	}
+	if (img_desc->max_fall != 0) {
+		wp_image_description_creator_params_v1_set_max_cll(param_creator,
+			img_desc->max_fall);
+	}
+
+	return wp_image_description_creator_params_v1_create(param_creator);
+}
+
+static void set_surface_image_description(struct wlr_wl_output *output,
+		struct wp_color_management_surface_v1 *color_management_surface) {
+	if (output->img_desc != NULL) {
+		wp_color_management_surface_v1_set_image_description(color_management_surface,
+			output->img_desc, WP_COLOR_MANAGER_V1_RENDER_INTENT_PERCEPTUAL);
+	} else {
+		wp_color_management_surface_v1_unset_image_description(color_management_surface);
+	}
+}
+
+static void update_image_description(struct wlr_wl_output *output,
+		const struct wlr_output_image_description *img_desc) {
+	if (output->img_desc != NULL) {
+		wp_image_description_v1_destroy(output->img_desc);
+		output->img_desc = NULL;
+	}
+
+	if (img_desc != NULL) {
+		output->img_desc = create_image_description_v1(output->backend, img_desc);
+	}
+
+	assert(output->color_management_surface_v1 != NULL);
+	set_surface_image_description(output, output->color_management_surface_v1);
+
+	if (output->cursor.color_management_surface_v1 != NULL) {
+		set_surface_image_description(output, output->cursor.color_management_surface_v1);
+	}
+
+	struct wlr_output_layer *wlr_layer;
+	wl_list_for_each(wlr_layer, &output->wlr_output.layers, link) {
+		struct wlr_wl_output_layer *layer = get_output_layer(output, wlr_layer);
+		if (layer == NULL) {
+			continue;
+		}
+		set_surface_image_description(output, layer->color_management_surface_v1);
+	}
+}
 
 static bool output_commit(struct wlr_output *wlr_output, const struct wlr_output_state *state) {
 	struct wlr_wl_output *output = get_wl_output_from_output(wlr_output);
@@ -852,8 +976,16 @@ static bool output_commit(struct wlr_output *wlr_output, const struct wlr_output
 	}
 
 	if ((state->committed & WLR_OUTPUT_STATE_LAYERS) &&
-			!commit_layers(output, state->layers, state->layers_len)) {
+			!update_layers(output, state->layers, state->layers_len)) {
 		return false;
+	}
+
+	if (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
+		update_image_description(output, state->image_description);
+	}
+
+	if (state->committed & (WLR_OUTPUT_STATE_LAYERS | WLR_OUTPUT_STATE_IMAGE_DESCRIPTION)) {
+		commit_layers(output);
 	}
 
 	if (pending_enabled) {
@@ -914,6 +1046,11 @@ static bool output_set_cursor(struct wlr_output *wlr_output,
 	if (output->cursor.surface == NULL) {
 		output->cursor.surface =
 			wl_compositor_create_surface(backend->compositor);
+		if (backend->color_manager_v1 != NULL) {
+			output->cursor.color_management_surface_v1 =
+				wp_color_manager_v1_get_surface(backend->color_manager_v1, output->cursor.surface);
+			set_surface_image_description(output, output->cursor.color_management_surface_v1);
+		}
 	}
 	struct wl_surface *surface = output->cursor.surface;
 
@@ -958,6 +1095,9 @@ static void output_destroy(struct wlr_output *wlr_output) {
 
 	wl_list_remove(&output->link);
 
+	if (output->cursor.color_management_surface_v1) {
+		wp_color_management_surface_v1_destroy(output->cursor.color_management_surface_v1);
+	}
 	if (output->cursor.surface) {
 		wl_surface_destroy(output->cursor.surface);
 	}
@@ -976,11 +1116,17 @@ static void output_destroy(struct wlr_output *wlr_output) {
 		wl_callback_destroy(output->unmap_callback);
 	}
 
+	if (output->img_desc != NULL) {
+		wp_image_description_v1_destroy(output->img_desc);
+	}
 	if (output->drm_syncobj_surface_v1) {
 		wp_linux_drm_syncobj_surface_v1_destroy(output->drm_syncobj_surface_v1);
 	}
 	if (output->zxdg_toplevel_decoration_v1) {
 		zxdg_toplevel_decoration_v1_destroy(output->zxdg_toplevel_decoration_v1);
+	}
+	if (output->color_management_surface_v1) {
+		wp_color_management_surface_v1_destroy(output->color_management_surface_v1);
 	}
 	if (output->xdg_toplevel) {
 		xdg_toplevel_destroy(output->xdg_toplevel);
@@ -1131,6 +1277,19 @@ static struct wlr_wl_output *output_create(struct wlr_wl_backend *backend,
 	output->surface = surface;
 	output->backend = backend;
 	wl_list_init(&output->presentation_feedbacks);
+
+	if (backend->color_manager_v1) {
+		output->color_management_surface_v1 = wp_color_manager_v1_get_surface(backend->color_manager_v1, output->surface);
+		if (!output->color_management_surface_v1) {
+			wlr_log(WLR_ERROR, "Failed to get color management surface");
+			return NULL;
+		}
+	}
+
+	if (backend->color_manager_v1_features.parametric) {
+		wlr_output->supported_primaries = backend->supported_primaries;
+		wlr_output->supported_transfer_functions = backend->supported_tfs;
+	}
 
 	wl_proxy_set_tag((struct wl_proxy *)output->surface, &surface_tag);
 	wl_surface_set_user_data(output->surface, output);
