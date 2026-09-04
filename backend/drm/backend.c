@@ -65,7 +65,9 @@ static void backend_destroy(struct wlr_backend *backend) {
 	}
 
 	free(drm->name);
-	wlr_session_close_file(drm->session, drm->dev);
+	if (drm->dev) {
+		wlr_session_close_file(drm->session, drm->dev);
+	}
 	wl_event_source_remove(drm->drm_event);
 	free(drm);
 }
@@ -152,6 +154,7 @@ static void handle_dev_remove(struct wl_listener *listener, void *data) {
 	struct wlr_drm_backend *drm = wl_container_of(listener, drm, dev_remove);
 
 	wlr_log(WLR_INFO, "Destroying DRM backend for %s", drm->name);
+	drm->dev = NULL;
 	backend_destroy(&drm->backend);
 }
 
