@@ -841,6 +841,12 @@ bool wlr_output_commit_state(struct wlr_output *output,
 		wlr_buffer_unlock(pending.buffer);
 	}
 
+	output->cursor_uploaded_this_frame = 0;
+	if (output->cursor_pending_upload) {
+		output_cursor_attempt_hardware(output->cursor_pending_upload);
+		output->cursor_pending_upload = NULL;
+	}
+
 	return true;
 }
 
