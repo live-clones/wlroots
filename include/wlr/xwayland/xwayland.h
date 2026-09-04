@@ -243,6 +243,8 @@ struct wlr_xwayland_surface {
 
 	struct {
 		char *wm_name, *net_wm_name;
+		/* _NET_FRAME_EXTENTS, in left, right, top, bottom order */
+		uint32_t frame_extents[4];
 
 		struct wl_listener surface_commit;
 		struct wl_listener surface_map;
@@ -304,6 +306,17 @@ void wlr_xwayland_surface_restack(struct wlr_xwayland_surface *surface,
 
 void wlr_xwayland_surface_configure(struct wlr_xwayland_surface *surface,
 	int16_t x, int16_t y, uint16_t width, uint16_t height);
+
+/**
+ * Set the extents of the compositor-provided frame around the surface.
+ *
+ * The values are in left, right, top, bottom order and are reported to the
+ * X11 client through _NET_FRAME_EXTENTS. They are also used to answer
+ * _NET_REQUEST_FRAME_EXTENTS messages.
+ */
+void wlr_xwayland_surface_set_frame_extents(
+	struct wlr_xwayland_surface *surface,
+	uint32_t left, uint32_t right, uint32_t top, uint32_t bottom);
 
 void wlr_xwayland_surface_close(struct wlr_xwayland_surface *surface);
 
