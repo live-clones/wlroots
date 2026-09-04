@@ -36,6 +36,11 @@ struct wlr_output_mode {
 	struct wl_list link;
 };
 
+struct wlr_output_cursor_texture_sample_event {
+	struct wlr_drm_syncobj_timeline *release_timeline;
+	uint64_t release_point;
+};
+
 struct wlr_output_cursor {
 	struct wlr_output *output;
 	double x, y;
@@ -50,6 +55,10 @@ struct wlr_output_cursor {
 	struct wlr_drm_syncobj_timeline *wait_timeline;
 	uint64_t wait_point;
 	struct wl_list link;
+
+	struct {
+		struct wl_signal texture_sample; // struct wlr_output_cursor_texture_sample_event
+	} events;
 
 	struct {
 		struct wl_listener renderer_destroy;
@@ -442,7 +451,8 @@ void wlr_output_lock_software_cursors(struct wlr_output *output, bool lock);
  * This is a utility function that can be called when compositors render.
  */
 void wlr_output_add_software_cursors_to_render_pass(struct wlr_output *output,
-	struct wlr_render_pass *render_pass, const pixman_region32_t *damage);
+	struct wlr_render_pass *render_pass, const pixman_region32_t *damage,
+	struct wlr_drm_syncobj_timeline *release_timeline, uint64_t release_point);
 /**
  * Get the set of DRM formats suitable for the primary buffer, assuming a
  * buffer with the specified capabilities.
