@@ -281,6 +281,15 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 		pixman_region32_intersect_rect(&opaque, &opaque, 0, 0, width, height);
 	}
 
+#if WLR_HAS_XWAYLAND
+	if (scene_surface->xwayland_surface != NULL &&
+			scene_surface->xwayland_surface->has_shape) {
+		// A shaped surface is not opaque outside its XShape region. Keep this
+		// empty so that the scene below it is rendered through the holes.
+		pixman_region32_clear(&opaque);
+	}
+#endif
+
 	if (width <= 0 || height <= 0) {
 		wlr_scene_buffer_set_buffer(scene_buffer, NULL);
 		pixman_region32_fini(&opaque);
@@ -385,6 +394,64 @@ static void handle_scene_surface_surface_commit(
 	}
 }
 
+#if WLR_HAS_XWAYLAND
+static void scene_surface_detach_xwayland_surface(
+		struct wlr_scene_surface *surface) {
+	if (surface->xwayland_surface == NULL) {
+		return;
+	}
+
+	wl_list_remove(&surface->xwayland_surface_set_shape.link);
+	wl_list_init(&surface->xwayland_surface_set_shape.link);
+	wl_list_remove(&surface->xwayland_surface_dissociate.link);
+	wl_list_init(&surface->xwayland_surface_dissociate.link);
+	surface->xwayland_surface = NULL;
+}
+
+static void scene_surface_handle_xwayland_set_shape(
+		struct wl_listener *listener, void *data) {
+	struct wlr_scene_surface *surface = wl_container_of(listener,
+		surface, xwayland_surface_set_shape);
+	if (surface->xwayland_surface->has_shape) {
+		pixman_region32_t opaque;
+		pixman_region32_init(&opaque);
+		wlr_scene_buffer_set_opaque_region(surface->buffer, &opaque);
+		pixman_region32_fini(&opaque);
+	} else {
+		surface_reconfigure(surface);
+	}
+	scene_node_update(&surface->buffer->node, NULL);
+}
+
+static void scene_surface_handle_xwayland_dissociate(
+		struct wl_listener *listener, void *data) {
+	struct wlr_scene_surface *surface = wl_container_of(listener,
+		surface, xwayland_surface_dissociate);
+	scene_surface_detach_xwayland_surface(surface);
+	surface_reconfigure(surface);
+	scene_node_update(&surface->buffer->node, NULL);
+}
+
+static void scene_surface_attach_xwayland_surface(
+		struct wlr_scene_surface *surface) {
+	struct wlr_xwayland_surface *xsurface =
+		wlr_xwayland_surface_try_from_wlr_surface(surface->surface);
+	if (xsurface == NULL) {
+		return;
+	}
+
+	surface->xwayland_surface = xsurface;
+	surface->xwayland_surface_set_shape.notify =
+		scene_surface_handle_xwayland_set_shape;
+	wl_signal_add(&xsurface->events.set_shape,
+		&surface->xwayland_surface_set_shape);
+	surface->xwayland_surface_dissociate.notify =
+		scene_surface_handle_xwayland_dissociate;
+	wl_signal_add(&xsurface->events.dissociate,
+		&surface->xwayland_surface_dissociate);
+}
+#endif
+
 static bool scene_buffer_point_accepts_input(struct wlr_scene_buffer *scene_buffer,
 		double *sx, double *sy) {
 	struct wlr_scene_surface *scene_surface =
@@ -410,6 +477,9 @@ static void surface_addon_destroy(struct wlr_addon *addon) {
 	struct wlr_scene_surface *surface = wl_container_of(addon, surface, addon);
 
 	scene_buffer_unmark_client_buffer(surface->buffer);
+#if WLR_HAS_XWAYLAND
+	scene_surface_detach_xwayland_surface(surface);
+#endif
 
 	wlr_addon_finish(&surface->addon);
 
@@ -474,6 +544,9 @@ struct wlr_scene_surface *wlr_scene_surface_create(struct wlr_scene_tree *parent
 	wlr_addon_init(&surface->addon, &scene_buffer->node.addons,
 		scene_buffer, &surface_addon_impl);
 
+#if WLR_HAS_XWAYLAND
+	scene_surface_attach_xwayland_surface(surface);
+#endif
 	surface_reconfigure(surface);
 
 	return surface;
