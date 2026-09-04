@@ -430,7 +430,6 @@ struct wlr_vk_render_pass_texture {
 
 struct wlr_vk_render_pass {
 	struct wlr_render_pass base;
-	struct wlr_vk_renderer *renderer;
 	struct wlr_vk_render_buffer *render_buffer;
 	struct wlr_vk_render_buffer_out *render_buffer_out;
 	struct wlr_vk_render_format_setup *render_setup;
