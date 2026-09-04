@@ -7,7 +7,7 @@
 #include <wlr/util/addon.h>
 #include "presentation-time-protocol.h"
 
-#define PRESENTATION_VERSION 2
+#define PRESENTATION_VERSION 3
 
 struct wlr_presentation_surface_state {
 	struct wlr_presentation_feedback *feedback;
@@ -292,6 +292,10 @@ static void feedback_handle_output_present(struct wl_listener *listener,
 		if (wl_resource_get_version(resource) == 1 &&
 				event.output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) {
 			event.refresh = 0;
+		}
+		if (wl_resource_get_version(resource) < 3) {
+			event.flags &= ~WLR_OUTPUT_PRESENT_VARIABLE_RATE;
+			event.flags &= ~WLR_OUTPUT_PRESENT_FIXED_RATE;
 		}
 		if (!feedback->zero_copy) {
 			event.flags &= ~WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY;
