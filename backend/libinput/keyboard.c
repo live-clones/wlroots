@@ -27,8 +27,6 @@ void init_device_keyboard(struct wlr_libinput_input_device *dev) {
 	const char *name = get_libinput_device_name(dev->handle);
 	struct wlr_keyboard *wlr_kb = &dev->keyboard;
 	wlr_keyboard_init(wlr_kb, &libinput_keyboard_impl, name);
-
-	libinput_device_led_update(dev->handle, 0);
 }
 
 static bool key_state_from_libinput(enum libinput_key_state state, enum wl_keyboard_key_state *out) {
