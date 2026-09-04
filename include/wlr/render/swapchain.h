@@ -46,5 +46,9 @@ struct wlr_buffer *wlr_swapchain_acquire(struct wlr_swapchain *swapchain);
  */
 bool wlr_swapchain_has_buffer(struct wlr_swapchain *swapchain,
 	struct wlr_buffer *buffer);
+/**
+ * Count how many free slots there are left in the swapchain.
+ */
+int wlr_swapchain_count_free_slots(const struct wlr_swapchain *swapchain);
 
 #endif

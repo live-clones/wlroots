@@ -3,11 +3,12 @@
 #include <unistd.h>
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/render/dmabuf.h>
+#include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/util/log.h>
 #include "wlr-export-dmabuf-unstable-v1-protocol.h"
 
-#define EXPORT_DMABUF_MANAGER_VERSION 1
+#define EXPORT_DMABUF_MANAGER_VERSION 2
 
 
 static const struct zwlr_export_dmabuf_frame_v1_interface frame_impl;
@@ -32,6 +33,7 @@ static void frame_destroy(struct wlr_export_dmabuf_frame_v1 *frame) {
 	if (frame == NULL) {
 		return;
 	}
+	wlr_buffer_unlock(frame->buffer);
 	if (frame->output != NULL) {
 		wlr_output_lock_attach_render(frame->output, false);
 		if (frame->cursor_locked) {
@@ -64,8 +66,11 @@ static void frame_output_handle_commit(struct wl_listener *listener,
 	wl_list_remove(&frame->output_commit.link);
 	wl_list_init(&frame->output_commit.link);
 
+	uint32_t version = wl_resource_get_version(frame->resource);
+
 	struct wlr_dmabuf_attributes attribs = {0};
-	if (!wlr_buffer_get_dmabuf(event->state->buffer, &attribs)) {
+	if (!wlr_buffer_get_dmabuf(event->state->buffer, &attribs) ||
+			(version >= 2 && wlr_swapchain_count_free_slots(frame->output->swapchain) < 2)) {
 		zwlr_export_dmabuf_frame_v1_send_cancel(frame->resource,
 			ZWLR_EXPORT_DMABUF_FRAME_V1_CANCEL_REASON_TEMPORARY);
 		frame_destroy(frame);
@@ -90,7 +95,12 @@ static void frame_output_handle_commit(struct wl_listener *listener,
 	uint32_t tv_sec_lo = tv_sec & 0xFFFFFFFF;
 	zwlr_export_dmabuf_frame_v1_send_ready(frame->resource,
 		tv_sec_hi, tv_sec_lo, event->when.tv_nsec);
-	frame_destroy(frame);
+
+	if (version < 2) {
+		frame_destroy(frame);
+	} else {
+		frame->buffer = wlr_buffer_lock(event->state->buffer);
+	}
 }
 
 static void frame_output_handle_destroy(struct wl_listener *listener, void *data) {
