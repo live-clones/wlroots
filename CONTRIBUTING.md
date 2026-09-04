@@ -101,6 +101,17 @@ message as well.
 
 See [How to Write a Git Commit Message] for more details.
 
+## Developer Certificate of Origin
+
+All commits must include a `Signed-off-by` trailer with your preferred name and
+email address which indicates that you agree to the [Developer Certificate of
+Origin]. If part of the patch has been authored by someone else, you should
+also gather `Signed-off-by` trailers from them in addition to your own trailer.
+These trailers certify that the commit can be submitted under the project's
+open-source license.
+
+The trailer can be added with `git commit -s`.
+
 ## Code Review
 
 When your changes are submitted for review, one or more core committers will
@@ -473,6 +484,7 @@ static void subsurface_handle_surface_destroy(struct wl_listener *listener,
 [freedesktop wiki]: https://gitlab.freedesktop.org/freedesktop/freedesktop/-/wikis/home
 [linear, "recipe" style]: https://www.bitsnbites.eu/git-history-work-log-vs-recipe/
 [git-rebase.io]: https://git-rebase.io/
+[Developer Certificate of Origin]: https://developercertificate.org/
 [reference issues]: https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically
 [Code of Conduct]: https://www.freedesktop.org/wiki/CodeOfConduct/
 [How to Write a Git Commit Message]: https://chris.beams.io/posts/git-commit/
