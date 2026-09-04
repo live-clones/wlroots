@@ -108,6 +108,7 @@ struct wlr_xdg_popup {
 		struct wl_signal destroy;
 
 		struct wl_signal reposition;
+		struct wl_signal grab;
 	} events;
 
 	struct wl_list grab_link; // wlr_xdg_popup_grab.popups
