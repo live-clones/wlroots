@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #include <drm_fourcc.h>
 #include <xcb/dri3.h>
@@ -20,6 +22,7 @@
 
 #include "backend/x11.h"
 #include "render/pixel_format.h"
+#include "util/shm.h"
 #include "util/time.h"
 #include "types/wlr_buffer.h"
 #include "types/wlr_output.h"
@@ -92,6 +95,29 @@ static bool output_set_custom_mode(struct wlr_output *wlr_output,
 
 static void destroy_x11_buffer(struct wlr_x11_buffer *buffer);
 
+static void readback_cleanup(struct wlr_x11_output *output) {
+	struct wlr_x11_backend *x11 = output->x11;
+	if (output->readback.seg != XCB_NONE) {
+		xcb_shm_detach(x11->xcb, output->readback.seg);
+		output->readback.seg = XCB_NONE;
+	}
+	if (output->readback.data != NULL) {
+		munmap(output->readback.data, output->readback.size);
+		output->readback.data = NULL;
+	}
+	if (output->readback.gc != XCB_NONE) {
+		xcb_free_gc(x11->xcb, output->readback.gc);
+		output->readback.gc = XCB_NONE;
+	}
+	if (output->readback.pixmap != XCB_PIXMAP_NONE) {
+		xcb_free_pixmap(x11->xcb, output->readback.pixmap);
+		output->readback.pixmap = XCB_PIXMAP_NONE;
+	}
+	output->readback.size = 0;
+	output->readback.width = 0;
+	output->readback.height = 0;
+}
+
 static void output_destroy(struct wlr_output *wlr_output) {
 	struct wlr_x11_output *output = get_x11_output_from_output(wlr_output);
 	struct wlr_x11_backend *x11 = output->x11;
@@ -109,6 +135,8 @@ static void output_destroy(struct wlr_output *wlr_output) {
 	}
 
 	wl_list_remove(&output->link);
+
+	readback_cleanup(output);
 
 	if (output->cursor.pic != XCB_NONE) {
 		xcb_render_free_picture(x11->xcb, output->cursor.pic);
@@ -216,6 +244,116 @@ static void buffer_handle_buffer_destroy(struct wl_listener *listener,
 	destroy_x11_buffer(buffer);
 }
 
+static bool format_set_has_explicit_modifier(
+		const struct wlr_drm_format_set *formats) {
+	for (size_t i = 0; i < formats->len; i++) {
+		const struct wlr_drm_format *fmt = &formats->formats[i];
+		for (size_t j = 0; j < fmt->len; j++) {
+			if (fmt->modifiers[j] != DRM_FORMAT_MOD_INVALID) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+static bool readback_ensure(struct wlr_x11_output *output,
+		int width, int height) {
+	struct wlr_x11_backend *x11 = output->x11;
+	int bpp = x11->x11_format->bpp;
+	int stride = width * (bpp / 8);
+	size_t size = (size_t)stride * height;
+
+	if (output->readback.data != NULL &&
+			output->readback.width == width &&
+			output->readback.height == height) {
+		return true;
+	}
+
+	wlr_log(WLR_INFO, "Using SHM readback fallback for output '%s' (%dx%d)",
+		output->wlr_output.name, width, height);
+
+	readback_cleanup(output);
+
+	int fd = allocate_shm_file(size);
+	if (fd < 0) {
+		wlr_log(WLR_ERROR, "Failed to allocate SHM file");
+		return false;
+	}
+
+	uint8_t *data = mmap(NULL, size, PROT_READ | PROT_WRITE,
+		MAP_SHARED, fd, 0);
+	if (data == MAP_FAILED) {
+		wlr_log_errno(WLR_ERROR, "mmap failed");
+		close(fd);
+		return false;
+	}
+
+	xcb_shm_seg_t seg = xcb_generate_id(x11->xcb);
+	// xcb_shm_attach_fd takes ownership of the fd
+	xcb_shm_attach_fd(x11->xcb, seg, fd, false);
+
+	xcb_pixmap_t pixmap = xcb_generate_id(x11->xcb);
+	xcb_create_pixmap(x11->xcb, x11->x11_format->depth, pixmap,
+		output->win, width, height);
+
+	xcb_gcontext_t gc = xcb_generate_id(x11->xcb);
+	xcb_create_gc(x11->xcb, gc, pixmap, 0, NULL);
+
+	output->readback.seg = seg;
+	output->readback.data = data;
+	output->readback.size = size;
+	output->readback.width = width;
+	output->readback.height = height;
+	output->readback.pixmap = pixmap;
+	output->readback.gc = gc;
+
+	return true;
+}
+
+static bool readback_commit(struct wlr_x11_output *output,
+		struct wlr_buffer *buffer) {
+	struct wlr_x11_backend *x11 = output->x11;
+	struct wlr_renderer *renderer = output->wlr_output.renderer;
+
+	if (renderer == NULL || !x11->have_shm) {
+		return false;
+	}
+
+	if (!readback_ensure(output, buffer->width, buffer->height)) {
+		return false;
+	}
+
+	struct wlr_texture *texture = wlr_texture_from_buffer(renderer, buffer);
+	if (!texture) {
+		wlr_log(WLR_ERROR, "Failed to create texture from buffer");
+		return false;
+	}
+
+	int bpp = x11->x11_format->bpp;
+	int stride = buffer->width * (bpp / 8);
+
+	bool ok = wlr_texture_read_pixels(texture, &(struct wlr_texture_read_pixels_options) {
+		.format = x11->x11_format->drm,
+		.stride = stride,
+		.data = output->readback.data,
+	});
+	wlr_texture_destroy(texture);
+
+	if (!ok) {
+		wlr_log(WLR_ERROR, "Failed to read pixels from texture");
+		return false;
+	}
+
+	xcb_shm_put_image(x11->xcb, output->readback.pixmap,
+		output->readback.gc, buffer->width, buffer->height, 0, 0,
+		buffer->width, buffer->height, 0, 0,
+		x11->x11_format->depth, XCB_IMAGE_FORMAT_Z_PIXMAP,
+		false, output->readback.seg, 0);
+
+	return true;
+}
+
 static xcb_pixmap_t import_dmabuf(struct wlr_x11_output *output,
 		struct wlr_dmabuf_attributes *dmabuf) {
 	struct wlr_x11_backend *x11 = output->x11;
@@ -264,6 +402,10 @@ static xcb_pixmap_t import_dmabuf(struct wlr_x11_output *output,
 static xcb_pixmap_t import_shm(struct wlr_x11_output *output,
 		struct wlr_shm_attributes *shm) {
 	struct wlr_x11_backend *x11 = output->x11;
+
+	if (!x11->have_shm_pixmaps) {
+		return XCB_PIXMAP_NONE;
+	}
 
 	if (shm->format != x11->x11_format->drm) {
 		// The pixmap's depth must match the window's depth, otherwise Present
@@ -349,10 +491,19 @@ static bool output_commit_buffer(struct wlr_x11_output *output,
 	struct wlr_x11_backend *x11 = output->x11;
 
 	struct wlr_buffer *buffer = state->buffer;
+	xcb_pixmap_t present_pixmap;
+
 	struct wlr_x11_buffer *x11_buffer =
 		get_or_create_x11_buffer(output, buffer);
-	if (!x11_buffer) {
-		goto error;
+	if (x11_buffer) {
+		present_pixmap = x11_buffer->pixmap;
+	} else {
+		// DRI3/SHM import failed (e.g. buffer has a modifier that X11
+		// cannot handle). Fall back to CPU readback via SHM.
+		if (!readback_commit(output, buffer)) {
+			return false;
+		}
+		present_pixmap = output->readback.pixmap;
 	}
 
 	xcb_xfixes_region_t region = XCB_NONE;
@@ -388,7 +539,7 @@ static bool output_commit_buffer(struct wlr_x11_output *output,
 	uint32_t serial = output->wlr_output.commit_seq;
 	uint32_t options = 0;
 	uint64_t target_msc = output->last_msc ? output->last_msc + 1 : 0;
-	xcb_present_pixmap(x11->xcb, output->win, x11_buffer->pixmap, serial,
+	xcb_present_pixmap(x11->xcb, output->win, present_pixmap, serial,
 		0, region, 0, 0, XCB_NONE, XCB_NONE, XCB_NONE, options, target_msc,
 		0, 0, 0, NULL);
 
@@ -569,6 +720,13 @@ static const struct wlr_drm_format_set *output_get_primary_formats(
 	struct wlr_x11_backend *x11 = output->x11;
 
 	if (x11->have_dri3 && (buffer_caps & WLR_BUFFER_CAP_DMABUF)) {
+		// When DRI3 has no explicit modifiers, return NULL (no format
+		// constraint) so the renderer can allocate with its preferred
+		// modifier. The commit path will fall back to CPU readback
+		// if DRI3 cannot import the resulting buffer.
+		if (!format_set_has_explicit_modifier(&x11->primary_dri3_formats)) {
+			return NULL;
+		}
 		return &output->x11->primary_dri3_formats;
 	} else if (x11->have_shm && (buffer_caps & WLR_BUFFER_CAP_SHM)) {
 		return &output->x11->primary_shm_formats;
