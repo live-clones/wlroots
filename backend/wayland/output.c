@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +28,7 @@
 #include "xdg-activation-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+#include "fractional-scale-v1-client-protocol.h"
 
 static const uint32_t SUPPORTED_OUTPUT_STATE =
 	WLR_OUTPUT_STATE_BACKEND_OPTIONAL |
@@ -40,6 +42,8 @@ static const uint32_t SUPPORTED_OUTPUT_STATE =
 static size_t last_output_num = 0;
 
 static const char *surface_tag = "wlr_wl_output";
+
+static const struct wlr_addon_interface output_layer_addon_impl;
 
 static struct wlr_wl_output *get_wl_output_from_output(
 		struct wlr_output *wlr_output) {
@@ -60,6 +64,139 @@ struct wlr_wl_output *get_wl_output_from_surface(struct wlr_wl_backend *wl,
 	}
 	return output;
 }
+
+static int32_t ceil_scale(float scale) {
+	return (int32_t)ceilf(scale);
+}
+
+static int32_t output_get_main_buffer_scale(struct wlr_wl_output *output) {
+	if (output->fractional_scale != NULL) {
+		// Fractional scale v1 requires that wl_surface buffer scale be set to 1.
+		return 1;
+	}
+	return ceil_scale(output->scale);
+}
+
+static void output_set_main_surface_scale(struct wlr_wl_output *output) {
+	wl_surface_set_buffer_scale(output->surface, output_get_main_buffer_scale(output));
+}
+
+static void output_set_viewport(struct wlr_wl_output *output) {
+	struct wlr_wl_backend *backend = output->backend;
+	if (backend->viewporter == NULL) {
+		return;
+	}
+
+	if (output->viewport == NULL) {
+		output->viewport = wp_viewporter_get_viewport(backend->viewporter,
+			output->surface);
+	}
+
+	// With fractional scale the viewport maps the buffer
+	// back to the parent compositor's logical size.
+	if (output->fractional_scale != NULL) {
+		wp_viewport_set_destination(output->viewport,
+			output->logical_width, output->logical_height);
+	} else if (output->viewport != NULL) {
+		wp_viewport_set_destination(output->viewport, -1, -1);
+	}
+}
+
+static void output_request_state(struct wlr_wl_output *output) {
+	float scale = output->scale;
+	int32_t buffer_width = (int32_t)roundf(output->logical_width * scale);
+	int32_t buffer_height = (int32_t)roundf(output->logical_height * scale);
+
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	wlr_output_state_set_custom_mode(&state, buffer_width, buffer_height, 0);
+	wlr_output_state_set_scale(&state, scale);
+	wlr_output_send_request_state(&output->wlr_output, &state);
+	wlr_output_state_finish(&state);
+}
+
+static void output_set_scale(struct wlr_wl_output *output, float scale) {
+	output->scale = scale;
+
+	output_set_main_surface_scale(output);
+	output_set_viewport(output);
+	output_request_state(output);
+}
+
+static void output_handle_preferred_buffer_scale(void *data,
+		struct wl_surface *surface, int32_t factor) {
+	struct wlr_wl_output *output = data;
+	if (output->backend->fractional_scale_manager != NULL) {
+		return; // Fractional scale v1 override this.
+	}
+	output_set_scale(output, (float)factor);
+}
+
+static void output_handle_preferred_buffer_transform(void *data,
+		struct wl_surface *surface, uint32_t transform) {
+	// TODO: relay transform in the same way we relay scale.
+}
+
+static const struct wl_surface_listener surface_listener = {
+	.preferred_buffer_scale = output_handle_preferred_buffer_scale,
+	.preferred_buffer_transform = output_handle_preferred_buffer_transform,
+};
+
+static void output_handle_fractional_scale_preferred_scale(void *data,
+		struct wp_fractional_scale_v1 *fractional_scale, uint32_t scale) {
+	struct wlr_wl_output *output = data;
+	output_set_scale(output, (float)scale / 120.0f);
+}
+
+static const struct wp_fractional_scale_v1_listener fractional_scale_listener = {
+	.preferred_scale = output_handle_fractional_scale_preferred_scale,
+};
+
+static void cursor_set_scale(struct wlr_wl_output *output, float scale) {
+	output->cursor.scale = scale;
+
+	if (output->cursor.fractional_scale != NULL) {
+		wl_surface_set_buffer_scale(output->cursor.surface, 1);
+		if (output->cursor.viewport != NULL && output->cursor.buffer_width > 0) {
+			int32_t dest_w = (int32_t)roundf(output->cursor.buffer_width / scale);
+			int32_t dest_h = (int32_t)roundf(output->cursor.buffer_height / scale);
+			wp_viewport_set_destination(output->cursor.viewport, dest_w, dest_h);
+		}
+	} else {
+		wl_surface_set_buffer_scale(output->cursor.surface, ceil_scale(scale));
+	}
+
+	update_wl_output_cursor(output);
+}
+
+static void cursor_handle_preferred_buffer_scale(void *data,
+		struct wl_surface *surface, int32_t factor) {
+	struct wlr_wl_output *output = data;
+	if (output->cursor.fractional_scale != NULL) {
+		return;
+	}
+	cursor_set_scale(output, (float)factor);
+}
+
+static void cursor_handle_preferred_buffer_transform(void *data,
+		struct wl_surface *surface, uint32_t transform) {
+	// TODO
+}
+
+static const struct wl_surface_listener cursor_surface_listener = {
+	.preferred_buffer_scale = cursor_handle_preferred_buffer_scale,
+	.preferred_buffer_transform = cursor_handle_preferred_buffer_transform,
+};
+
+static void cursor_handle_fractional_scale_preferred_scale(void *data,
+		struct wp_fractional_scale_v1 *fractional_scale, uint32_t scale) {
+	struct wlr_wl_output *output = data;
+	cursor_set_scale(output, (float)scale / 120.0f);
+}
+
+static const struct wp_fractional_scale_v1_listener cursor_fractional_scale_listener = {
+	.preferred_scale = cursor_handle_fractional_scale_preferred_scale,
+};
 
 static void surface_frame_callback(void *data, struct wl_callback *cb,
 		uint32_t time) {
@@ -914,6 +1051,21 @@ static bool output_set_cursor(struct wlr_output *wlr_output,
 	if (output->cursor.surface == NULL) {
 		output->cursor.surface =
 			wl_compositor_create_surface(backend->compositor);
+		output->cursor.scale = 1.0;
+		wl_surface_add_listener(output->cursor.surface,
+			&cursor_surface_listener, output);
+		if (backend->fractional_scale_manager != NULL && backend->viewporter != NULL) {
+			output->cursor.fractional_scale = wp_fractional_scale_manager_v1_get_fractional_scale(
+				backend->fractional_scale_manager, output->cursor.surface);
+			wp_fractional_scale_v1_add_listener(output->cursor.fractional_scale,
+				&cursor_fractional_scale_listener, output);
+			wl_surface_set_buffer_scale(output->cursor.surface, 1);
+			output->cursor.viewport = wp_viewporter_get_viewport(
+				backend->viewporter, output->cursor.surface);
+		} else {
+			wl_surface_set_buffer_scale(output->cursor.surface,
+				ceil_scale(output->cursor.scale));
+		}
 	}
 	struct wl_surface *surface = output->cursor.surface;
 
@@ -924,12 +1076,28 @@ static bool output_set_cursor(struct wlr_output *wlr_output,
 			return false;
 		}
 
+		output->cursor.buffer_width = wlr_buffer->width;
+		output->cursor.buffer_height = wlr_buffer->height;
 		wl_surface_attach(surface, buffer->wl_buffer, 0, 0);
 		wl_surface_damage_buffer(surface, 0, 0, INT32_MAX, INT32_MAX);
 		wl_surface_commit(surface);
 	} else {
+		output->cursor.buffer_width = 0;
+		output->cursor.buffer_height = 0;
 		wl_surface_attach(surface, NULL, 0, 0);
 		wl_surface_commit(surface);
+	}
+
+	if (output->cursor.viewport != NULL) {
+		if (wlr_buffer != NULL) {
+			int32_t dest_w = (int32_t)roundf(output->cursor.buffer_width /
+				output->cursor.scale);
+			int32_t dest_h = (int32_t)roundf(output->cursor.buffer_height /
+				output->cursor.scale);
+			wp_viewport_set_destination(output->cursor.viewport, dest_w, dest_h);
+		} else {
+			wp_viewport_set_destination(output->cursor.viewport, -1, -1);
+		}
 	}
 
 	update_wl_output_cursor(output);
@@ -958,6 +1126,12 @@ static void output_destroy(struct wlr_output *wlr_output) {
 
 	wl_list_remove(&output->link);
 
+	if (output->cursor.viewport) {
+		wp_viewport_destroy(output->cursor.viewport);
+	}
+	if (output->cursor.fractional_scale) {
+		wp_fractional_scale_v1_destroy(output->cursor.fractional_scale);
+	}
 	if (output->cursor.surface) {
 		wl_surface_destroy(output->cursor.surface);
 	}
@@ -978,6 +1152,12 @@ static void output_destroy(struct wlr_output *wlr_output) {
 
 	if (output->drm_syncobj_surface_v1) {
 		wp_linux_drm_syncobj_surface_v1_destroy(output->drm_syncobj_surface_v1);
+	}
+	if (output->viewport) {
+		wp_viewport_destroy(output->viewport);
+	}
+	if (output->fractional_scale) {
+		wp_fractional_scale_v1_destroy(output->fractional_scale);
 	}
 	if (output->zxdg_toplevel_decoration_v1) {
 		zxdg_toplevel_decoration_v1_destroy(output->zxdg_toplevel_decoration_v1);
@@ -1005,10 +1185,14 @@ void update_wl_output_cursor(struct wlr_wl_output *output) {
 		assert(pointer->output == output);
 		assert(output->enter_serial);
 
+		// Hotspot must be in logical coordinates when buffer_scale is set.
+		float scale = output->cursor.scale;
+		int32_t hotspot_x = ceil_scale((float)output->cursor.hotspot_x / scale);
+		int32_t hotspot_y = ceil_scale((float)output->cursor.hotspot_y / scale);
+
 		struct wlr_wl_seat *seat = pointer->seat;
 		wl_pointer_set_cursor(seat->wl_pointer, output->enter_serial,
-			output->cursor.surface, output->cursor.hotspot_x,
-			output->cursor.hotspot_y);
+			output->cursor.surface, hotspot_x, hotspot_y);
 	}
 }
 
@@ -1036,16 +1220,19 @@ static void xdg_surface_handle_configure(void *data,
 	struct wlr_wl_output *output = data;
 	assert(output && output->xdg_surface == xdg_surface);
 
-	int32_t req_width = output->wlr_output.width;
-	int32_t req_height = output->wlr_output.height;
+	int32_t logical_width = output->logical_width;
+	int32_t logical_height = output->logical_height;
 	if (output->requested_width > 0) {
-		req_width = output->requested_width;
+		logical_width = output->requested_width;
 		output->requested_width = 0;
 	}
 	if (output->requested_height > 0) {
-		req_height = output->requested_height;
+		logical_height = output->requested_height;
 		output->requested_height = 0;
 	}
+
+	output->logical_width = logical_width;
+	output->logical_height = logical_height;
 
 	if (output->unmap_callback != NULL) {
 		return;
@@ -1061,11 +1248,7 @@ static void xdg_surface_handle_configure(void *data,
 		return;
 	}
 
-	struct wlr_output_state state;
-	wlr_output_state_init(&state);
-	wlr_output_state_set_custom_mode(&state, req_width, req_height, 0);
-	wlr_output_send_request_state(&output->wlr_output, &state);
-	wlr_output_state_finish(&state);
+	output_set_scale(output, output->scale);
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -1108,9 +1291,15 @@ static struct wlr_wl_output *output_create(struct wlr_wl_backend *backend,
 	}
 	struct wlr_output *wlr_output = &output->wlr_output;
 
+	// Default logical dimensions.
+	output->logical_width = 1280;
+	output->logical_height = 720;
+	output->scale = 1.0f;
+
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
-	wlr_output_state_set_custom_mode(&state, 1280, 720, 0);
+	wlr_output_state_set_custom_mode(&state, output->logical_width,
+		output->logical_height, 0);
 
 	wlr_output_init(wlr_output, &backend->backend, &output_impl,
 		backend->event_loop, &state);
@@ -1171,6 +1360,15 @@ struct wlr_output *wlr_wl_output_create(struct wlr_backend *wlr_backend) {
 	if (output == NULL) {
 		wl_surface_destroy(surface);
 		return NULL;
+	}
+
+	wl_surface_add_listener(output->surface, &surface_listener, output);
+	if (backend->fractional_scale_manager != NULL) {
+		output->fractional_scale =
+			wp_fractional_scale_manager_v1_get_fractional_scale(
+			backend->fractional_scale_manager, output->surface);
+		wp_fractional_scale_v1_add_listener(output->fractional_scale,
+			&fractional_scale_listener, output);
 	}
 
 	output->own_surface = true;
@@ -1241,6 +1439,15 @@ struct wlr_output *wlr_wl_output_create_from_surface(struct wlr_backend *wlr_bac
 	if (output == NULL) {
 		wl_surface_destroy(surface);
 		return NULL;
+	}
+
+	wl_surface_add_listener(output->surface, &surface_listener, output);
+	if (backend->fractional_scale_manager != NULL) {
+		output->fractional_scale =
+			wp_fractional_scale_manager_v1_get_fractional_scale(
+			backend->fractional_scale_manager, output->surface);
+		wp_fractional_scale_v1_add_listener(output->fractional_scale,
+			&fractional_scale_listener, output);
 	}
 
 	output_start(output);
