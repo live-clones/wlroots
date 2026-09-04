@@ -24,7 +24,10 @@ struct wlr_dmabuf_v1_buffer {
 	struct wl_resource *resource; // can be NULL if the client destroyed it
 	struct wlr_dmabuf_attributes attributes;
 
+	const dev_t *sampling_device; // can be NULL if unknown
+
 	struct {
+		dev_t sampling_device_value;
 		struct wl_listener release;
 	} WLR_PRIVATE;
 };
@@ -37,7 +40,7 @@ struct wlr_dmabuf_v1_buffer *wlr_dmabuf_v1_buffer_try_from_buffer_resource(
 	struct wl_resource *buffer_resource);
 
 struct wlr_linux_dmabuf_feedback_v1 {
-	dev_t main_device;
+	dev_t main_device; // unused for >= v6
 	struct wl_array tranches; // struct wlr_linux_dmabuf_feedback_v1_tranche
 };
 
