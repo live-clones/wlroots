@@ -66,9 +66,7 @@ void wlr_text_input_v3_send_done(struct wlr_text_input_v3 *text_input) {
 static void wlr_text_input_destroy(struct wlr_text_input_v3 *text_input) {
 	wl_signal_emit_mutable(&text_input->events.destroy, NULL);
 
-	assert(wl_list_empty(&text_input->events.enable.listener_list));
 	assert(wl_list_empty(&text_input->events.commit.listener_list));
-	assert(wl_list_empty(&text_input->events.disable.listener_list));
 	assert(wl_list_empty(&text_input->events.destroy.listener_list));
 
 	text_input_clear_focused_surface(text_input);
@@ -102,7 +100,7 @@ static void text_input_enable(struct wl_client *client,
 	struct wlr_text_input_v3_state defaults = {0};
 	free(text_input->pending.surrounding.text);
 	text_input->pending = defaults;
-	text_input->pending_enabled = true;
+        text_input->next_commit_type = WLR_TEXT_INPUT_V3_COMMIT_TYPE_ENABLE;
 }
 
 static void text_input_disable(struct wl_client *client,
@@ -111,7 +109,7 @@ static void text_input_disable(struct wl_client *client,
 	if (!text_input) {
 		return;
 	}
-	text_input->pending_enabled = false;
+        text_input->next_commit_type = WLR_TEXT_INPUT_V3_COMMIT_TYPE_DISABLE;
 }
 
 static void text_input_set_surrounding_text(struct wl_client *client,
@@ -182,23 +180,27 @@ static void text_input_commit(struct wl_client *client,
 		}
 	}
 
-	bool old_enabled = text_input->current_enabled;
-	text_input->current_enabled = text_input->pending_enabled;
 	text_input->current_serial++;
 
 	if (text_input->focused_surface == NULL) {
 		wlr_log(WLR_DEBUG, "Text input commit received without focus");
 	}
 
-	if (!old_enabled && text_input->current_enabled) {
-		text_input->active_features	= text_input->current.features;
-		wl_signal_emit_mutable(&text_input->events.enable, NULL);
-	} else if (old_enabled && !text_input->current_enabled) {
-		text_input->active_features	= 0;
-		wl_signal_emit_mutable(&text_input->events.disable, NULL);
-	} else { // including never enabled
-		wl_signal_emit_mutable(&text_input->events.commit, NULL);
-	}
+        enum wlr_text_input_v3_commit_type commit_type = text_input->next_commit_type;
+        text_input->next_commit_type = WLR_TEXT_INPUT_V3_COMMIT_TYPE_NONE;
+
+        if (commit_type == WLR_TEXT_INPUT_V3_COMMIT_TYPE_ENABLE) {
+	        text_input->active_features = text_input->current.features;
+                text_input->enabled = true;
+        } else if (commit_type == WLR_TEXT_INPUT_V3_COMMIT_TYPE_DISABLE) {
+	        text_input->active_features = 0;
+                text_input->enabled = false;
+        }
+
+        struct wlr_text_input_v3_commit_event event = {
+                .type = commit_type,
+        };
+	wl_signal_emit_mutable(&text_input->events.commit, &event);
 }
 
 static const struct zwp_text_input_v3_interface text_input_impl = {
@@ -265,9 +267,7 @@ static void text_input_manager_get_text_input(struct wl_client *client,
 		return;
 	}
 
-	wl_signal_init(&text_input->events.enable);
 	wl_signal_init(&text_input->events.commit);
-	wl_signal_init(&text_input->events.disable);
 	wl_signal_init(&text_input->events.destroy);
 
 	text_input->resource = text_input_resource;
