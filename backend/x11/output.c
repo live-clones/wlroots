@@ -685,7 +685,11 @@ struct wlr_output *wlr_x11_output_create(struct wlr_backend *backend) {
 	output->touch.output_name = strdup(wlr_output->name);
 	wl_list_init(&output->touchpoints);
 
-	wl_signal_emit_mutable(&x11->backend.events.new_output, wlr_output);
+	struct wlr_backend_event_new_output event = {
+		.output = wlr_output,
+		.requested_state = NULL,
+	};
+	wl_signal_emit_mutable(&x11->backend.events.new_output, &event);
 	wl_signal_emit_mutable(&x11->backend.events.new_input, &output->pointer.base);
 	wl_signal_emit_mutable(&x11->backend.events.new_input, &output->touch.base);
 

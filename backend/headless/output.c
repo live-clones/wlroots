@@ -153,7 +153,11 @@ struct wlr_output *wlr_headless_add_output(struct wlr_backend *wlr_backend,
 	wl_list_insert(&backend->outputs, &output->link);
 
 	if (backend->started) {
-		wl_signal_emit_mutable(&backend->backend.events.new_output, wlr_output);
+		struct wlr_backend_event_new_output event = {
+			.output = wlr_output,
+			.requested_state = NULL,
+		};
+		wl_signal_emit_mutable(&backend->backend.events.new_output, &event);
 	}
 
 	return wlr_output;

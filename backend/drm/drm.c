@@ -139,6 +139,12 @@ bool check_drm_features(struct wlr_drm_backend *drm) {
 	return true;
 }
 
+bool drm_connector_is_connected(struct wlr_drm_connector *conn) {
+	// Unknown-state connectors must be treated as connected in order
+	// for the compositor to be able to decide what to do with them.
+	return conn->status != DRM_MODE_DISCONNECTED;
+}
+
 static bool init_plane_cursor_sizes(struct wlr_drm_plane *plane,
 		const struct drm_plane_size_hint *hints, size_t hints_len) {
 	assert(hints_len > 0);
@@ -1437,7 +1443,7 @@ static void realloc_crtcs(struct wlr_drm_backend *drm,
 		// connector the user wants to enable
 		bool want_crtc = conn == want_conn || conn->output.enabled;
 
-		if (conn->status == DRM_MODE_CONNECTED && want_crtc) {
+		if (drm_connector_is_connected(conn) && want_crtc) {
 			connector_constraints[i] = conn->possible_crtcs;
 		} else {
 			// Will always fail to match anything
@@ -1486,7 +1492,7 @@ static void realloc_crtcs(struct wlr_drm_backend *drm,
 	// change the CRTC of an enabled connector.
 	for (size_t i = 0; i < num_connectors; ++i) {
 		struct wlr_drm_connector *conn = connectors[i];
-		if (conn->status != DRM_MODE_CONNECTED || !conn->output.enabled) {
+		if (!drm_connector_is_connected(conn) || !conn->output.enabled) {
 			continue;
 		}
 		if (connector_match[i] == NULL) {
@@ -1774,7 +1780,7 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	wlr_output_set_description(output, description);
 
 	free(subconnector);
-	wlr_conn->status = DRM_MODE_CONNECTED;
+	wlr_conn->status = drm_conn->connection;
 	return true;
 }
 
@@ -1865,16 +1871,20 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 			}
 		}
 
-		if (wlr_conn->status == DRM_MODE_DISCONNECTED &&
-				drm_conn->connection == DRM_MODE_CONNECTED) {
+		// Certain displays like VGA or composite on SBCs may have unknown
+		// connection status.  Expose these to the compositor so it can decide
+		// whether to light them up (but recommend they are disabled by default).
+		bool drm_connected = drm_conn->connection == DRM_MODE_CONNECTED ||
+			drm_conn->connection == DRM_MODE_UNKNOWNCONNECTION;
+
+		if (!drm_connector_is_connected(wlr_conn) && drm_connected) {
 			wlr_log(WLR_INFO, "'%s' connected", wlr_conn->name);
 			if (!connect_drm_connector(wlr_conn, drm_conn)) {
 				wlr_drm_conn_log(wlr_conn, WLR_ERROR, "Failed to connect DRM connector");
 				continue;
 			}
 			new_outputs[new_outputs_len++] = wlr_conn;
-		} else if (wlr_conn->status == DRM_MODE_CONNECTED &&
-				drm_conn->connection != DRM_MODE_CONNECTED) {
+		} else if (drm_connector_is_connected(wlr_conn) && !drm_connected) {
 			wlr_log(WLR_INFO, "'%s' disconnected", wlr_conn->name);
 			disconnect_drm_connector(wlr_conn);
 		}
@@ -1902,8 +1912,26 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 		struct wlr_drm_connector *conn = new_outputs[i];
 
 		wlr_drm_conn_log(conn, WLR_INFO, "Requesting modeset");
-		wl_signal_emit_mutable(&drm->backend.events.new_output,
-			&conn->output);
+
+		struct wlr_backend_event_new_output event = {
+			.output = &conn->output,
+			.requested_state = NULL,
+		};
+
+		// Recommend to compositor that connectors with state "unknown" which
+		// are not already enabled should probably be left disabled.
+		bool recommend_disabled =
+			conn->status == DRM_MODE_UNKNOWNCONNECTION && !conn->output.enabled;
+		struct wlr_output_state requested_state;
+		if (recommend_disabled) {
+			wlr_output_state_init(&requested_state);
+			wlr_output_state_set_enabled(&requested_state, false);
+			event.requested_state = &requested_state;
+		}
+		wl_signal_emit_mutable(&drm->backend.events.new_output, &event);
+		if (recommend_disabled) {
+			wlr_output_state_finish(&requested_state);
+		}
 	}
 }
 
@@ -2039,7 +2067,7 @@ static void handle_page_flip(int fd, unsigned seq,
 
 	struct wlr_drm_backend *drm = conn->backend;
 
-	if (conn->status != DRM_MODE_CONNECTED || conn->crtc == NULL) {
+	if (!drm_connector_is_connected(conn) || conn->crtc == NULL) {
 		wlr_drm_conn_log(conn, WLR_DEBUG,
 			"Ignoring page-flip event for disabled connector");
 		return;
