@@ -90,6 +90,19 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 		return;
 	}
 
+	/**
+	 * The scissor step is only relevant beneath a certain threshold. Here it is 16 because
+	 * that is the most common scissor limits in the mesa driver.
+	 */
+	if (rects_len < 16) {
+		glEnable(GL_SCISSOR_TEST);
+		for (int i = 0; i < rects_len; ++i) {
+			const pixman_box32_t *rect = &rects[i];
+			glScissor(rect->x1, rect->y1, rect->x2 - rect->x1, rect->y2 - rect->y1);
+		}
+		glDisable(GL_SCISSOR_TEST);
+	}
+
 	glEnableVertexAttribArray(attrib);
 
 	for (int i = 0; i < rects_len;) {
