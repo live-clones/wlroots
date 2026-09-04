@@ -90,6 +90,7 @@ struct wlr_buffer *wlr_swapchain_acquire(struct wlr_swapchain *swapchain) {
 			return slot_acquire(swapchain, slot);
 		}
 		free_slot = slot;
+		break;
 	}
 	if (free_slot == NULL) {
 		wlr_log(WLR_ERROR, "No free output buffer slot");
