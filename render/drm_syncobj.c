@@ -185,6 +185,31 @@ bool wlr_drm_syncobj_timeline_signal(struct wlr_drm_syncobj_timeline *timeline, 
 	return true;
 }
 
+int wlr_drm_syncobj_timeline_eventfd(struct wlr_drm_syncobj_timeline *timeline,
+		uint64_t point, uint32_t flags) {
+	int ev_fd;
+#if HAVE_EVENTFD
+	ev_fd = eventfd(0, EFD_CLOEXEC);
+	if (ev_fd < 0) {
+		wlr_log_errno(WLR_ERROR, "eventfd() failed");
+	}
+#else
+	ev_fd = -1;
+	wlr_log(WLR_ERROR, "eventfd() is unavailable");
+#endif
+	if (ev_fd < 0) {
+		return -1;
+	}
+
+	if (drmSyncobjEventfd(timeline->drm_fd, timeline->handle, point, ev_fd, flags) != 0) {
+		wlr_log_errno(WLR_ERROR, "drmSyncobjEventfd() failed");
+		close(ev_fd);
+		return -1;
+	}
+
+	return ev_fd;
+}
+
 static int handle_eventfd_ready(int ev_fd, uint32_t mask, void *data) {
 	struct wlr_drm_syncobj_timeline_waiter *waiter = data;
 
@@ -208,27 +233,13 @@ bool wlr_drm_syncobj_timeline_waiter_init(struct wlr_drm_syncobj_timeline_waiter
 		struct wl_event_loop *loop, wlr_drm_syncobj_timeline_ready_callback callback) {
 	assert(callback);
 
-	int ev_fd;
-#if HAVE_EVENTFD
-	ev_fd = eventfd(0, EFD_CLOEXEC);
-	if (ev_fd < 0) {
-		wlr_log_errno(WLR_ERROR, "eventfd() failed");
-	}
-#else
-	ev_fd = -1;
-	wlr_log(WLR_ERROR, "eventfd() is unavailable");
-#endif
+	int ev_fd = wlr_drm_syncobj_timeline_eventfd(timeline, point, flags);
 	if (ev_fd < 0) {
 		return false;
 	}
 
-	if (drmSyncobjEventfd(timeline->drm_fd, timeline->handle, point, ev_fd, flags) != 0) {
-		wlr_log_errno(WLR_ERROR, "drmSyncobjEventfd() failed");
-		close(ev_fd);
-		return false;
-	}
-
-	struct wl_event_source *source = wl_event_loop_add_fd(loop, ev_fd, WL_EVENT_READABLE, handle_eventfd_ready, waiter);
+	struct wl_event_source *source = wl_event_loop_add_fd(loop, ev_fd,
+		WL_EVENT_READABLE, handle_eventfd_ready, waiter);
 	if (source == NULL) {
 		wlr_log(WLR_ERROR, "Failed to add FD to event loop");
 		close(ev_fd);

@@ -97,11 +97,7 @@ bool wlr_drm_syncobj_timeline_signal(struct wlr_drm_syncobj_timeline *timeline, 
 /**
  * Asynchronously wait for a timeline point.
  *
- * Flags can be:
- *
- * - 0 to wait for the point to be signalled
- * - DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE to only wait for a fence to
- *   materialize
+ * See wlr_drm_syncobj_timeline_eventfd for available flags.
  *
  * A callback must be provided that will be invoked when the waiter has finished.
  */
@@ -112,6 +108,20 @@ bool wlr_drm_syncobj_timeline_waiter_init(struct wlr_drm_syncobj_timeline_waiter
  * Cancel a timeline waiter.
  */
 void wlr_drm_syncobj_timeline_waiter_finish(struct wlr_drm_syncobj_timeline_waiter *waiter);
+/**
+ * Create an eventfd that becomes readable when a timeline point is ready.
+ *
+ * Flags can be:
+ *
+ * - 0 to wait for the point to be signaled
+ * - DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE to only wait for a fence to
+ *   materialize
+ *
+ * The returned FD is owned by the caller and must be closed when no longer
+ * needed.
+ */
+int wlr_drm_syncobj_timeline_eventfd(struct wlr_drm_syncobj_timeline *timeline,
+	uint64_t point, uint32_t flags);
 /**
  * Export a timeline point as a sync_file FD.
  *
