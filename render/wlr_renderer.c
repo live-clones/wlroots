@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <wlr/backend.h>
 #include <wlr/render/interface.h>
@@ -113,19 +114,70 @@ static int open_drm_render_node(void) {
 	}
 
 	int fd = -1;
-	for (int i = 0; i < devices_len; i++) {
-		drmDevice *dev = devices[i];
-		if (dev->available_nodes & (1 << DRM_NODE_RENDER)) {
-			const char *name = dev->nodes[DRM_NODE_RENDER];
-			wlr_log(WLR_DEBUG, "Opening DRM render node '%s'", name);
-			fd = open(name, O_RDWR | O_CLOEXEC);
-			if (fd < 0) {
-				wlr_log_errno(WLR_ERROR, "Failed to open '%s'", name);
-				goto out;
+
+	const char *drm_devices_env = getenv("WLR_DRM_DEVICES");
+	if (drm_devices_env) {
+		char *drm_devices = strdup(drm_devices_env);
+		if (drm_devices == NULL) {
+			wlr_log_errno(WLR_ERROR, "Allocation failed");
+			goto out;
+		}
+
+		char *saveptr;
+		char *token = strtok_r(drm_devices, ":", &saveptr);
+		while (token != NULL) {
+			bool found = false;
+			for (int i = 0; i < devices_len; i++) {
+				drmDevice *dev = devices[i];
+				bool match = false;
+				for (int j = 0; j < DRM_NODE_MAX; j++) {
+					if ((dev->available_nodes & (1 << j)) &&
+							strcmp(dev->nodes[j], token) == 0) {
+						match = true;
+						break;
+					}
+				}
+
+				if (match) {
+					found = true;
+					if (!(dev->available_nodes & (1 << DRM_NODE_RENDER))) {
+						wlr_log(WLR_DEBUG, "Skipping DRM device '%s': no render node", token);
+						break;
+					}
+					const char *name = dev->nodes[DRM_NODE_RENDER];
+					wlr_log(WLR_DEBUG, "Opening DRM render node '%s' from WLR_DRM_DEVICES", name);
+					fd = open(name, O_RDWR | O_CLOEXEC);
+					if (fd < 0) {
+						wlr_log_errno(WLR_ERROR, "Failed to open '%s'", name);
+					}
+					break;
+				}
 			}
-			break;
+			if (fd >= 0) {
+				break;
+			}
+			if (!found) {
+				wlr_log(WLR_DEBUG, "DRM device '%s' not found", token);
+			}
+			token = strtok_r(NULL, ":", &saveptr);
+		}
+		free(drm_devices);
+	} else {
+		for (int i = 0; i < devices_len; i++) {
+			drmDevice *dev = devices[i];
+			if (dev->available_nodes & (1 << DRM_NODE_RENDER)) {
+				const char *name = dev->nodes[DRM_NODE_RENDER];
+				wlr_log(WLR_DEBUG, "Opening DRM render node '%s'", name);
+				fd = open(name, O_RDWR | O_CLOEXEC);
+				if (fd < 0) {
+					wlr_log_errno(WLR_ERROR, "Failed to open '%s'", name);
+					goto out;
+				}
+				break;
+			}
 		}
 	}
+
 	if (fd < 0) {
 		wlr_log(WLR_ERROR, "Failed to find any DRM render node");
 	}
