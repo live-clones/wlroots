@@ -23,6 +23,7 @@ struct scene_source {
 	struct wlr_scene_output *scene_output;
 
 	size_t num_started;
+	float scale;
 
 	struct wl_listener scene_output_destroy;
 	struct wl_listener output_frame;
@@ -92,11 +93,14 @@ static void source_render(struct scene_source *source) {
 	}
 
 	wlr_scene_output_set_position(scene_output, extents.x, extents.y);
+	int buffer_width = (int)ceilf(extents.width * source->scale);
+	int buffer_height = (int)ceilf(extents.height * source->scale);
 
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
 	wlr_output_state_set_enabled(&state, true);
-	wlr_output_state_set_custom_mode(&state, extents.width, extents.height, 0);
+	wlr_output_state_set_scale(&state, source->scale);
+	wlr_output_state_set_custom_mode(&state, buffer_width, buffer_height, 0);
 	bool ok = wlr_scene_output_build_state(scene_output, &state, NULL) &&
 		wlr_output_commit_state(scene_output->output, &state);
 	wlr_output_state_finish(&state);
@@ -315,6 +319,8 @@ static void source_init(struct scene_source *source, struct wlr_scene *scene,
 
 	source->scene_output = wlr_scene_output_create(scene, &source->output);
 
+	source->scale = 1;
+
 	source->scene_output_destroy.notify = source_handle_scene_output_destroy;
 	wl_signal_add(&source->scene_output->events.destroy, &source->scene_output_destroy);
 
@@ -373,6 +379,7 @@ struct scene_output_source {
 	struct wlr_output *ref_output;
 	struct wlr_output_layout *ref_output_layout;
 
+	struct wl_listener ref_output_commit;
 	struct wl_listener ref_output_destroy;
 	struct wl_listener ref_output_layout_destroy;
 };
@@ -386,6 +393,12 @@ static void scene_output_source_get_extents(const struct scene_source *source,
 static struct scene_source_interface scene_output_source_impl = {
 	.get_extents = scene_output_source_get_extents,
 };
+
+static void output_source_handle_ref_output_commit(struct wl_listener *listener, void *data) {
+	struct scene_output_source *source = wl_container_of(listener, source, ref_output_commit);
+
+	source->base.scale = source->ref_output->scale;
+}
 
 static void output_source_destroy(struct scene_output_source *source) {
 	wl_list_remove(&source->ref_output_destroy.link);
@@ -416,9 +429,13 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 		reference_output->allocator, reference_output->renderer);
 	source->base.impl = &scene_output_source_impl;
 
+	source->base.scale = reference_output->scale;
+
 	source->ref_output = reference_output;
 	source->ref_output_layout = layout;
 
+	source->ref_output_commit.notify = output_source_handle_ref_output_commit;
+	wl_signal_add(&reference_output->events.commit, &source->ref_output_commit);
 	source->ref_output_destroy.notify = output_source_handle_ref_output_destroy;
 	wl_signal_add(&reference_output->events.destroy, &source->ref_output_destroy);
 
