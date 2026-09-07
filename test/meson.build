@@ -12,6 +12,21 @@ test(
 	executable('test-box', 'test_box.c', dependencies: wlroots),
 )
 
+subsurface_test = executable('test-subsurface', 'test_subsurface.c', dependencies: wlroots)
+foreach name : [
+	'parent-commit',
+	'ancestor-desync',
+	'ancestor-desync-cached',
+	'synchronized-ancestor',
+	'synchronized-descendant',
+	'ancestor-destroy',
+	'parent-destroy',
+	'external-lock',
+	'direct-modes',
+]
+	test('subsurface-' + name, subsurface_test, args: name)
+endforeach
+
 if features.get('vulkan-renderer')
 	test(
 		'vulkan_stage_buffer',
