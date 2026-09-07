@@ -454,6 +454,7 @@ void drm_atomic_connector_apply_commit(struct wlr_drm_connector_state *state) {
 	}
 
 	conn->colorspace = state->colorspace;
+	crtc->cursor_disabled = !state->active || !drm_connector_is_cursor_visible(conn);
 }
 
 void drm_atomic_connector_rollback_commit(struct wlr_drm_connector_state *state) {
@@ -599,12 +600,16 @@ static bool set_primary_plane_props(drmModeAtomicReq *req,
 }
 
 static bool set_cursor_plane_props(drmModeAtomicReq *req,
-		struct wlr_drm_connector_state *state) {
+		struct wlr_drm_connector_state *state, bool modeset) {
 	struct wlr_drm_connector *conn = state->connector;
 	struct wlr_drm_crtc *crtc = conn->crtc;
 	struct wlr_drm_plane *plane = crtc->cursor;
 
 	if (!drm_connector_is_cursor_visible(conn)) {
+		// A modeset must restore state that another DRM master may have changed.
+		if (!modeset && crtc->cursor_disabled) {
+			return true;
+		}
 		return plane_disable(req, plane);
 	}
 
@@ -644,7 +649,7 @@ static bool atomic_connector_add(drmModeAtomicReq *req,
 	if (active) {
 		ok = ok && set_primary_plane_props(req, state);
 		if (crtc->cursor) {
-			ok = ok && set_cursor_plane_props(req, state);
+			ok = ok && set_cursor_plane_props(req, state, modeset);
 		}
 	} else {
 		ok = ok && plane_disable(req, crtc->primary);

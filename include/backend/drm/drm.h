@@ -78,6 +78,8 @@ struct wlr_drm_crtc {
 	bool own_mode_id;
 	uint32_t mode_id;
 	uint32_t gamma_lut;
+	// Whether a successful atomic commit has disabled the cursor.
+	bool cursor_disabled;
 
 	// Legacy only
 	int legacy_gamma_size;
