@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -445,13 +446,13 @@ static struct tracked_cursor *tracked_cursor_create(struct wlr_output_cursor *re
 
 struct scene_output_source {
 	struct scene_source base;
+	struct wlr_addon addon;
 
 	struct wlr_output *ref_output;
 	struct wlr_output_layout *ref_output_layout;
 	struct wl_list cursors; // tracked_cursor.link
 
 	struct wl_listener ref_output_commit;
-	struct wl_listener ref_output_destroy;
 	struct wl_listener ref_output_layout_destroy;
 };
 
@@ -512,18 +513,18 @@ static void output_source_handle_ref_output_commit(struct wl_listener *listener,
 
 static void output_source_destroy(struct scene_output_source *source) {
 	wl_list_remove(&source->ref_output_commit.link);
-	wl_list_remove(&source->ref_output_destroy.link);
 	wl_list_remove(&source->ref_output_layout_destroy.link);
 	struct tracked_cursor *tracked, *tmp;
 	wl_list_for_each_safe(tracked, tmp, &source->cursors, link) {
 		tracked_cursor_destroy(tracked);
 	}
+	wlr_addon_finish(&source->addon);
 	source_finish(&source->base);
 	free(source);
 }
 
-static void output_source_handle_ref_output_destroy(struct wl_listener *listener, void *data) {
-	struct scene_output_source *source = wl_container_of(listener, source, ref_output_destroy);
+static void output_source_addon_destroy(struct wlr_addon *addon) {
+	struct scene_output_source *source = wl_container_of(addon, source, addon);
 	output_source_destroy(source);
 }
 
@@ -532,10 +533,25 @@ static void output_source_handle_ref_output_layout_destroy(struct wl_listener *l
 	output_source_destroy(source);
 }
 
+static const struct wlr_addon_interface output_source_addon_impl = {
+	.name = "wlr_ext_output_image_capture_source_v1_scene_output",
+	.destroy = output_source_addon_destroy,
+};
+
 struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_output(
 		struct wlr_scene *scene, struct wlr_output *reference_output,
 		struct wlr_output_layout *layout) {
-	struct scene_output_source *source = calloc(1, sizeof(*source));
+	struct scene_output_source *source;
+	struct wlr_addon *addon = wlr_addon_find(&reference_output->addons, NULL,
+		&output_source_addon_impl);
+	if (addon != NULL) {
+		source = wl_container_of(addon, source, addon);
+		assert(source->base.scene_output->scene == scene);
+		assert(source->ref_output_layout == layout);
+		return &source->base.base;
+	}
+
+	source = calloc(1, sizeof(*source));
 	if (source == NULL) {
 		return NULL;
 	}
@@ -545,6 +561,7 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 	source->base.impl = &scene_output_source_impl;
 
 	source->base.scale = reference_output->scale;
+	wlr_addon_init(&source->addon, &reference_output->addons, NULL, &output_source_addon_impl);
 
 	source->ref_output = reference_output;
 	source->ref_output_layout = layout;
@@ -552,8 +569,6 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
 
 	source->ref_output_commit.notify = output_source_handle_ref_output_commit;
 	wl_signal_add(&reference_output->events.commit, &source->ref_output_commit);
-	source->ref_output_destroy.notify = output_source_handle_ref_output_destroy;
-	wl_signal_add(&reference_output->events.destroy, &source->ref_output_destroy);
 
 	source->ref_output_layout_destroy.notify = output_source_handle_ref_output_layout_destroy;
 	wl_signal_add(&layout->events.destroy, &source->ref_output_layout_destroy);

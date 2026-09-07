@@ -172,6 +172,9 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_w
  *
  * The scene will be composited again independently for this virtual output,
  * which is desirable if color management is in use for the real output.
+ *
+ * For any output, this source may only be created for one wlr_scene and one
+ * wlr_layout
  */
 struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_output(
 	struct wlr_scene *scene, struct wlr_output *reference_output,
