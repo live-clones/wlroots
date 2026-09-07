@@ -22,12 +22,38 @@ static bool subsurface_is_synchronized(struct wlr_subsurface *subsurface) {
 	return false;
 }
 
+static void subsurface_unlock_cache(struct wlr_subsurface *subsurface) {
+	if (!subsurface->has_cache) {
+		return;
+	}
+
+	subsurface->has_cache = false;
+	wlr_surface_unlock_cached(subsurface->surface, subsurface->cached_seq);
+}
+
+static void surface_handle_subsurface_desync(struct wlr_surface *surface) {
+	// Include children whose parent has not committed yet. Synchronized
+	// children keep their descendants effectively synchronized.
+	struct wl_list *lists[] = {
+		&surface->pending.subsurfaces_below,
+		&surface->pending.subsurfaces_above,
+	};
+	for (size_t i = 0; i < 2; i++) {
+		struct wlr_subsurface *subsurface;
+		wl_list_for_each(subsurface, lists[i], pending.link) {
+			if (subsurface->synchronized) {
+				continue;
+			}
+			subsurface_unlock_cache(subsurface);
+			surface_handle_subsurface_desync(subsurface->surface);
+		}
+	}
+}
+
 static const struct wl_subsurface_interface subsurface_implementation;
 
 static void subsurface_destroy(struct wlr_subsurface *subsurface) {
-	if (subsurface->has_cache) {
-		wlr_surface_unlock_cached(subsurface->surface, subsurface->cached_seq);
-	}
+	subsurface_unlock_cache(subsurface);
 
 	wlr_surface_unmap(subsurface->surface);
 
@@ -41,6 +67,9 @@ static void subsurface_destroy(struct wlr_subsurface *subsurface) {
 	wl_list_remove(&subsurface->parent_destroy.link);
 
 	wl_resource_set_user_data(subsurface->resource, NULL);
+	// The parent association is gone, so descendants can become effectively
+	// desynchronized even if an ancestor was still synchronized.
+	surface_handle_subsurface_desync(subsurface->surface);
 	free(subsurface);
 }
 
@@ -172,11 +201,9 @@ static void subsurface_handle_set_desync(struct wl_client *client,
 	if (subsurface->synchronized) {
 		subsurface->synchronized = false;
 
-		if (!subsurface_is_synchronized(subsurface) &&
-				subsurface->has_cache) {
-			wlr_surface_unlock_cached(subsurface->surface,
-				subsurface->cached_seq);
-			subsurface->has_cache = false;
+		if (!subsurface_is_synchronized(subsurface)) {
+			subsurface_unlock_cache(subsurface);
+			surface_handle_subsurface_desync(subsurface->surface);
 		}
 	}
 }
@@ -273,16 +300,14 @@ static void subsurface_handle_surface_client_commit(
 		}
 		subsurface->has_cache = true;
 		subsurface->cached_seq = wlr_surface_lock_pending(surface);
-	} else if (subsurface->has_cache) {
-		wlr_surface_unlock_cached(surface, subsurface->cached_seq);
-		subsurface->has_cache = false;
+	} else {
+		subsurface_unlock_cache(subsurface);
 	}
 }
 
 void subsurface_handle_parent_commit(struct wlr_subsurface *subsurface) {
-	if (subsurface->synchronized && subsurface->has_cache) {
-		wlr_surface_unlock_cached(subsurface->surface, subsurface->cached_seq);
-		subsurface->has_cache = false;
+	if (subsurface_is_synchronized(subsurface)) {
+		subsurface_unlock_cache(subsurface);
 	}
 
 	if (!subsurface->added) {
