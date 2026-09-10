@@ -1632,6 +1632,35 @@ static drmModeModeInfo *connector_get_current_mode(struct wlr_drm_connector *wlr
 	}
 }
 
+static uint8_t *get_drm_connector_edid(struct wlr_drm_backend *drm,
+		const drmModeConnector *drm_conn, uint32_t prop, size_t *len) {
+	*len = 0;
+	for (int i = 0; prop != 0 && i < drm_conn->count_props; i++) {
+		if (drm_conn->props[i] != prop || drm_conn->prop_values[i] == 0) {
+			continue;
+		}
+		// Use the property snapshot returned with the mode list, not a
+		// later property query which could describe a different sink.
+		drmModePropertyBlobRes *blob = drmModeGetPropertyBlob(drm->fd,
+			drm_conn->prop_values[i]);
+		if (blob == NULL) {
+			return NULL;
+		}
+		if (blob->length == 0) {
+			drmModeFreePropertyBlob(blob);
+			return NULL;
+		}
+		uint8_t *edid = malloc(blob->length);
+		if (edid != NULL) {
+			memcpy(edid, blob->data, blob->length);
+			*len = blob->length;
+		}
+		drmModeFreePropertyBlob(blob);
+		return edid;
+	}
+	return NULL;
+}
+
 static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 		const drmModeConnector *drm_conn) {
 	struct wlr_drm_backend *drm = wlr_conn->backend;
@@ -1744,8 +1773,8 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	output->adaptive_sync_supported = vrr_capable;
 
 	size_t edid_len = 0;
-	uint8_t *edid = get_drm_prop_blob(drm->fd,
-		wlr_conn->id, wlr_conn->props.edid, &edid_len);
+	uint8_t *edid = get_drm_connector_edid(drm, drm_conn,
+		wlr_conn->props.edid, &edid_len);
 	if (edid_len > 0) {
 		parse_edid(wlr_conn, edid_len, edid);
 	} else {
