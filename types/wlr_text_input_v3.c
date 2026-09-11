@@ -100,6 +100,8 @@ static void wlr_text_input_destroy(struct wlr_text_input_v3 *text_input) {
 	assert(wl_list_empty(&text_input->events.commit.listener_list));
 	assert(wl_list_empty(&text_input->events.disable.listener_list));
 	assert(wl_list_empty(&text_input->events.destroy.listener_list));
+	assert(wl_list_empty(&text_input->events.show_input_panel.listener_list));
+	assert(wl_list_empty(&text_input->events.hide_input_panel.listener_list));
 
 	text_input_clear_focused_surface(text_input);
 	wl_list_remove(&text_input->seat_destroy.link);
@@ -231,6 +233,56 @@ static void text_input_commit(struct wl_client *client,
 	}
 }
 
+static void text_input_show_input_panel(struct wl_client *client,
+		struct wl_resource *resource) {
+	struct wlr_text_input_v3 *text_input = text_input_from_resource(resource);
+	if (!text_input) {
+		return;
+	}
+	wl_signal_emit_mutable(&text_input->events.show_input_panel, NULL);
+}
+
+static void text_input_hide_input_panel(struct wl_client *client,
+		struct wl_resource *resource) {
+	struct wlr_text_input_v3 *text_input = text_input_from_resource(resource);
+	if (!text_input) {
+		return;
+	}
+	wl_signal_emit_mutable(&text_input->events.hide_input_panel, NULL);
+}
+
+static void text_input_set_available_actions(struct wl_client *client,
+		struct wl_resource *resource, struct wl_array *actions) {
+	struct wlr_text_input_v3 *text_input = text_input_from_resource(resource);
+	if (!text_input) {
+		return;
+	}
+
+	enum zwp_text_input_v3_action available = ZWP_TEXT_INPUT_V3_ACTION_NONE;
+	uint32_t *action;
+	wl_array_for_each(action, actions) {
+		switch (*action) {
+		case ZWP_TEXT_INPUT_V3_ACTION_SUBMIT:
+			if (available & ZWP_TEXT_INPUT_V3_ACTION_SUBMIT) {
+				wl_resource_post_error(resource,
+					ZWP_TEXT_INPUT_V3_ERROR_INVALID_ACTION,
+					"Duplicate submit action");
+				return;
+			}
+			available |= ZWP_TEXT_INPUT_V3_ACTION_SUBMIT;
+			break;
+		case ZWP_TEXT_INPUT_V3_ACTION_NONE:
+			wl_resource_post_error(resource,
+				ZWP_TEXT_INPUT_V3_ERROR_INVALID_ACTION,
+				"Invalid none action");
+			return;
+		default:
+			wlr_log(WLR_DEBUG, "Unknown action %u", *action);
+		}
+	}
+	text_input->pending.available_actions = available;
+}
+
 static const struct zwp_text_input_v3_interface text_input_impl = {
 	.destroy = text_input_destroy,
 	.enable = text_input_enable,
@@ -240,6 +292,10 @@ static const struct zwp_text_input_v3_interface text_input_impl = {
 	.set_content_type = text_input_set_content_type,
 	.set_cursor_rectangle = text_input_set_cursor_rectangle,
 	.commit = text_input_commit,
+	// v2 additions
+	.show_input_panel = text_input_show_input_panel,
+	.hide_input_panel = text_input_hide_input_panel,
+	.set_available_actions = text_input_set_available_actions,
 };
 
 static const struct zwp_text_input_manager_v3_interface text_input_manager_impl;
@@ -299,6 +355,8 @@ static void text_input_manager_get_text_input(struct wl_client *client,
 	wl_signal_init(&text_input->events.commit);
 	wl_signal_init(&text_input->events.disable);
 	wl_signal_init(&text_input->events.destroy);
+	wl_signal_init(&text_input->events.show_input_panel);
+	wl_signal_init(&text_input->events.hide_input_panel);
 
 	text_input->resource = text_input_resource;
 	wl_resource_set_user_data(text_input_resource, text_input);

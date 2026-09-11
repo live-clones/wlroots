@@ -38,6 +38,7 @@ struct wlr_text_input_v3_state {
 	} content_type;
 
 	struct wlr_box cursor_rectangle;
+	enum zwp_text_input_v3_action available_actions;
 
 	// Tracks which features were used in the current commit.
 	// Useful in the enabling commit, where usage means support.
@@ -63,6 +64,9 @@ struct wlr_text_input_v3 {
 		struct wl_signal commit;
 		struct wl_signal disable;
 		struct wl_signal destroy;
+		// v2 additions
+		struct wl_signal show_input_panel;
+		struct wl_signal hide_input_panel;
 	} events;
 
 	struct {
