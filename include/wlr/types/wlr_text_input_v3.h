@@ -13,6 +13,8 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/box.h>
 
+#include "text-input-unstable-v3-protocol.h"
+
 struct wlr_surface;
 
 enum wlr_text_input_v3_features {
@@ -99,5 +101,12 @@ void wlr_text_input_v3_send_delete_surrounding_text(
 	struct wlr_text_input_v3 *text_input, uint32_t before_length,
 	uint32_t after_length);
 void wlr_text_input_v3_send_done(struct wlr_text_input_v3 *text_input);
+// v2 additions
+void wlr_text_input_v3_action(struct wlr_text_input_v3 *text_input,
+	enum zwp_text_input_v3_action action);
+void wlr_text_input_v3_send_language(struct wlr_text_input_v3 *text_input,
+	const char *language);
+void wlr_text_input_v3_send_preedit_hint(struct wlr_text_input_v3 *text_input,
+	uint32_t start, uint32_t end, enum zwp_text_input_v3_preedit_hint hint);
 
 #endif

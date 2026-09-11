@@ -65,6 +65,34 @@ void wlr_text_input_v3_send_done(struct wlr_text_input_v3 *text_input) {
 		text_input->current_serial);
 }
 
+void wlr_text_input_v3_action(struct wlr_text_input_v3 *text_input,
+		enum zwp_text_input_v3_action action) {
+	uint32_t serial = wl_display_next_serial(text_input->seat->display);
+	uint32_t version = wl_resource_get_version(text_input->resource);
+	if (version >= ZWP_TEXT_INPUT_V3_ACTION_SINCE_VERSION) {
+		zwp_text_input_v3_send_action(text_input->resource, action,
+			serial);
+	}
+}
+
+void wlr_text_input_v3_send_language(struct wlr_text_input_v3 *text_input,
+		const char *language) {
+	uint32_t version = wl_resource_get_version(text_input->resource);
+	if (version >= ZWP_TEXT_INPUT_V3_LANGUAGE_SINCE_VERSION) {
+		zwp_text_input_v3_send_language(text_input->resource, language);
+	}
+}
+
+void wlr_text_input_v3_send_preedit_hint(struct wlr_text_input_v3 *text_input,
+		uint32_t start, uint32_t end,
+		enum zwp_text_input_v3_preedit_hint hint) {
+	uint32_t version = wl_resource_get_version(text_input->resource);
+	if (version >= ZWP_TEXT_INPUT_V3_PREEDIT_HINT_SINCE_VERSION) {
+		zwp_text_input_v3_send_preedit_hint(text_input->resource,
+			start, end, hint);
+	}
+}
+
 static void wlr_text_input_destroy(struct wlr_text_input_v3 *text_input) {
 	wl_signal_emit_mutable(&text_input->events.destroy, NULL);
 
