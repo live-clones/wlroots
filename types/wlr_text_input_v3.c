@@ -6,7 +6,7 @@
 #include <wlr/util/log.h>
 #include "text-input-unstable-v3-protocol.h"
 
-#define TEXT_INPUT_VERSION 1
+#define TEXT_INPUT_VERSION 2
 
 static void text_input_clear_focused_surface(struct wlr_text_input_v3 *text_input) {
 	wl_list_remove(&text_input->surface_destroy.link);
