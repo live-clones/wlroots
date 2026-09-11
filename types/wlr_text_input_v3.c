@@ -6,6 +6,8 @@
 #include <wlr/util/log.h>
 #include "text-input-unstable-v3-protocol.h"
 
+#define TEXT_INPUT_VERSION 1
+
 static void text_input_clear_focused_surface(struct wlr_text_input_v3 *text_input) {
 	wl_list_remove(&text_input->surface_destroy.link);
 	wl_list_init(&text_input->surface_destroy.link);
@@ -324,7 +326,9 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 }
 
 struct wlr_text_input_manager_v3 *wlr_text_input_manager_v3_create(
-		struct wl_display *display) {
+		struct wl_display *display, uint32_t version) {
+	assert(version <= TEXT_INPUT_VERSION);
+
 	struct wlr_text_input_manager_v3 *manager = calloc(1, sizeof(*manager));
 	if (!manager) {
 		return NULL;
@@ -336,7 +340,7 @@ struct wlr_text_input_manager_v3 *wlr_text_input_manager_v3_create(
 	wl_signal_init(&manager->events.destroy);
 
 	manager->global = wl_global_create(display,
-		&zwp_text_input_manager_v3_interface, 1, manager,
+		&zwp_text_input_manager_v3_interface, version, manager,
 		text_input_manager_bind);
 	if (!manager->global) {
 		free(manager);

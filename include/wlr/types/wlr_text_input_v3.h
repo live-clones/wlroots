@@ -84,7 +84,7 @@ struct wlr_text_input_manager_v3 {
 };
 
 struct wlr_text_input_manager_v3 *wlr_text_input_manager_v3_create(
-	struct wl_display *wl_display);
+	struct wl_display *wl_display, uint32_t version);
 
 // Sends enter to the surface and saves it
 void wlr_text_input_v3_send_enter(struct wlr_text_input_v3 *text_input,
