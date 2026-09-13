@@ -23,7 +23,7 @@ struct wlr_backend *wlr_headless_backend_create(struct wl_event_loop *loop);
  * The buffers presented on the output won't be displayed to the user.
  */
 struct wlr_output *wlr_headless_add_output(struct wlr_backend *backend,
-	unsigned int width, unsigned int height);
+	unsigned int width, unsigned int height, const char *name);
 
 bool wlr_backend_is_headless(const struct wlr_backend *backend);
 bool wlr_output_is_headless(const struct wlr_output *output);
