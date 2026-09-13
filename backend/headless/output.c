@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/types/wlr_output_layer.h>
 #include <wlr/util/log.h>
@@ -116,10 +117,36 @@ static int signal_frame(void *data) {
 	return 0;
 }
 
+static bool output_name_exists(struct wlr_headless_backend *backend,
+		const char *name) {
+	struct wlr_headless_output *output;
+	wl_list_for_each(output, &backend->outputs, link) {
+		if (output->wlr_output.name != NULL &&
+				strcmp(output->wlr_output.name, name) == 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
 struct wlr_output *wlr_headless_add_output(struct wlr_backend *wlr_backend,
-		unsigned int width, unsigned int height) {
+		unsigned int width, unsigned int height, const char *name) {
 	struct wlr_headless_backend *backend =
 		headless_backend_from_backend(wlr_backend);
+
+	char name_buf[64];
+	if (name == NULL) {
+		do {
+			size_t output_num = ++last_output_num;
+			snprintf(name_buf, sizeof(name_buf), "HEADLESS-%zu",
+				output_num);
+		} while (output_name_exists(backend, name_buf));
+		name = name_buf;
+	} else if (output_name_exists(backend, name)) {
+		wlr_log(WLR_ERROR, "Failed to create headless output: "
+			"an output named '%s' already exists", name);
+		return NULL;
+	}
 
 	struct wlr_headless_output *output = calloc(1, sizeof(*output));
 	if (output == NULL) {
@@ -138,14 +165,10 @@ struct wlr_output *wlr_headless_add_output(struct wlr_backend *wlr_backend,
 
 	output_update_refresh(output, 0);
 
-	size_t output_num = ++last_output_num;
-
-	char name[64];
-	snprintf(name, sizeof(name), "HEADLESS-%zu", output_num);
 	wlr_output_set_name(wlr_output, name);
 
 	char description[128];
-	snprintf(description, sizeof(description), "Headless output %zu", output_num);
+	snprintf(description, sizeof(description), "Headless output %s", name);
 	wlr_output_set_description(wlr_output, description);
 
 	output->frame_timer = wl_event_loop_add_timer(backend->event_loop, signal_frame, output);

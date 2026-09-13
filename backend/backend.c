@@ -226,7 +226,7 @@ static struct wlr_backend *attempt_headless_backend(struct wl_event_loop *loop) 
 
 	size_t outputs = parse_outputs_env("WLR_HEADLESS_OUTPUTS");
 	for (size_t i = 0; i < outputs; ++i) {
-		wlr_headless_add_output(backend, 1280, 720);
+		wlr_headless_add_output(backend, 1280, 720, NULL);
 	}
 
 	return backend;
