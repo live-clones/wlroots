@@ -309,7 +309,7 @@ static void feedback_handle_output_destroy(struct wl_listener *listener,
 }
 
 static void presentation_surface_queued_on_output(struct wlr_surface *surface,
-		struct wlr_output *output, bool zero_copy) {
+		struct wlr_output *output, bool zero_copy, bool frame_driver) {
 	struct wlr_presentation_feedback *feedback =
 		wlr_presentation_surface_sampled(surface);
 	if (feedback == NULL) {
@@ -319,6 +319,7 @@ static void presentation_surface_queued_on_output(struct wlr_surface *surface,
 	assert(feedback->output == NULL);
 	feedback->output = output;
 	feedback->zero_copy = zero_copy;
+	feedback->frame_driver = frame_driver;
 
 	feedback->output_commit.notify = feedback_handle_output_commit;
 	wl_signal_add(&output->events.commit, &feedback->output_commit);
@@ -329,11 +330,11 @@ static void presentation_surface_queued_on_output(struct wlr_surface *surface,
 }
 
 void wlr_presentation_surface_textured_on_output(struct wlr_surface *surface,
-		struct wlr_output *output) {
-	return presentation_surface_queued_on_output(surface, output, false);
+		struct wlr_output *output, bool frame_driver) {
+	return presentation_surface_queued_on_output(surface, output, false, frame_driver);
 }
 
 void wlr_presentation_surface_scanned_out_on_output(struct wlr_surface *surface,
-		struct wlr_output *output) {
-	return presentation_surface_queued_on_output(surface, output, true);
+		struct wlr_output *output, bool frame_driver) {
+	return presentation_surface_queued_on_output(surface, output, true, frame_driver);
 }
