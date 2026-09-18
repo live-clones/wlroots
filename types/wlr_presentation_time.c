@@ -7,7 +7,7 @@
 #include <wlr/util/addon.h>
 #include "presentation-time-protocol.h"
 
-#define PRESENTATION_VERSION 2
+#define PRESENTATION_VERSION 3
 
 struct wlr_presentation_surface_state {
 	struct wlr_presentation_feedback *feedback;
@@ -26,7 +26,7 @@ static void feedback_handle_resource_destroy(struct wl_resource *resource) {
 
 static void feedback_resource_send_presented(
 		struct wl_resource *feedback_resource,
-		const struct wlr_presentation_event *event) {
+		const struct wlr_presentation_event *event, bool frame_driver) {
 	struct wl_client *client = wl_resource_get_client(feedback_resource);
 	struct wl_resource *output_resource;
 	wl_resource_for_each(output_resource, &event->output->resources) {
@@ -41,13 +41,22 @@ static void feedback_resource_send_presented(
 	uint32_t seq_hi = event->seq >> 32;
 	uint32_t seq_lo = event->seq & 0xFFFFFFFF;
 	uint32_t refresh = event->refresh;
-	if (wl_resource_get_version(feedback_resource) == 1 &&
-			event->output->adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) {
+	uint32_t flags = event->flags;
+	uint32_t version = wl_resource_get_version(feedback_resource);
+	bool variable_rate = flags & WP_PRESENTATION_FEEDBACK_KIND_VARIABLE_RATE;
+	if (version == 1 && variable_rate) {
 		refresh = 0;
+	}
+	if (version < WP_PRESENTATION_FEEDBACK_KIND_VARIABLE_RATE_SINCE_VERSION ||
+			refresh == 0) {
+		flags &= ~(WP_PRESENTATION_FEEDBACK_KIND_FIXED_RATE |
+					WP_PRESENTATION_FEEDBACK_KIND_VARIABLE_RATE);
+	} else if (variable_rate && !frame_driver) {
+		flags &= ~WP_PRESENTATION_FEEDBACK_KIND_VARIABLE_RATE;
 	}
 	wp_presentation_feedback_send_presented(feedback_resource,
 		tv_sec_hi, tv_sec_lo, event->tv_nsec, refresh,
-		seq_hi, seq_lo, event->flags);
+		seq_hi, seq_lo, flags);
 
 	wl_resource_destroy(feedback_resource);
 }
@@ -205,10 +214,10 @@ struct wlr_presentation *wlr_presentation_create(struct wl_display *display,
 
 void wlr_presentation_feedback_send_presented(
 		struct wlr_presentation_feedback *feedback,
-		const struct wlr_presentation_event *event) {
+		const struct wlr_presentation_event *event, bool frame_driver) {
 	struct wl_resource *resource, *tmp;
 	wl_resource_for_each_safe(resource, tmp, &feedback->resources) {
-		feedback_resource_send_presented(resource, event);
+		feedback_resource_send_presented(resource, event, frame_driver);
 	}
 }
 
@@ -296,7 +305,7 @@ static void feedback_handle_output_present(struct wl_listener *listener,
 		if (!feedback->zero_copy) {
 			event.flags &= ~WP_PRESENTATION_FEEDBACK_KIND_ZERO_COPY;
 		}
-		wlr_presentation_feedback_send_presented(feedback, &event);
+		wlr_presentation_feedback_send_presented(feedback, &event, feedback->frame_driver);
 	}
 	wlr_presentation_feedback_destroy(feedback);
 }

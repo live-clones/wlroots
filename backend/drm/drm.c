@@ -2045,6 +2045,12 @@ static void handle_page_flip(int fd, unsigned seq,
 		return;
 	}
 
+	if (conn->output.adaptive_sync_status == WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED) {
+		present_flags |= WLR_OUTPUT_PRESENT_VARIABLE_RATE;
+	} else if (present_flags & WLR_OUTPUT_PRESENT_VSYNC) {
+		present_flags |= WLR_OUTPUT_PRESENT_FIXED_RATE;
+	}
+
 	struct wlr_drm_plane *plane = conn->crtc->primary;
 	if (plane->queued_fb) {
 		drm_fb_move(&plane->current_fb, &plane->queued_fb);

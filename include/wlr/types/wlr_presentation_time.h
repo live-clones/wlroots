@@ -76,9 +76,14 @@ struct wlr_presentation *wlr_presentation_create(struct wl_display *display,
  */
 struct wlr_presentation_feedback *wlr_presentation_surface_sampled(
 	struct wlr_surface *surface);
+/**
+ * Send presented feedback.
+ * frame_driver indicates that the surface caused the output frame to be
+ * scheduled.
+ */
 void wlr_presentation_feedback_send_presented(
 	struct wlr_presentation_feedback *feedback,
-	const struct wlr_presentation_event *event);
+	const struct wlr_presentation_event *event, bool frame_driver);
 void wlr_presentation_feedback_destroy(
 	struct wlr_presentation_feedback *feedback);
 
