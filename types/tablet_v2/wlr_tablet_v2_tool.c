@@ -193,6 +193,10 @@ static void handle_wlr_tablet_tool_destroy(struct wl_listener *listener, void *d
 	struct wlr_tablet_v2_tablet_tool *tool =
 		wl_container_of(listener, tool, tool_destroy);
 
+	if (wlr_tablet_tool_v2_has_implicit_grab(tool)) {
+		wlr_tablet_tool_v2_end_grab(tool);
+	}
+
 	struct wlr_tablet_tool_client_v2 *pos;
 	struct wlr_tablet_tool_client_v2 *tmp;
 	wl_list_for_each_safe(pos, tmp, &tool->clients, tool_link) {
