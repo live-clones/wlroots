@@ -226,6 +226,10 @@ struct wlr_drm_connector {
 	uint32_t hdr_output_metadata;
 
 	int32_t refresh;
+
+	// EDID used to initialize the current output and its mode list
+	uint8_t *edid;
+	size_t edid_len;
 };
 
 struct wlr_drm_backend *get_drm_backend_from_backend(

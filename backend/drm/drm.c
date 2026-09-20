@@ -1265,6 +1265,10 @@ static void drm_connector_destroy_output(struct wlr_output *output) {
 		free(mode);
 	}
 
+	free(conn->edid);
+	conn->edid = NULL;
+	conn->edid_len = 0;
+
 	conn->output = (struct wlr_output){0};
 }
 
@@ -1632,6 +1636,35 @@ static drmModeModeInfo *connector_get_current_mode(struct wlr_drm_connector *wlr
 	}
 }
 
+static uint8_t *get_drm_connector_edid(struct wlr_drm_backend *drm,
+		const drmModeConnector *drm_conn, uint32_t prop, size_t *len) {
+	*len = 0;
+	for (int i = 0; prop != 0 && i < drm_conn->count_props; i++) {
+		if (drm_conn->props[i] != prop || drm_conn->prop_values[i] == 0) {
+			continue;
+		}
+		// Use the property snapshot returned with the mode list, not a
+		// later property query which could describe a different sink.
+		drmModePropertyBlobRes *blob = drmModeGetPropertyBlob(drm->fd,
+			drm_conn->prop_values[i]);
+		if (blob == NULL) {
+			return NULL;
+		}
+		if (blob->length == 0) {
+			drmModeFreePropertyBlob(blob);
+			return NULL;
+		}
+		uint8_t *edid = malloc(blob->length);
+		if (edid != NULL) {
+			memcpy(edid, blob->data, blob->length);
+			*len = blob->length;
+		}
+		drmModeFreePropertyBlob(blob);
+		return edid;
+	}
+	return NULL;
+}
+
 static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 		const drmModeConnector *drm_conn) {
 	struct wlr_drm_backend *drm = wlr_conn->backend;
@@ -1744,14 +1777,15 @@ static bool connect_drm_connector(struct wlr_drm_connector *wlr_conn,
 	output->adaptive_sync_supported = vrr_capable;
 
 	size_t edid_len = 0;
-	uint8_t *edid = get_drm_prop_blob(drm->fd,
-		wlr_conn->id, wlr_conn->props.edid, &edid_len);
+	uint8_t *edid = get_drm_connector_edid(drm, drm_conn,
+		wlr_conn->props.edid, &edid_len);
 	if (edid_len > 0) {
 		parse_edid(wlr_conn, edid_len, edid);
 	} else {
 		wlr_log(WLR_DEBUG, "Connector has no EDID");
 	}
-	free(edid);
+	wlr_conn->edid = edid;
+	wlr_conn->edid_len = edid_len;
 
 	char *subconnector = NULL;
 	if (wlr_conn->props.subconnector) {
@@ -1861,6 +1895,25 @@ void scan_drm_connectors(struct wlr_drm_backend *drm,
 			if (link_status == DRM_MODE_LINK_STATUS_BAD) {
 				// We need to reload our list of modes and force a modeset
 				wlr_drm_conn_log(wlr_conn, WLR_INFO, "Bad link detected");
+				disconnect_drm_connector(wlr_conn);
+			}
+		}
+
+		// A sink can change its EDID without disconnecting, e.g. an AVR in
+		// passthrough. Recreate the output to refresh its mode list.
+		if (wlr_conn->status == DRM_MODE_CONNECTED &&
+				drm_conn->connection == DRM_MODE_CONNECTED &&
+				wlr_conn->props.edid != 0) {
+			size_t edid_len = 0;
+			uint8_t *edid = get_drm_connector_edid(drm, drm_conn,
+				wlr_conn->props.edid, &edid_len);
+			// An unreadable EDID is not evidence of a different sink.
+			bool changed = edid != NULL && edid_len > 0 &&
+				(edid_len != wlr_conn->edid_len || wlr_conn->edid == NULL ||
+				memcmp(edid, wlr_conn->edid, edid_len) != 0);
+			free(edid);
+			if (changed) {
+				wlr_drm_conn_log(wlr_conn, WLR_INFO, "EDID changed");
 				disconnect_drm_connector(wlr_conn);
 			}
 		}
