@@ -215,6 +215,8 @@ static void security_context_handle_commit(struct wl_client *client,
 		security_context);
 	if (security_context->close_source == NULL) {
 		wl_resource_post_no_memory(resource);
+		wl_event_source_remove(security_context->listen_source);
+		security_context->listen_source = NULL;
 		return;
 	}
 
@@ -325,12 +327,12 @@ static void manager_handle_create_listener(struct wl_client *client,
 		wl_resource_post_error(manager_resource,
 			WP_SECURITY_CONTEXT_MANAGER_V1_ERROR_INVALID_LISTEN_FD,
 			"Invalid listen_fd");
-		return;
+		goto error;
 	} else if (!S_ISSOCK(stat_buf.st_mode)) {
 		wl_resource_post_error(manager_resource,
 			WP_SECURITY_CONTEXT_MANAGER_V1_ERROR_INVALID_LISTEN_FD,
 			"listen_fd is not a socket");
-		return;
+		goto error;
 	}
 
 	int accept_conn = 0;
@@ -341,19 +343,19 @@ static void manager_handle_create_listener(struct wl_client *client,
 		wl_resource_post_error(manager_resource,
 			WP_SECURITY_CONTEXT_MANAGER_V1_ERROR_INVALID_LISTEN_FD,
 			"Invalid listen_fd");
-		return;
+		goto error;
 	} else if (accept_conn == 0) {
 		wl_resource_post_error(manager_resource,
 			WP_SECURITY_CONTEXT_MANAGER_V1_ERROR_INVALID_LISTEN_FD,
 			"listen_fd is not a listening socket");
-		return;
+		goto error;
 	}
 
 	struct wlr_security_context_v1 *security_context =
 		calloc(1, sizeof(*security_context));
 	if (security_context == NULL) {
 		wl_resource_post_no_memory(manager_resource);
-		return;
+		goto error;
 	}
 
 	security_context->manager = manager;
@@ -366,12 +368,17 @@ static void manager_handle_create_listener(struct wl_client *client,
 	if (resource == NULL) {
 		free(security_context);
 		wl_resource_post_no_memory(manager_resource);
-		return;
+		goto error;
 	}
 	wl_resource_set_implementation(resource, &security_context_impl,
 		security_context, security_context_resource_destroy);
 
 	wl_list_insert(&manager->contexts, &security_context->link);
+	return;
+
+error:
+	close(listen_fd);
+	close(close_fd);
 }
 
 static const struct wp_security_context_manager_v1_interface manager_impl = {

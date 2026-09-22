@@ -44,6 +44,7 @@ bool begin_pixman_data_ptr_access(struct wlr_buffer *wlr_buffer, pixman_image_t 
 		pixman_image_t *new_image = pixman_image_create_bits_no_clear(format,
 			wlr_buffer->width, wlr_buffer->height, data, stride);
 		if (new_image == NULL) {
+			wlr_log(WLR_ERROR, "Failed to create pixman image");
 			wlr_buffer_end_data_ptr_access(wlr_buffer);
 			return false;
 		}
@@ -106,6 +107,10 @@ static bool texture_read_pixels(struct wlr_texture *wlr_texture,
 
 	pixman_image_t *dst = pixman_image_create_bits_no_clear(fmt,
 			src.width, src.height, p, options->stride);
+	if (dst == NULL) {
+		wlr_log(WLR_ERROR, "Failed to create pixman image");
+		return false;
+	}
 
 	pixman_image_composite32(PIXMAN_OP_SRC, texture->image, NULL, dst,
 			src.x, src.y, 0, 0, 0, 0, src.width, src.height);

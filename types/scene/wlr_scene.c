@@ -2167,7 +2167,10 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 		return SCANOUT_CANDIDATE;
 	}
 
-	wlr_output_state_copy(state, &pending);
+	if (!wlr_output_state_copy(state, &pending)) {
+		wlr_output_state_finish(&pending);
+		return SCANOUT_CANDIDATE;
+	}
 	wlr_output_state_finish(&pending);
 
 	struct wlr_scene_output_sample_event sample_event = {
@@ -2233,7 +2236,9 @@ static void scene_output_state_attempt_gamma(struct wlr_scene_output *scene_outp
 		return;
 	}
 
-	wlr_output_state_copy(state, &gamma_pending);
+	if (!wlr_output_state_copy(state, &gamma_pending)) {
+		scene_output->gamma_lut_changed = true;
+	}
 	wlr_output_state_finish(&gamma_pending);
 }
 
