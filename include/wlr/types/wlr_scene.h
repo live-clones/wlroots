@@ -194,6 +194,8 @@ struct wlr_scene_buffer {
 	enum wlr_color_transfer_function transfer_function;
 	struct wlr_color_primaries primaries;
 	bool has_primaries;
+	struct wlr_color_luminances luminances;
+	bool has_luminances;
 	enum wlr_color_encoding color_encoding;
 	enum wlr_color_range color_range;
 
@@ -564,6 +566,9 @@ void wlr_scene_buffer_set_transfer_function(struct wlr_scene_buffer *scene_buffe
 
 void wlr_scene_buffer_set_primaries(struct wlr_scene_buffer *scene_buffer,
 	const struct wlr_color_primaries *primaries);
+
+void wlr_scene_buffer_set_luminances(struct wlr_scene_buffer *scene_buffer,
+	const struct wlr_color_luminances *luminances);
 
 void wlr_scene_buffer_set_color_encoding(struct wlr_scene_buffer *scene_buffer,
 	enum wlr_color_encoding encoding);

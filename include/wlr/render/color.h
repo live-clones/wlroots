@@ -290,4 +290,10 @@ bool wlr_color_primaries_equal(const struct wlr_color_primaries *a,
  */
 bool wlr_color_primaries_valid(const struct wlr_color_primaries *primaries);
 
+/**
+ * Compare two sets of color luminances for equality.
+ */
+bool wlr_color_luminances_equal(const struct wlr_color_luminances *a,
+	const struct wlr_color_luminances *b);
+
 #endif

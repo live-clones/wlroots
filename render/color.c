@@ -447,6 +447,13 @@ bool wlr_color_primaries_valid(const struct wlr_color_primaries *primaries) {
 	return matrix_determinant(matrix) != 0;
 }
 
+bool wlr_color_luminances_equal(const struct wlr_color_luminances *a,
+		const struct wlr_color_luminances *b) {
+	return a->min == b->min &&
+		a->max == b->max &&
+		a->reference == b->reference;
+}
+
 void wlr_color_primaries_transform_absolute_colorimetric(
 		const struct wlr_color_primaries *source,
 		const struct wlr_color_primaries *destination, float matrix[static 9]) {
