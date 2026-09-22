@@ -510,7 +510,7 @@ bool output_cursor_refresh_color_transform(struct wlr_output_cursor *output_curs
 	struct wlr_color_primaries primaries;
 	wlr_color_primaries_from_named(&primaries, img_desc->primaries);
 	float matrix[9];
-	wlr_color_primaries_transform_absolute_colorimetric(&primaries_srgb, &primaries, matrix);
+	wlr_color_primaries_transform(&primaries_srgb, &primaries, matrix);
 
 	// Source is sRGB, which has reference == max
 	struct wlr_color_luminances dst_lum;

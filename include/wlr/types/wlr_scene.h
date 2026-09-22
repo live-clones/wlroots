@@ -192,7 +192,8 @@ struct wlr_scene_buffer {
 	enum wl_output_transform transform;
 	pixman_region32_t opaque_region;
 	enum wlr_color_transfer_function transfer_function;
-	enum wlr_color_named_primaries primaries;
+	struct wlr_color_primaries primaries;
+	bool has_primaries;
 	enum wlr_color_encoding color_encoding;
 	enum wlr_color_range color_range;
 
@@ -562,7 +563,7 @@ void wlr_scene_buffer_set_transfer_function(struct wlr_scene_buffer *scene_buffe
 	enum wlr_color_transfer_function transfer_function);
 
 void wlr_scene_buffer_set_primaries(struct wlr_scene_buffer *scene_buffer,
-	enum wlr_color_named_primaries primaries);
+	const struct wlr_color_primaries *primaries);
 
 void wlr_scene_buffer_set_color_encoding(struct wlr_scene_buffer *scene_buffer,
 	enum wlr_color_encoding encoding);

@@ -12,6 +12,17 @@ test(
 	executable('test-box', 'test_box.c', dependencies: wlroots),
 )
 
+test(
+	'color',
+	executable(
+		'test-color',
+		'test_color.c',
+		link_with: lib_wlr_internal,
+		dependencies: wlr_deps,
+		include_directories: wlr_inc,
+	),
+)
+
 if features.get('vulkan-renderer')
 	test(
 		'vulkan_stage_buffer',

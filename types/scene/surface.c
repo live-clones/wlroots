@@ -295,12 +295,24 @@ static void surface_reconfigure(struct wlr_scene_surface *scene_surface) {
 	}
 
 	enum wlr_color_transfer_function tf = WLR_COLOR_TRANSFER_FUNCTION_GAMMA22;
-	enum wlr_color_named_primaries primaries = WLR_COLOR_NAMED_PRIMARIES_SRGB;
+	const struct wlr_color_primaries *primaries = NULL;
+	struct wlr_color_primaries primaries_buf = {0};
 	const struct wlr_image_description_v1_data *img_desc =
 		wlr_surface_get_image_description_v1_data(surface);
 	if (img_desc != NULL) {
 		tf = wlr_color_manager_v1_transfer_function_to_wlr(img_desc->tf_named);
-		primaries = wlr_color_manager_v1_primaries_to_wlr(img_desc->primaries_named);
+		if (img_desc->has_primaries) {
+			// Custom primaries may be degenerate; drop them if they cannot
+			// be used to build invertible color space conversion matrices
+			if (wlr_color_primaries_valid(&img_desc->primaries)) {
+				primaries_buf = img_desc->primaries;
+				primaries = &primaries_buf;
+			}
+		} else if (img_desc->primaries_named != 0) {
+			wlr_color_primaries_from_named(&primaries_buf,
+				wlr_color_manager_v1_primaries_to_wlr(img_desc->primaries_named));
+			primaries = &primaries_buf;
+		}
 	}
 
 	enum wlr_color_encoding color_encoding = WLR_COLOR_ENCODING_NONE;

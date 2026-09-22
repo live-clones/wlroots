@@ -1127,12 +1127,19 @@ void wlr_scene_buffer_set_transfer_function(struct wlr_scene_buffer *scene_buffe
 }
 
 void wlr_scene_buffer_set_primaries(struct wlr_scene_buffer *scene_buffer,
-		enum wlr_color_named_primaries primaries) {
-	if (scene_buffer->primaries == primaries) {
+		const struct wlr_color_primaries *primaries) {
+	bool has_primaries = primaries != NULL;
+	if (scene_buffer->has_primaries == has_primaries &&
+			(!has_primaries || wlr_color_primaries_equal(&scene_buffer->primaries, primaries))) {
 		return;
 	}
 
-	scene_buffer->primaries = primaries;
+	if (has_primaries) {
+		scene_buffer->primaries = *primaries;
+	} else {
+		memset(&scene_buffer->primaries, 0, sizeof(scene_buffer->primaries));
+	}
+	scene_buffer->has_primaries = has_primaries;
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
@@ -1497,9 +1504,11 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 			wlr_output_transform_invert(scene_buffer->transform);
 		transform = wlr_output_transform_compose(transform, data->transform);
 
-		struct wlr_color_primaries primaries = {0};
-		if (scene_buffer->primaries != 0) {
-			wlr_color_primaries_from_named(&primaries, scene_buffer->primaries);
+		struct wlr_color_primaries primaries;
+		bool has_primaries = false;
+		if (scene_buffer->has_primaries) {
+			primaries = scene_buffer->primaries;
+			has_primaries = true;
 		}
 
 		struct wlr_color_luminances src_lum, srgb_lum;
@@ -1521,7 +1530,7 @@ static void scene_entry_render(struct render_list_entry *entry, const struct ren
 					!pixman_region32_empty(&opaque) ?
 				WLR_RENDER_BLEND_MODE_PREMULTIPLIED : WLR_RENDER_BLEND_MODE_NONE,
 			.transfer_function = scene_buffer->transfer_function,
-			.primaries = scene_buffer->primaries != 0 ? &primaries : NULL,
+			.primaries = has_primaries ? &primaries : NULL,
 			.color_encoding = scene_buffer->color_encoding,
 			.color_range = scene_buffer->color_range,
 			.luminance_multiplier = &luminance_multiplier,
@@ -1999,21 +2008,32 @@ static bool color_management_is_scanout_allowed(const struct wlr_output_image_de
 		const struct wlr_scene_buffer *buffer) {
 	// Disallow scanout if the output has colorimetry information but buffer
 	// doesn't; allow it only if the output also lacks it.
-	if (buffer->transfer_function == 0 && buffer->primaries == 0) {
+	if (!buffer->has_primaries && buffer->transfer_function == 0) {
 		return img_desc == NULL;
 	}
 
 	// If the output has colorimetry information, the buffer must match it for
 	// direct scanout to be allowed.
 	if (img_desc != NULL) {
+		struct wlr_color_primaries out_primaries;
+		wlr_color_primaries_from_named(&out_primaries, img_desc->primaries);
+
+		struct wlr_color_primaries buffer_primaries;
+		if (buffer->has_primaries) {
+			buffer_primaries = buffer->primaries;
+		} else {
+			wlr_color_primaries_from_named(&buffer_primaries,
+				WLR_COLOR_NAMED_PRIMARIES_SRGB);
+		}
+
 		return img_desc->transfer_function == buffer->transfer_function &&
-				img_desc->primaries == buffer->primaries;
+			wlr_color_primaries_equal(&buffer_primaries, &out_primaries);
 	}
 	// If the output doesn't have colorimetry image description set, we can only
 	// scan out buffers with default colorimetry (gamma2.2 transfer and sRGB
 	// primaries) used in wlroots.
 	return buffer->transfer_function == WLR_COLOR_TRANSFER_FUNCTION_GAMMA22 &&
-			buffer->primaries == WLR_COLOR_NAMED_PRIMARIES_SRGB;
+			!buffer->has_primaries;
 }
 
 enum scene_direct_scanout_result {
@@ -2230,7 +2250,7 @@ static bool scene_output_combine_color_transforms(
 		struct wlr_color_primaries primaries;
 		wlr_color_primaries_from_named(&primaries, img_desc->primaries);
 		float matrix[9];
-		wlr_color_primaries_transform_absolute_colorimetric(&primaries_srgb, &primaries, matrix);
+		wlr_color_primaries_transform(&primaries_srgb, &primaries, matrix);
 
 		struct wlr_color_luminances srgb_lum, dst_lum;
 		wlr_color_transfer_function_get_default_luminance(

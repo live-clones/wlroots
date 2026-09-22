@@ -895,7 +895,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		struct wlr_color_primaries srgb;
 		wlr_color_primaries_from_named(&srgb, WLR_COLOR_NAMED_PRIMARIES_SRGB);
 
-		wlr_color_primaries_transform_absolute_colorimetric(options->primaries,
+		wlr_color_primaries_transform(options->primaries,
 			&srgb, color_matrix);
 	} else {
 		wlr_matrix_identity(color_matrix);
