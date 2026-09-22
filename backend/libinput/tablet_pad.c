@@ -11,6 +11,7 @@ const struct wlr_tablet_pad_impl libinput_tablet_pad_impl = {
 };
 
 static void group_destroy(struct wlr_tablet_pad_group *group) {
+	wl_list_remove(&group->link);
 	free(group->buttons);
 	free(group->strips);
 	free(group->rings);
@@ -26,6 +27,8 @@ static void add_pad_group_from_libinput(struct wlr_tablet_pad *pad,
 		wlr_log_errno(WLR_ERROR, "failed to allocate wlr_tablet_pad_group");
 		return;
 	}
+
+	wl_list_init(&group->link);
 
 	for (size_t i = 0; i < pad->ring_count; ++i) {
 		if (libinput_tablet_pad_mode_group_has_ring(li_group, i)) {
