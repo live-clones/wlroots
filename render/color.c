@@ -409,6 +409,44 @@ void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, flo
 	memcpy(matrix, result, sizeof(result));
 }
 
+static bool cie1931_xy_equal(const struct wlr_color_cie1931_xy *a,
+		const struct wlr_color_cie1931_xy *b) {
+	return a->x == b->x && a->y == b->y;
+}
+
+bool wlr_color_primaries_equal(const struct wlr_color_primaries *a,
+		const struct wlr_color_primaries *b) {
+	return cie1931_xy_equal(&a->red, &b->red) &&
+		cie1931_xy_equal(&a->green, &b->green) &&
+		cie1931_xy_equal(&a->blue, &b->blue) &&
+		cie1931_xy_equal(&a->white, &b->white);
+}
+
+bool wlr_color_primaries_valid(const struct wlr_color_primaries *primaries) {
+	float r[3], g[3], b[3];
+	xy_to_xyz(r, primaries->red);
+	xy_to_xyz(g, primaries->green);
+	xy_to_xyz(b, primaries->blue);
+
+	float primary_matrix[9] = {
+		r[0], g[0], b[0],
+		r[1], g[1], b[1],
+		r[2], g[2], b[2],
+	};
+	if (matrix_determinant(primary_matrix) == 0) {
+		// The primaries are zero or linearly dependent, so there is no
+		// invertible primaries-to-XYZ matrix
+		return false;
+	}
+
+	// The white point must resolve to non-zero scale factors for every
+	// primary; otherwise the result of wlr_color_primaries_to_xyz() is
+	// singular as well
+	float matrix[9];
+	wlr_color_primaries_to_xyz(primaries, matrix);
+	return matrix_determinant(matrix) != 0;
+}
+
 void wlr_color_primaries_transform_absolute_colorimetric(
 		const struct wlr_color_primaries *source,
 		const struct wlr_color_primaries *destination, float matrix[static 9]) {

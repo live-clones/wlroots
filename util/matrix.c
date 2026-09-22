@@ -141,11 +141,17 @@ void wlr_matrix_project_box(float mat[static 9], const struct wlr_box *box,
 	wlr_matrix_multiply(mat, projection, mat);
 }
 
-void matrix_invert(float out[static 9], float m[static 9]) {
+float matrix_determinant(const float m[static 9]) {
 	float a = m[0], b = m[1], c = m[2], d = m[3], e = m[4], f = m[5], g = m[6], h = m[7], i = m[8];
 
 	// See: https://en.wikipedia.org/wiki/Determinant
-	float det = a*e*i + b*f*g + c*d*h - c*e*g - b*d*i - a*f*h;
+	return a*e*i + b*f*g + c*d*h - c*e*g - b*d*i - a*f*h;
+}
+
+void matrix_invert(float out[static 9], float m[static 9]) {
+	float a = m[0], b = m[1], c = m[2], d = m[3], e = m[4], f = m[5], g = m[6], h = m[7], i = m[8];
+
+	float det = matrix_determinant(m);
 	assert(det != 0);
 	float inv_det = 1 / det;
 

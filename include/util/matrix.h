@@ -40,6 +40,11 @@ void matrix_projection(float mat[static 9], int width, int height,
 	enum wl_output_transform transform);
 
 /**
+ * Compute the determinant of a matrix.
+ */
+float matrix_determinant(const float m[static 9]);
+
+/**
  * Compute the inverse of a matrix.
  *
  * The matrix needs to be inversible.

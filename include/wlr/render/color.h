@@ -270,4 +270,16 @@ void wlr_color_primaries_transform_absolute_colorimetric(
 	const struct wlr_color_primaries *source,
 	const struct wlr_color_primaries *destination, float matrix[static 9]);
 
+/**
+ * Compare two sets of color primaries for equality.
+ */
+bool wlr_color_primaries_equal(const struct wlr_color_primaries *a,
+	const struct wlr_color_primaries *b);
+
+/**
+ * Check whether the given primaries and white point can be used to build
+ * invertible color space conversion matrices.
+ */
+bool wlr_color_primaries_valid(const struct wlr_color_primaries *primaries);
+
 #endif
