@@ -252,7 +252,7 @@ static void color_transform_lut_3x1d_eval(struct wlr_color_transform_lut_3x1d *t
 	}
 }
 
-static void multiply_matrix_vector(float out[static 3], float m[static 9], const float v[static 3]);
+static void multiply_matrix_vector(float out[static 3], const float m[static 9], const float v[static 3]);
 
 void wlr_color_transform_eval(struct wlr_color_transform *tr,
 		float out[static 3], const float in[static 3]) {
@@ -362,7 +362,7 @@ void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
 	abort();
 }
 
-static void multiply_matrix_vector(float out[static 3], float m[static 9], const float v[static 3]) {
+static void multiply_matrix_vector(float out[static 3], const float m[static 9], const float v[static 3]) {
 	float result[3] = {
 		m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
 		m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
