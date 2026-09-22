@@ -19,10 +19,12 @@ wlr_files += files(
 	'wlr_texture.c',
 )
 
-run_target(
-	'gen-pixel-format',
-	command: [files('gen_pixel_format.sh'), files('pixel_format_table.c')],
-)
+gen_pixel_format = [
+	run_target(
+		'gen-pixel-format-table',
+		command: [files('gen_pixel_format.sh'), files('pixel_format_table.c')],
+	)
+]
 
 has_dma_buf_import_sync_file = cc.has_header('linux/dma-buf.h') and cc.has_define(
 	'DMA_BUF_IOCTL_IMPORT_SYNC_FILE',
@@ -78,3 +80,5 @@ if lcms2.found()
 else
 	wlr_files += files('color_fallback.c')
 endif
+
+alias_target('gen-pixel-format', gen_pixel_format)
