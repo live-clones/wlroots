@@ -106,6 +106,22 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 		output->supported_transfer_functions |= WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
 	}
 
+	if (hdr_static_metadata->desired_content_max_luminance > 0) {
+		// The EDID block carries no reference white luminance, only the
+		// range endpoints consumed by the target_luminance event
+		output->default_luminances_value = (struct wlr_color_luminances){
+			.min = hdr_static_metadata->desired_content_min_luminance,
+			.max = hdr_static_metadata->desired_content_max_luminance,
+		};
+		output->default_luminances = &output->default_luminances_value;
+		output->default_max_cll = hdr_static_metadata->desired_content_max_luminance;
+		output->default_max_fall = hdr_static_metadata->desired_content_max_frame_avg_luminance;
+	} else {
+		output->default_luminances = NULL;
+		output->default_max_cll = 0;
+		output->default_max_fall = 0;
+	}
+
 	di_info_destroy(info);
 }
 
