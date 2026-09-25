@@ -55,6 +55,7 @@ struct wlr_gles2_renderer {
 		bool OES_texture_half_float_linear;
 		bool EXT_texture_norm16;
 		bool EXT_disjoint_timer_query;
+		bool EXT_window_rectangles;
 	} exts;
 
 	struct {
@@ -71,6 +72,7 @@ struct wlr_gles2_renderer {
 		PFNGLGETQUERYOBJECTIVEXTPROC glGetQueryObjectivEXT;
 		PFNGLGETQUERYOBJECTUI64VEXTPROC glGetQueryObjectui64vEXT;
 		PFNGLGETINTEGER64VEXTPROC glGetInteger64vEXT;
+		PFNGLWINDOWRECTANGLESEXTPROC glWindowRectanglesEXT;
 	} procs;
 
 	struct {

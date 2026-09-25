@@ -621,6 +621,11 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 		}
 	}
 
+	if (check_gl_ext(exts_str, "GL_EXT_window_rectangles")) {
+		renderer->exts.EXT_window_rectangles = true;
+		load_gl_proc(&renderer->procs.glWindowRectanglesEXT, "glWindowRectanglesEXT");
+	}
+
 	if (renderer->exts.KHR_debug) {
 		glEnable(GL_DEBUG_OUTPUT_KHR);
 		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS_KHR);

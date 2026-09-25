@@ -75,7 +75,8 @@ out:
 	return ok;
 }
 
-static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLint attrib) {
+static void render(const struct wlr_gles2_renderer *renderer, const struct wlr_box *box,
+		const pixman_region32_t *clip, GLint attrib) {
 	pixman_region32_t region;
 	pixman_region32_init_rect(&region, box->x, box->y, box->width, box->height);
 
@@ -90,20 +91,37 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 		return;
 	}
 
-	/**
-	 * The scissor step is only relevant beneath a certain threshold. Here it is 16 because
-	 * that is the most common scissor limits in the mesa driver.
-	 */
-	if (rects_len < 16) {
-		glEnable(GL_SCISSOR_TEST);
-		for (int i = 0; i < rects_len; ++i) {
-			const pixman_box32_t *rect = &rects[i];
-			glScissor(rect->x1, rect->y1, rect->x2 - rect->x1, rect->y2 - rect->y1);
-		}
-		glDisable(GL_SCISSOR_TEST);
-	}
-
 	glEnableVertexAttribArray(attrib);
+	glEnable(GL_SCISSOR_TEST);
+
+	if (renderer->exts.EXT_window_rectangles) {
+		// TODO: cache
+		GLint max_rects = -1;
+		glGetIntegerv(GL_MAX_WINDOW_RECTANGLES_EXT, &max_rects);
+
+		if (rects_len <= max_rects) {
+			// 8 rectangles is the maximum in Mesa
+			assert(max_rects <= 8);
+			GLint boxes[32] = {0};
+
+			for (int i = 0; i < rects_len; ++i) {
+				const pixman_box32_t *rect = &rects[i];
+				GLint *box = &boxes[i * 4];
+				box[0] = rect->x1;
+				box[1] = rect->y1;
+				box[2] = rect->x2 - rect->x1;
+				box[3] = rect->y2 - rect->y1;
+			}
+	
+			renderer->procs.glWindowRectanglesEXT(GL_INCLUSIVE_EXT, rects_len, boxes);
+		} else {
+			// Scissor the whole region
+			glScissor(box->x, box->y, box->width, box->height);
+		}
+	} else {
+		// Scissor the whole region
+		glScissor(box->x, box->y, box->width, box->height);
+	}
 
 	for (int i = 0; i < rects_len;) {
 		int batch = rects_len - i < MAX_QUADS ? rects_len - i : MAX_QUADS;
@@ -132,6 +150,7 @@ static void render(const struct wlr_box *box, const pixman_region32_t *clip, GLi
 		glDrawArrays(GL_TRIANGLES, 0, batch * 6);
 	}
 
+	glDisable(GL_SCISSOR_TEST);
 	glDisableVertexAttribArray(attrib);
 
 	pixman_region32_fini(&region);
@@ -260,7 +279,7 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	set_proj_matrix(shader->proj, pass->projection_matrix, &dst_box);
 	set_tex_matrix(shader->tex_proj, options->transform, &src_fbox);
 
-	render(&dst_box, options->clip, shader->pos_attrib);
+	render(renderer, &dst_box, options->clip, shader->pos_attrib);
 
 	glBindTexture(texture->target, 0);
 	pop_gles2_debug(renderer);
@@ -291,7 +310,7 @@ static void render_pass_add_rect(struct wlr_render_pass *wlr_pass,
 		glUseProgram(renderer->shaders.quad.program);
 		set_proj_matrix(renderer->shaders.quad.proj, pass->projection_matrix, &box);
 		glUniform4f(renderer->shaders.quad.color, color->r, color->g, color->b, color->a);
-		render(&box, options->clip, renderer->shaders.quad.pos_attrib);
+		render(renderer, &box, options->clip, renderer->shaders.quad.pos_attrib);
 	}
 
 	pop_gles2_debug(renderer);
