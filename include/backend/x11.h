@@ -8,6 +8,7 @@
 #include <wayland-server-core.h>
 #include <xcb/xcb.h>
 #include <xcb/present.h>
+#include <xcb/shm.h>
 
 #include <pixman.h>
 #include <wlr/backend/x11.h>
@@ -49,6 +50,15 @@ struct wlr_x11_output {
 	uint64_t last_msc;
 
 	struct {
+		xcb_shm_seg_t seg;
+		uint8_t *data;
+		size_t size;
+		int width, height;
+		xcb_pixmap_t pixmap;
+		xcb_gcontext_t gc;
+	} readback;
+
+	struct {
 		struct wlr_swapchain *swapchain;
 		xcb_render_picture_t pic;
 	} cursor;
@@ -74,6 +84,7 @@ struct wlr_x11_backend {
 	xcb_render_pictformat_t argb32;
 
 	bool have_shm;
+	bool have_shm_pixmaps;
 	bool have_dri3;
 	uint32_t dri3_major_version, dri3_minor_version;
 
