@@ -13,6 +13,7 @@ wlr_files += files(
 
 client_protos = [
 	'drm',
+	'fractional-scale-v1',
 	'linux-dmabuf-v1',
 	'linux-drm-syncobj-v1',
 	'pointer-gestures-unstable-v1',

@@ -30,6 +30,7 @@
 #include "tablet-v2-client-protocol.h"
 #include "relative-pointer-unstable-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
+#include "fractional-scale-v1-client-protocol.h"
 
 struct wlr_wl_linux_dmabuf_feedback_v1 {
 	struct wlr_wl_backend *backend;
@@ -419,6 +420,9 @@ static void registry_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(iface, wp_linux_drm_syncobj_manager_v1_interface.name) == 0) {
 		wl->drm_syncobj_manager_v1 = wl_registry_bind(registry, name,
 			&wp_linux_drm_syncobj_manager_v1_interface, 1);
+	} else if (strcmp(iface, wp_fractional_scale_manager_v1_interface.name) == 0) {
+		wl->fractional_scale_manager = wl_registry_bind(registry, name,
+			&wp_fractional_scale_manager_v1_interface, 1);
 	}
 }
 
@@ -552,6 +556,9 @@ static void backend_destroy(struct wlr_backend *backend) {
 	}
 	if (wl->viewporter) {
 		wp_viewporter_destroy(wl->viewporter);
+	}
+	if (wl->fractional_scale_manager) {
+		wp_fractional_scale_manager_v1_destroy(wl->fractional_scale_manager);
 	}
 	free(wl->drm_render_name);
 	free(wl->activation_token);
