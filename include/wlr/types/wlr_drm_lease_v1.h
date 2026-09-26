@@ -101,13 +101,34 @@ struct wlr_drm_lease_v1 {
 };
 
 /**
- * Creates a DRM lease manager. A DRM lease device will be created for each
- * DRM backend supplied in case of a struct wlr_multi_backend.
+ * Creates an empty DRM lease manager.
  *
- * Returns NULL if no DRM backend is supplied.
+ * Use wlr_drm_lease_device_v1_add_backend() to add a device
+ * for a specific DRM backend when needed.
+ */
+struct wlr_drm_lease_v1_manager *wlr_drm_lease_v1_manager_create_lazy(
+	struct wl_display *display);
+
+/**
+ * Creates a DRM lease manager using wlr_drm_lease_v1_manager_create_lazy.
+ *
+ * A DRM lease device will be created for each DRM backend supplied in
+ * case of a struct wlr_multi_backend.
+ *
+ * Returns NULL if none of the backends supplied was a DRM backend.
  */
 struct wlr_drm_lease_v1_manager *wlr_drm_lease_v1_manager_create(
 	struct wl_display *display, struct wlr_backend *backend);
+
+/**
+ * Create a DRM lease device for a backend. A Wayland global will be
+ * registered, allowing clients to bind and request leases. This can be
+ * called lazily, e.g. when a non-desktop output appears on the backend.
+ *
+ * Returns NULL if the supplied backend wasn't a DRM backend.
+ */
+struct wlr_drm_lease_device_v1 *wlr_drm_lease_device_v1_add_backend(
+	struct wlr_drm_lease_v1_manager *manager, struct wlr_backend *backend);
 
 /**
  * Offers a wlr_output for lease.
