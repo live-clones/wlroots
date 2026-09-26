@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -586,15 +587,15 @@ static void drm_lease_device_v1_create(struct wlr_drm_lease_v1_manager *manager,
 		struct wlr_backend *backend) {
 	struct wlr_drm_backend *drm_backend = get_drm_backend_from_backend(backend);
 
-	// Make sure we can get a non-master FD for the DRM backend. On some setups
-	// we don't have the permission for this.
-	int fd = wlr_drm_backend_get_non_master_fd(backend);
-	if (fd < 0) {
-		wlr_log(WLR_INFO, "Skipping %s: failed to get read-only DRM FD",
+	// Make sure we can access the device without opening it to avoid
+	// potentially waking the GPU from suspend.
+	// A non-master FD is required later which is what open should already
+	// yield on modern systems.
+	if (faccessat(AT_FDCWD, drm_backend->name, R_OK|W_OK, 0) < 0) {
+		wlr_log(WLR_INFO, "Skipping %s: cannot access DRM device",
 			drm_backend->name);
 		return;
 	}
-	close(fd);
 
 	wlr_log(WLR_DEBUG, "Creating wlr_drm_lease_device_v1 for %s",
 			drm_backend->name);
