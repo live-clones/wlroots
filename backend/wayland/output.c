@@ -1144,7 +1144,11 @@ static void output_start(struct wlr_wl_output *output) {
 	struct wlr_output *wlr_output = &output->wlr_output;
 	struct wlr_wl_backend *backend = output->backend;
 
-	wl_signal_emit_mutable(&backend->backend.events.new_output, wlr_output);
+	struct wlr_backend_event_new_output event = {
+		.output = wlr_output,
+		.requested_state = NULL,
+	};
+	wl_signal_emit_mutable(&backend->backend.events.new_output, &event);
 
 	struct wlr_wl_seat *seat;
 	wl_list_for_each(seat, &backend->seats, link) {

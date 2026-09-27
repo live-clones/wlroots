@@ -116,7 +116,7 @@ static void handle_session_active(struct wl_listener *listener, void *data) {
 		// rerender when the session is activated again.
 		struct wlr_drm_connector *conn;
 		wl_list_for_each(conn, &drm->connectors, link) {
-			if (conn->status == DRM_MODE_CONNECTED) {
+			if (drm_connector_is_connected(conn)) {
 				wlr_output_destroy(&conn->output);
 			}
 		}

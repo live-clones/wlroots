@@ -67,7 +67,8 @@ static void output_handle_frame(struct wl_listener *listener, void *data) {
 
 static void server_handle_new_output(struct wl_listener *listener, void *data) {
 	struct server *server = wl_container_of(listener, server, new_output);
-	struct wlr_output *wlr_output = data;
+	struct wlr_backend_event_new_output *event = data;
+	struct wlr_output *wlr_output = event->output;
 
 	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
 

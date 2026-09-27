@@ -24,6 +24,17 @@ struct wlr_backend_output_state {
 };
 
 /**
+ * New output added.
+ */
+struct wlr_backend_event_new_output {
+	struct wlr_output *output;
+
+	// Recommended initial state for this output.  May be NULL to express
+	// no preference. Only valid for duration of the event.
+	const struct wlr_output_state *requested_state;
+};
+
+/**
  * A backend provides a set of input and output devices.
  *
  * Buffer capabilities and features can change over the lifetime of a backend,
@@ -45,7 +56,7 @@ struct wlr_backend {
 		struct wl_signal destroy;
 		/** Raised when new inputs are added, passed the struct wlr_input_device */
 		struct wl_signal new_input;
-		/** Raised when new outputs are added, passed the struct wlr_output */
+		/** Raised when new outputs are added, passed struct wlr_backend_event_new_output */
 		struct wl_signal new_output;
 	} events;
 };

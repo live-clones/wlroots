@@ -112,7 +112,8 @@ static void output_remove_notify(struct wl_listener *listener, void *data) {
 }
 
 static void new_output_notify(struct wl_listener *listener, void *data) {
-	struct wlr_output *output = data;
+	struct wlr_backend_event_new_output *event = data;
+	struct wlr_output *output = event->output;
 	struct sample_state *sample = wl_container_of(listener, sample, new_output);
 
 	wlr_output_init_render(output, sample->allocator, sample->renderer);

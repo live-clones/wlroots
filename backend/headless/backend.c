@@ -18,8 +18,11 @@ static bool backend_start(struct wlr_backend *wlr_backend) {
 
 	struct wlr_headless_output *output;
 	wl_list_for_each(output, &backend->outputs, link) {
-		wl_signal_emit_mutable(&backend->backend.events.new_output,
-			&output->wlr_output);
+		struct wlr_backend_event_new_output event = {
+			.output = &output->wlr_output,
+			.requested_state = NULL,
+		};
+		wl_signal_emit_mutable(&backend->backend.events.new_output, &event);
 	}
 
 	backend->started = true;
