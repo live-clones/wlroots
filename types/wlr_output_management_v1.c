@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <wlr/backend.h>
@@ -99,10 +100,12 @@ static void head_destroy_custom_mode_resources(struct wlr_output_head_v1 *head) 
 	}
 }
 
-static bool head_has_custom_mode_resources(const struct wlr_output_head_v1 *head) {
+static bool head_has_custom_mode_resource(
+		const struct wlr_output_head_v1 *head, struct wl_client *client) {
 	struct wl_resource *resource;
 	wl_resource_for_each(resource, &head->mode_resources) {
-		if (wl_resource_get_user_data(resource) == NULL) {
+		if (wl_resource_get_client(resource) == client &&
+				wl_resource_get_user_data(resource) == NULL) {
 			return true;
 		}
 	}
@@ -302,7 +305,7 @@ static void config_head_handle_set_adaptive_sync(struct wl_client *client,
 	default:
 		wl_resource_post_error(config_head_resource,
 			ZWLR_OUTPUT_CONFIGURATION_HEAD_V1_ERROR_INVALID_ADAPTIVE_SYNC_STATE,
-			"client requested invalid adaptive sync state %ul", state);
+			"client requested invalid adaptive sync state %" PRIu32, state);
 		break;
 	}
 }
@@ -594,6 +597,7 @@ static void manager_handle_create_configuration(struct wl_client *client,
 	config->resource = wl_resource_create(client,
 		&zwlr_output_configuration_v1_interface, version, id);
 	if (config->resource == NULL) {
+		free(config);
 		wl_client_post_no_memory(client);
 		return;
 	}
@@ -916,26 +920,31 @@ static bool manager_update_head(struct wlr_output_manager_v1 *manager,
 	// to the wlr_output_head
 	struct wlr_output_mode *mode;
 	wl_list_for_each(mode, &head->state.output->modes, link) {
-		bool found = false;
-		struct wl_resource *mode_resource;
-		wl_resource_for_each(mode_resource, &head->mode_resources) {
-			if (mode_from_resource(mode_resource) == mode) {
-				found = true;
-				break;
+		struct wl_resource *resource;
+		wl_resource_for_each(resource, &head->resources) {
+			struct wl_client *client = wl_resource_get_client(resource);
+			bool found = false;
+			struct wl_resource *mode_resource;
+			wl_resource_for_each(mode_resource, &head->mode_resources) {
+				if (wl_resource_get_client(mode_resource) == client &&
+						mode_from_resource(mode_resource) == mode) {
+					found = true;
+					break;
+				}
 			}
-		}
-		if (!found) {
-			struct wl_resource *resource;
-			wl_resource_for_each(resource, &head->resources) {
+			if (!found) {
 				head_send_mode(head, resource, mode);
 			}
 		}
 	}
 
-	if (next->mode == NULL && next->enabled && !head_has_custom_mode_resources(head)) {
+	if (next->mode == NULL && next->enabled) {
 		struct wl_resource *resource;
 		wl_resource_for_each(resource, &head->resources) {
-			head_send_mode(head, resource, NULL);
+			struct wl_client *client = wl_resource_get_client(resource);
+			if (!head_has_custom_mode_resource(head, client)) {
+				head_send_mode(head, resource, NULL);
+			}
 		}
 	} else if (next->mode != NULL) {
 		head_destroy_custom_mode_resources(head);
