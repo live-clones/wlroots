@@ -117,6 +117,8 @@ struct wlr_scene {
 		bool direct_scanout;
 		bool calculate_visibility;
 		bool highlight_transparent_region;
+
+		struct wlr_scene_color_transform_cache *color_transform_cache;
 	} WLR_PRIVATE;
 };
 
