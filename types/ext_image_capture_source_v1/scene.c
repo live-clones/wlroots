@@ -1,6 +1,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <float.h>
 #include <wlr/backend/interface.h>
 #include <wlr/interfaces/wlr_ext_image_capture_source_v1.h>
 #include <wlr/interfaces/wlr_output.h>
@@ -34,8 +35,8 @@ struct scene_node_source_frame_event {
 
 static size_t last_output_num = 0;
 
-static void _get_scene_node_extents(struct wlr_scene_node *node, int lx, int ly,
-		int *x_min, int *y_min, int *x_max, int *y_max) {
+static void _get_scene_node_extents(struct wlr_scene_node *node, double lx, double ly,
+		double *x_min, double *y_min, double *x_max, double *y_max) {
 	switch (node->type) {
 	case WLR_SCENE_NODE_TREE:;
 		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
@@ -46,7 +47,7 @@ static void _get_scene_node_extents(struct wlr_scene_node *node, int lx, int ly,
 		break;
 	case WLR_SCENE_NODE_RECT:
 	case WLR_SCENE_NODE_BUFFER:;
-		struct wlr_box node_box = { .x = lx, .y = ly };
+		struct wlr_fbox node_box = { .x = lx, .y = ly };
 		scene_node_get_size(node, &node_box.width, &node_box.height);
 
 		if (node_box.x < *x_min) {
@@ -65,11 +66,11 @@ static void _get_scene_node_extents(struct wlr_scene_node *node, int lx, int ly,
 	}
 }
 
-static void get_scene_node_extents(struct wlr_scene_node *node, struct wlr_box *box) {
-	int lx = 0, ly = 0;
+static void get_scene_node_extents(struct wlr_scene_node *node, struct wlr_fbox *box) {
+	double lx = 0, ly = 0;
 	wlr_scene_node_coords(node, &lx, &ly);
-	*box = (struct wlr_box){ .x = INT_MAX, .y = INT_MAX };
-	int x_max = INT_MIN, y_max = INT_MIN;
+	*box = (struct wlr_fbox){ .x = DBL_MAX, .y = DBL_MAX };
+	double x_max = DBL_MIN, y_max = DBL_MIN;
 	_get_scene_node_extents(node, lx, ly, &box->x, &box->y, &x_max, &y_max);
 	box->width = x_max - box->x;
 	box->height = y_max - box->y;
@@ -78,7 +79,7 @@ static void get_scene_node_extents(struct wlr_scene_node *node, struct wlr_box *
 static void source_render(struct scene_node_source *source) {
 	struct wlr_scene_output *scene_output = source->scene_output;
 
-	struct wlr_box extents;
+	struct wlr_fbox extents;
 	get_scene_node_extents(source->node, &extents);
 
 	if (extents.width == 0 || extents.height == 0) {
