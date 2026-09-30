@@ -60,6 +60,7 @@ struct wlr_buffer {
 	struct {
 		struct wl_signal destroy;
 		struct wl_signal release;
+		struct wl_signal prerelease;
 	} events;
 
 	struct wlr_addon_set addons;
