@@ -114,6 +114,7 @@ struct wlr_scene {
 		struct wl_listener color_manager_v1_destroy;
 
 		enum wlr_scene_debug_damage_option debug_damage_option;
+		struct wlr_surface *presentation_surface;
 		bool direct_scanout;
 		bool calculate_visibility;
 		bool highlight_transparent_region;
@@ -236,6 +237,7 @@ struct wlr_scene_output {
 
 	struct {
 		pixman_region32_t pending_commit_damage;
+		struct wlr_surface *presentation_driver;
 
 		uint8_t index;
 

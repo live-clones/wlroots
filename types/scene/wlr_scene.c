@@ -1672,6 +1672,7 @@ static void scene_output_handle_commit(struct wl_listener *listener, void *data)
 	struct wlr_scene_output *scene_output = wl_container_of(listener,
 		scene_output, output_commit);
 	struct wlr_output_event_commit *event = data;
+	scene_output->presentation_driver = NULL;
 	const struct wlr_output_state *state = event->state;
 
 	// if the output has been committed with a certain damage, we know that region
@@ -1731,6 +1732,7 @@ static void scene_output_handle_damage(struct wl_listener *listener, void *data)
 static void scene_output_handle_needs_frame(struct wl_listener *listener, void *data) {
 	struct wlr_scene_output *scene_output = wl_container_of(listener,
 		scene_output, output_needs_frame);
+	scene_output->presentation_driver = scene_output->scene->presentation_surface;
 	wlr_output_schedule_frame(scene_output->output);
 }
 

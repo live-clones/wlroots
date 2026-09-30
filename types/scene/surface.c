@@ -179,10 +179,13 @@ static void handle_scene_buffer_output_sample(
 		return;
 	}
 
+	bool frame_driver = event->output->presentation_driver == surface->surface;
 	if (event->direct_scanout) {
-		wlr_presentation_surface_scanned_out_on_output(surface->surface, output);
+		wlr_presentation_surface_scanned_out_on_output(surface->surface, output,
+			frame_driver);
 	} else {
-		wlr_presentation_surface_textured_on_output(surface->surface, output);
+		wlr_presentation_surface_textured_on_output(surface->surface, output,
+			frame_driver);
 	}
 }
 
@@ -209,6 +212,17 @@ static void scene_surface_handle_surface_destroy(
 		struct wl_listener *listener, void *data) {
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, surface_destroy);
+	struct wlr_scene *scene = scene_node_get_root(&surface->buffer->node);
+
+	if (scene->presentation_surface == surface->surface) {
+		scene->presentation_surface = NULL;
+	}
+	struct wlr_scene_output *scene_output;
+	wl_list_for_each(scene_output, &scene->outputs, link) {
+		if (scene_output->presentation_driver == surface->surface) {
+			scene_output->presentation_driver = NULL;
+		}
+	}
 
 	wlr_scene_node_destroy(&surface->buffer->node);
 }
@@ -371,6 +385,9 @@ static void handle_scene_surface_surface_commit(
 	struct wlr_scene_surface *surface =
 		wl_container_of(listener, surface, surface_commit);
 	struct wlr_scene_buffer *scene_buffer = surface->buffer;
+	struct wlr_scene *scene = scene_node_get_root(&scene_buffer->node);
+	struct wlr_surface *prev_surface = scene->presentation_surface;
+	scene->presentation_surface = surface->surface;
 
 	surface_reconfigure(surface);
 
@@ -385,6 +402,8 @@ static void handle_scene_surface_surface_commit(
 	if (!wl_list_empty(&surface->surface->current.frame_callback_list) && output && enabled) {
 		wlr_output_schedule_frame(output);
 	}
+
+	scene->presentation_surface = prev_surface;
 }
 
 static bool scene_buffer_point_accepts_input(struct wlr_scene_buffer *scene_buffer,

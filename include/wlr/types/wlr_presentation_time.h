@@ -39,6 +39,7 @@ struct wlr_presentation_feedback {
 	bool output_committed;
 	uint32_t output_commit_seq;
 	bool zero_copy;
+	bool frame_driver;
 
 	struct {
 		struct wl_listener output_commit;
@@ -75,9 +76,14 @@ struct wlr_presentation *wlr_presentation_create(struct wl_display *display,
  */
 struct wlr_presentation_feedback *wlr_presentation_surface_sampled(
 	struct wlr_surface *surface);
+/**
+ * Send presented feedback.
+ * frame_driver indicates that the surface caused the output frame to be
+ * scheduled.
+ */
 void wlr_presentation_feedback_send_presented(
 	struct wlr_presentation_feedback *feedback,
-	const struct wlr_presentation_event *event);
+	const struct wlr_presentation_event *event, bool frame_driver);
 void wlr_presentation_feedback_destroy(
 	struct wlr_presentation_feedback *feedback);
 
@@ -94,9 +100,11 @@ void wlr_presentation_event_from_output(struct wlr_presentation_event *event,
  * struct wlr_presentation_feedback itself, the compositor can call this function
  * before a wlr_output_commit_state() call to indicate that the surface's current
  * contents have been copied to a buffer which will be displayed on the output.
+ * frame_driver indicates that the surface caused this output frame to be
+ * scheduled.
  */
 void wlr_presentation_surface_textured_on_output(struct wlr_surface *surface,
-	struct wlr_output *output);
+	struct wlr_output *output, bool frame_driver);
 /**
  * Mark the current surface's buffer as scanned out on the given output.
  *
@@ -104,6 +112,6 @@ void wlr_presentation_surface_textured_on_output(struct wlr_surface *surface,
  * scan-out.
  */
 void wlr_presentation_surface_scanned_out_on_output(struct wlr_surface *surface,
-	struct wlr_output *output);
+	struct wlr_output *output, bool frame_driver);
 
 #endif
