@@ -38,6 +38,7 @@ wlr_files += pnpids_c
 wlr_files += files(
 	'atomic.c',
 	'backend.c',
+	'color.c',
 	'drm.c',
 	'fb.c',
 	'legacy.c',
