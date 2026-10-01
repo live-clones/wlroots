@@ -330,7 +330,6 @@ static int gles2_get_render_time(struct wlr_render_timer *wlr_timer) {
 	renderer->procs.glGetQueryObjectivEXT(timer->id,
 		GL_QUERY_RESULT_AVAILABLE_EXT, &available);
 	if (!available) {
-		wlr_log(WLR_ERROR, "timer was read too early, gpu isn't done!");
 		wlr_egl_restore_context(&prev_ctx);
 		return -1;
 	}
@@ -620,6 +619,11 @@ struct wlr_renderer *wlr_gles2_renderer_create(struct wlr_egl *egl) {
 		} else {
 			load_gl_proc(&renderer->procs.glGetInteger64vEXT, "glGetInteger64v");
 		}
+	}
+
+	if (check_gl_ext(exts_str, "GL_EXT_window_rectangles")) {
+		renderer->exts.EXT_window_rectangles = true;
+		load_gl_proc(&renderer->procs.glWindowRectanglesEXT, "glWindowRectanglesEXT");
 	}
 
 	if (renderer->exts.KHR_debug) {
