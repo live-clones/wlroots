@@ -410,6 +410,28 @@ void wlr_seat_pointer_send_frame(struct wlr_seat *wlr_seat) {
 	}
 }
 
+void wlr_seat_pointer_send_warp(struct wlr_seat *wlr_seat,
+		double sx, double sy) {
+	struct wlr_seat_client *client = wlr_seat->pointer_state.focused_client;
+	if (client == NULL) {
+		return;
+	}
+
+	struct wl_resource *resource;
+	wl_resource_for_each(resource, &client->pointers) {
+		if (wlr_seat_client_from_pointer_resource(resource) == NULL) {
+			continue;
+		}
+
+		uint32_t version = wl_resource_get_version(resource);
+		if (version >= 11) { // WL_POINTER_WARP_SINCE_VERSION
+			wl_pointer_send_warp(resource,
+				wl_fixed_from_double(sx),
+				wl_fixed_from_double(sy));
+		}
+	}
+}
+
 void wlr_seat_pointer_start_grab(struct wlr_seat *wlr_seat,
 		struct wlr_seat_pointer_grab *grab) {
 	assert(wlr_seat);
