@@ -411,6 +411,12 @@ void wlr_surface_send_frame_done(struct wlr_surface *surface,
 		const struct timespec *when);
 
 /**
+ * Get the current output to use for frame pacing (surface frame callbacks,
+ * presentation time feedback, etc). May be NULL
+ */
+struct wlr_output *wlr_surface_get_frame_pacing_output(struct wlr_surface *surface);
+
+/**
  * Get the bounding box that contains the surface and all subsurfaces in
  * surface coordinates.
  * X and y may be negative, if there are subsurfaces with negative position.

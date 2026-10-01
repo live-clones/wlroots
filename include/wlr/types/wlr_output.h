@@ -52,6 +52,11 @@ struct wlr_output_cursor {
 	struct wl_list link;
 
 	struct {
+		struct wl_signal texture_update;
+		struct wl_signal destroy;
+	} events;
+
+	struct {
 		struct wl_listener renderer_destroy;
 		struct wlr_color_transform *color_transform;
 	} WLR_PRIVATE;

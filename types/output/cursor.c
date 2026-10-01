@@ -419,6 +419,8 @@ bool output_cursor_set_texture(struct wlr_output_cursor *cursor,
 		wl_list_init(&cursor->renderer_destroy.link);
 	}
 
+	wl_signal_emit_mutable(&cursor->events.texture_update, NULL);
+
 	if (output->hardware_cursor == NULL || output->hardware_cursor == cursor) {
 		if (output_cursor_attempt_hardware(cursor)) {
 			return true;
@@ -474,6 +476,10 @@ struct wlr_output_cursor *wlr_output_cursor_create(struct wlr_output *output) {
 	cursor->visible = true; // default position is at (0, 0)
 	wl_list_init(&cursor->renderer_destroy.link);
 	output_cursor_refresh_color_transform(cursor, output->image_description);
+
+	wl_signal_init(&cursor->events.texture_update);
+	wl_signal_init(&cursor->events.destroy);
+
 	return cursor;
 }
 
@@ -481,6 +487,9 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	if (cursor == NULL) {
 		return;
 	}
+
+	wl_signal_emit_mutable(&cursor->events.destroy, NULL);
+
 	if (cursor->output->hardware_cursor == cursor) {
 		// If this cursor was the hardware cursor, disable it
 		output_disable_hardware_cursor(cursor->output);
@@ -494,6 +503,10 @@ void wlr_output_cursor_destroy(struct wlr_output_cursor *cursor) {
 	wlr_drm_syncobj_timeline_unref(cursor->wait_timeline);
 	wl_list_remove(&cursor->link);
 	wlr_color_transform_unref(cursor->color_transform);
+
+	assert(wl_list_empty(&cursor->events.texture_update.listener_list));
+	assert(wl_list_empty(&cursor->events.destroy.listener_list));
+
 	free(cursor);
 }
 
