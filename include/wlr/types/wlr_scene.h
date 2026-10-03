@@ -92,6 +92,11 @@ struct wlr_scene_tree {
 	struct wlr_scene_node node;
 
 	struct wl_list children; // wlr_scene_node.link
+
+	struct {
+		struct wlr_box bounding_box;
+		bool bounding_box_valid;
+	} WLR_PRIVATE;
 };
 
 /** The root scene-graph node. */

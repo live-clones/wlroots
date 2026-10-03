@@ -65,6 +65,88 @@ struct wlr_scene *scene_node_get_root(struct wlr_scene_node *node) {
 	return scene;
 }
 
+static void scene_node_invalidate_bounding_box(struct wlr_scene_node *node) {
+	if (node->type == WLR_SCENE_NODE_TREE) {
+		struct wlr_scene_tree *tree = wlr_scene_tree_from_node(node);
+		tree->bounding_box_valid = false;
+		tree->bounding_box = (struct wlr_box){0};
+	}
+
+	if (node->parent && node->parent->bounding_box_valid) {
+		scene_node_invalidate_bounding_box(&node->parent->node);
+	}
+}
+
+static bool scene_node_get_bounding_box(struct wlr_scene_node *node,
+		struct wlr_box *box) {
+	*box = (struct wlr_box){0};
+	if (!node->enabled) {
+		return false;
+	}
+
+	switch (node->type) {
+	case WLR_SCENE_NODE_TREE:;
+		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
+		if (!scene_tree->bounding_box_valid) {
+			struct wlr_scene_node *child;
+			scene_tree->bounding_box = (struct wlr_box){0};
+
+			wl_list_for_each(child, &scene_tree->children, link) {
+				struct wlr_box child_box;
+				scene_node_get_bounding_box(child, &child_box);
+				child_box.x += child->x;
+				child_box.y += child->y;
+				wlr_box_bounds(&scene_tree->bounding_box,
+						&scene_tree->bounding_box, &child_box);
+			}
+
+			scene_tree->bounding_box_valid = true;
+		}
+		wlr_box_bounds(box, box, &scene_tree->bounding_box);
+		break;
+	case WLR_SCENE_NODE_BUFFER:;
+		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
+		struct wlr_box buffer_box = {0};
+		if (scene_buffer->dst_width > 0 && scene_buffer->dst_height > 0) {
+			// TODO: If dst size is set without a buffer, does that mean that
+			// the buffer should have extents?
+			buffer_box.width = scene_buffer->dst_width;
+			buffer_box.height = scene_buffer->dst_height;
+		} else {
+			buffer_box.width = scene_buffer->buffer_width;
+			buffer_box.height = scene_buffer->buffer_height;
+			wlr_output_transform_coords(scene_buffer->transform,
+					&buffer_box.width, &buffer_box.height);
+		}
+		wlr_box_bounds(box, box, &buffer_box);
+		break;
+	case WLR_SCENE_NODE_RECT:;
+		struct wlr_scene_rect *scene_rect = wlr_scene_rect_from_node(node);
+		struct wlr_box rect_box = {
+			.width = scene_rect->width,
+			.height = scene_rect->height,
+		};
+		wlr_box_bounds(box, box, &rect_box);
+		break;
+	}
+
+	return !wlr_box_empty(box);
+}
+
+bool scene_node_get_extents(struct wlr_scene_node *node, struct wlr_box *box) {
+	*box = (struct wlr_box){0};
+	int lx, ly;
+	if (!wlr_scene_node_coords(node, &lx, &ly)) {
+		return false;
+	}
+	if (!scene_node_get_bounding_box(node, box)) {
+		return false;
+	}
+	box->x += lx;
+	box->y += ly;
+	return true;
+}
+
 static void scene_node_init(struct wlr_scene_node *node,
 		enum wlr_scene_node_type type, struct wlr_scene_tree *parent) {
 	*node = (struct wlr_scene_node){
@@ -72,6 +154,8 @@ static void scene_node_init(struct wlr_scene_node *node,
 		.parent = parent,
 		.enabled = true,
 	};
+
+	scene_node_invalidate_bounding_box(node);
 
 	wl_list_init(&node->link);
 
@@ -201,12 +285,18 @@ struct wlr_scene_tree *wlr_scene_tree_create(struct wlr_scene_tree *parent) {
 	return tree;
 }
 
-typedef bool (*scene_node_box_iterator_func_t)(struct wlr_scene_node *node,
-	int sx, int sy, void *data);
-
 static bool _scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box,
 		scene_node_box_iterator_func_t iterator, void *user_data, int lx, int ly) {
 	if (!node->enabled) {
+		return false;
+	}
+
+	struct wlr_box bounding_box;
+	scene_node_get_bounding_box(node, &bounding_box);
+	bounding_box.x += lx;
+	bounding_box.y += ly;
+
+	if (!wlr_box_intersects(&bounding_box, box)) {
 		return false;
 	}
 
@@ -222,20 +312,13 @@ static bool _scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box
 		break;
 	case WLR_SCENE_NODE_RECT:
 	case WLR_SCENE_NODE_BUFFER:;
-		struct wlr_box node_box = { .x = lx, .y = ly };
-		scene_node_get_size(node, &node_box.width, &node_box.height);
-
-		if (wlr_box_intersects(&node_box, box) &&
-				iterator(node, lx, ly, user_data)) {
-			return true;
-		}
-		break;
+		return iterator(node, lx, ly, user_data);
 	}
 
 	return false;
 }
 
-static bool scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box,
+bool scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box,
 		scene_node_box_iterator_func_t iterator, void *user_data) {
 	int x, y;
 	wlr_scene_node_coords(node, &x, &y);
@@ -600,7 +683,7 @@ static void scene_node_visibility(struct wlr_scene_node *node,
 	pixman_region32_union(visible, visible, &node->visible);
 }
 
-static void scene_node_bounds(struct wlr_scene_node *node,
+static void scene_node_boundary_region(struct wlr_scene_node *node,
 		int x, int y, pixman_region32_t *visible) {
 	if (!node->enabled) {
 		return;
@@ -610,7 +693,7 @@ static void scene_node_bounds(struct wlr_scene_node *node,
 		struct wlr_scene_tree *scene_tree = wlr_scene_tree_from_node(node);
 		struct wlr_scene_node *child;
 		wl_list_for_each(child, &scene_tree->children, link) {
-			scene_node_bounds(child, x + child->x, y + child->y, visible);
+			scene_node_boundary_region(child, x + child->x, y + child->y, visible);
 		}
 		return;
 	}
@@ -721,7 +804,7 @@ static void scene_node_update(struct wlr_scene_node *node,
 	pixman_region32_t update_region;
 	pixman_region32_init(&update_region);
 	pixman_region32_copy(&update_region, damage);
-	scene_node_bounds(node, x, y, &update_region);
+	scene_node_boundary_region(node, x, y, &update_region);
 
 	scene_update_region(scene, &update_region);
 	pixman_region32_fini(&update_region);
@@ -760,6 +843,8 @@ void wlr_scene_rect_set_size(struct wlr_scene_rect *rect, int width, int height)
 
 	rect->width = width;
 	rect->height = height;
+
+	scene_node_invalidate_bounding_box(&rect->node);
 	scene_node_update(&rect->node, NULL);
 }
 
@@ -784,6 +869,8 @@ static void scene_buffer_handle_buffer_release(struct wl_listener *listener,
 
 static void scene_buffer_set_buffer(struct wlr_scene_buffer *scene_buffer,
 		struct wlr_buffer *buffer) {
+	scene_node_invalidate_bounding_box(&scene_buffer->node);
+
 	wl_list_remove(&scene_buffer->buffer_release.link);
 	wl_list_init(&scene_buffer->buffer_release.link);
 	if (scene_buffer->own_buffer) {
@@ -1045,7 +1132,7 @@ void wlr_scene_buffer_set_opaque_region(struct wlr_scene_buffer *scene_buffer,
 
 	pixman_region32_t update_region;
 	pixman_region32_init(&update_region);
-	scene_node_bounds(&scene_buffer->node, x, y, &update_region);
+	scene_node_boundary_region(&scene_buffer->node, x, y, &update_region);
 	scene_update_region(scene_node_get_root(&scene_buffer->node), &update_region);
 	pixman_region32_fini(&update_region);
 }
@@ -1075,6 +1162,8 @@ void wlr_scene_buffer_set_dest_size(struct wlr_scene_buffer *scene_buffer,
 	assert(width >= 0 && height >= 0);
 	scene_buffer->dst_width = width;
 	scene_buffer->dst_height = height;
+
+	scene_node_invalidate_bounding_box(&scene_buffer->node);
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
@@ -1085,6 +1174,8 @@ void wlr_scene_buffer_set_transform(struct wlr_scene_buffer *scene_buffer,
 	}
 
 	scene_buffer->transform = transform;
+
+	scene_node_invalidate_bounding_box(&scene_buffer->node);
 	scene_node_update(&scene_buffer->node, NULL);
 }
 
@@ -1179,29 +1270,10 @@ static struct wlr_texture *scene_buffer_get_texture(
 }
 
 void scene_node_get_size(struct wlr_scene_node *node, int *width, int *height) {
-	*width = 0;
-	*height = 0;
-
-	switch (node->type) {
-	case WLR_SCENE_NODE_TREE:
-		return;
-	case WLR_SCENE_NODE_RECT:;
-		struct wlr_scene_rect *scene_rect = wlr_scene_rect_from_node(node);
-		*width = scene_rect->width;
-		*height = scene_rect->height;
-		break;
-	case WLR_SCENE_NODE_BUFFER:;
-		struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-		if (scene_buffer->dst_width > 0 && scene_buffer->dst_height > 0) {
-			*width = scene_buffer->dst_width;
-			*height = scene_buffer->dst_height;
-		} else {
-			*width = scene_buffer->buffer_width;
-			*height = scene_buffer->buffer_height;
-			wlr_output_transform_coords(scene_buffer->transform, width, height);
-		}
-		break;
-	}
+	struct wlr_box box;
+	scene_node_get_bounding_box(node, &box);
+	*width = box.width;
+	*height = box.height;
 }
 
 void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled) {
@@ -1218,6 +1290,7 @@ void wlr_scene_node_set_enabled(struct wlr_scene_node *node, bool enabled) {
 
 	node->enabled = enabled;
 
+	scene_node_invalidate_bounding_box(node);
 	scene_node_update(node, &visible);
 }
 
@@ -1228,6 +1301,8 @@ void wlr_scene_node_set_position(struct wlr_scene_node *node, int x, int y) {
 
 	node->x = x;
 	node->y = y;
+
+	scene_node_invalidate_bounding_box(node);
 	scene_node_update(node, NULL);
 }
 
@@ -1298,9 +1373,13 @@ void wlr_scene_node_reparent(struct wlr_scene_node *node,
 		scene_node_visibility(node, &visible);
 	}
 
+	scene_node_invalidate_bounding_box(node);
+
 	wl_list_remove(&node->link);
 	node->parent = new_parent;
 	wl_list_insert(new_parent->children.prev, &node->link);
+
+	scene_node_invalidate_bounding_box(node);
 	scene_node_update(node, &visible);
 }
 
