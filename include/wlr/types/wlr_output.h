@@ -80,6 +80,17 @@ enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_COLOR_REPRESENTATION = 1 << 14,
 };
 
+/**
+ * Encoding of the image as it is sent to the display.
+ *
+ * It doesn't affect how the image is rendered. In the KMS DRM backend, this
+ * corresponds to the "color_encoding" and "color_range" CRTC properties.
+ */
+struct wlr_output_wire_encoding {
+	enum wlr_color_encoding encoding; // may be WLR_COLOR_ENCODING_NONE
+	enum wlr_color_range range; // may be WLR_COLOR_RANGE_NONE
+};
+
 enum wlr_output_state_mode_type {
 	WLR_OUTPUT_STATE_MODE_FIXED,
 	WLR_OUTPUT_STATE_MODE_CUSTOM,
@@ -143,9 +154,9 @@ struct wlr_output_state {
 	 * regular page-flip at the next wlr_output.frame event. */
 	bool tearing_page_flip;
 
-	// Set if (committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION)
-	enum wlr_color_encoding color_encoding;
-	enum wlr_color_range color_range;
+	// Wire encoding, see struct wlr_output_wire_encoding. Set if
+	// (committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION)
+	struct wlr_output_wire_encoding wire_encoding;
 
 	enum wlr_output_state_mode_type mode_type;
 	struct wlr_output_mode *mode;
@@ -210,8 +221,7 @@ struct wlr_output {
 	enum wl_output_transform transform;
 	enum wlr_output_adaptive_sync_status adaptive_sync_status;
 	uint32_t render_format;
-	enum wlr_color_encoding color_encoding;
-	enum wlr_color_range color_range;
+	struct wlr_output_wire_encoding wire_encoding;
 	const struct wlr_output_image_description *image_description;
 
 	// Indicates whether making changes to adaptive sync status is supported.
@@ -633,7 +643,8 @@ bool wlr_output_state_set_image_description(struct wlr_output_state *state,
 	const struct wlr_output_image_description *image_desc);
 
 /**
- * Set the color encoding and range of the primary scanout buffer.
+ * Set the colorimetry and range of the wire encoding, see
+ * struct wlr_output_wire_encoding.
  *
  * Pass WLR_COLOR_ENCODING_NONE / WLR_COLOR_RANGE_NONE to reset to defaults.
  */

@@ -234,8 +234,8 @@ static void output_apply_state(struct wlr_output *output,
 	}
 
 	if (state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) {
-		output->color_encoding = state->color_encoding;
-		output->color_range = state->color_range;
+		output->wire_encoding.encoding = state->wire_encoding.encoding;
+		output->wire_encoding.range = state->wire_encoding.range;
 	}
 
 	if (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
@@ -586,8 +586,8 @@ static uint32_t output_compare_state(struct wlr_output *output,
 		fields |= WLR_OUTPUT_STATE_COLOR_TRANSFORM;
 	}
 	if ((state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) &&
-			output->color_encoding == state->color_encoding &&
-			output->color_range == state->color_range) {
+			output->wire_encoding.encoding == state->wire_encoding.encoding &&
+			output->wire_encoding.range == state->wire_encoding.range) {
 		fields |= WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
 	}
 	return fields;

@@ -415,10 +415,12 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	}
 
 	uint32_t color_encoding;
-	if (!convert_color_encoding(state->base->color_encoding, &color_encoding)) {
+	if (!convert_color_encoding(state->base->wire_encoding.encoding,
+			&color_encoding)) {
 		return false;
 	}
-	uint32_t color_range = convert_color_range(state->base->color_range);
+	uint32_t color_range =
+		convert_color_range(state->base->wire_encoding.range);
 
 	state->mode_id = mode_id;
 	state->gamma_lut = gamma_lut;
