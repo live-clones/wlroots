@@ -128,6 +128,40 @@ Note that as a project hosted on freedesktop.org, wlroots follows its
 in a respectful and civilized manner when communicating with community members
 on IRC and bug tracker.
 
+## Use of generative AI
+
+Use of generative AI is allowed for private use, and otherwise generally
+banned.
+
+Generative AI can be used to:
+
+- Ask questions about the codebase.
+- Privately review code or prose.
+- Suggesting possible solutions to a problem to then manually write code from
+  scratch.
+
+Generative AI cannot be used to:
+
+- Write code, unless pre-arranged, non-critical and well-understood (see below).
+- Write descriptions and comments in issues and merge requests.
+- Write documentation.
+- Ask a bot to post review comments on a merge request.
+
+Using generative AI to write code is allowed if:
+
+- A core contributor has agreed ahead of time to review code written by
+  generative AI for a specific merge request. When opening the merge request,
+  the reviewer must be mentioned in the description.
+- The problem at hand is simple and straightforward, thus is very unlikely to
+  result in subtle bugs or intricate architecture.
+- The patch author has a full understanding of the submitted code. The author
+  has carefully reviewed the output of the tool used to generate the patch.
+  Autonomously acting tools are not allowed to contribute.
+
+If you are not a native English speaker and need assistance with translations,
+please use a tool which doesn't use generative AI. Generative AI expands and
+twists the original message, altering its meaning.
+
 ## Style Reference
 
 wlroots is written in C with a style similar to the [kernel style], but with a
