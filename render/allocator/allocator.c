@@ -42,7 +42,7 @@ static int reopen_drm_node(int drm_fd, bool allow_render_node) {
 		int lease_fd = drmModeCreateLease(drm_fd, NULL, 0, O_CLOEXEC, &lessee_id);
 		if (lease_fd >= 0) {
 			return lease_fd;
-		} else if (lease_fd != -EINVAL && lease_fd != -EOPNOTSUPP) {
+		} else if (lease_fd != -EINVAL && lease_fd != -EOPNOTSUPP && lease_fd != -ENODEV) {
 			wlr_log_errno(WLR_ERROR, "drmModeCreateLease failed");
 			return -1;
 		}

@@ -161,7 +161,7 @@ out:
 bool wlr_drm_syncobj_timeline_check(struct wlr_drm_syncobj_timeline *timeline,
 		uint64_t point, uint32_t flags, bool *result) {
 	int etime;
-#if defined(__FreeBSD__)
+#if defined(__FreeBSD__) || defined(__OpenBSD__)
 	etime = ETIMEDOUT;
 #else
 	etime = ETIME;
