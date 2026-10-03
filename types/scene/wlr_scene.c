@@ -243,6 +243,52 @@ static bool scene_nodes_in_box(struct wlr_scene_node *node, struct wlr_box *box,
 	return _scene_nodes_in_box(node, box, iterator, user_data, x, y);
 }
 
+#if WLR_HAS_XWAYLAND
+static struct wlr_xwayland_surface *scene_node_try_get_managed_xwayland_surface(
+		struct wlr_scene_node *node) {
+	if (node->type != WLR_SCENE_NODE_BUFFER) {
+		return NULL;
+	}
+
+	struct wlr_scene_buffer *buffer_node = wlr_scene_buffer_from_node(node);
+	struct wlr_scene_surface *surface_node = wlr_scene_surface_try_from_buffer(buffer_node);
+	if (!surface_node) {
+		return NULL;
+	}
+
+	struct wlr_xwayland_surface *xwayland_surface =
+		wlr_xwayland_surface_try_from_wlr_surface(surface_node->surface);
+	if (!xwayland_surface || xwayland_surface->override_redirect) {
+		return NULL;
+	}
+
+	return xwayland_surface;
+}
+
+static bool scene_node_copy_xwayland_shape(struct wlr_scene_node *node,
+		int width, int height, pixman_region32_t *shape) {
+	struct wlr_xwayland_surface *xsurface =
+		scene_node_try_get_managed_xwayland_surface(node);
+	if (xsurface == NULL || !xsurface->has_shape) {
+		return false;
+	}
+
+	struct wlr_scene_surface *surface_node =
+		wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+	if (surface_node == NULL) {
+		return false;
+	}
+
+	pixman_region32_copy(shape, &xsurface->shape);
+	if (!wlr_box_empty(&surface_node->clip)) {
+		pixman_region32_translate(shape, -surface_node->clip.x,
+			-surface_node->clip.y);
+	}
+	pixman_region32_intersect_rect(shape, shape, 0, 0, width, height);
+	return true;
+}
+#endif
+
 static void scene_node_opaque_region(struct wlr_scene_node *node, int x, int y,
 		pixman_region32_t *opaque) {
 	int width, height;
@@ -509,27 +555,6 @@ static void update_node_update_outputs(struct wlr_scene_node *node,
 }
 
 #if WLR_HAS_XWAYLAND
-static struct wlr_xwayland_surface *scene_node_try_get_managed_xwayland_surface(
-		struct wlr_scene_node *node) {
-	if (node->type != WLR_SCENE_NODE_BUFFER) {
-		return NULL;
-	}
-
-	struct wlr_scene_buffer *buffer_node = wlr_scene_buffer_from_node(node);
-	struct wlr_scene_surface *surface_node = wlr_scene_surface_try_from_buffer(buffer_node);
-	if (!surface_node) {
-		return NULL;
-	}
-
-	struct wlr_xwayland_surface *xwayland_surface =
-		wlr_xwayland_surface_try_from_wlr_surface(surface_node->surface);
-	if (!xwayland_surface || xwayland_surface->override_redirect) {
-		return NULL;
-	}
-
-	return xwayland_surface;
-}
-
 static void restack_xwayland_surface(struct wlr_scene_node *node,
 		struct wlr_box *box, struct scene_update_data *data) {
 	struct wlr_xwayland_surface *xwayland_surface =
@@ -563,11 +588,24 @@ static bool scene_node_update_iterator(struct wlr_scene_node *node,
 	pixman_region32_union(&node->visible, &node->visible, data->visible);
 	pixman_region32_intersect_rect(&node->visible, &node->visible,
 		lx, ly, box.width, box.height);
+#if WLR_HAS_XWAYLAND
+	/* Keep the XShape clip in the scene node's visible region. */
+	pixman_region32_t shape;
+	pixman_region32_init(&shape);
+	if (scene_node_copy_xwayland_shape(node, box.width, box.height, &shape)) {
+		pixman_region32_translate(&shape, lx, ly);
+		pixman_region32_intersect(&node->visible, &node->visible, &shape);
+	}
+	pixman_region32_fini(&shape);
+#endif
 
 	if (data->calculate_visibility) {
 		pixman_region32_t opaque;
 		pixman_region32_init(&opaque);
 		scene_node_opaque_region(node, lx, ly, &opaque);
+		// An XShape clip limits the part of an opaque node which can occlude
+		// nodes below it. The clip is already reflected in node->visible.
+		pixman_region32_intersect(&opaque, &opaque, &node->visible);
 		pixman_region32_subtract(data->visible, data->visible, &opaque);
 		pixman_region32_fini(&opaque);
 	}
@@ -692,7 +730,7 @@ static void scene_node_cleanup_when_disabled(struct wlr_scene_node *node,
  * when disabling the node. Note that reparenting the node could lead to the node
  * being reparented to a disabled super tree.
  */
-static void scene_node_update(struct wlr_scene_node *node,
+void scene_node_update(struct wlr_scene_node *node,
 		pixman_region32_t *damage) {
 	struct wlr_scene *scene = scene_node_get_root(node);
 
@@ -2058,6 +2096,14 @@ static enum scene_direct_scanout_result scene_entry_try_direct_scanout(
 	if (buffer->buffer == NULL) {
 		return SCANOUT_INELIGIBLE;
 	}
+
+#if WLR_HAS_XWAYLAND
+	struct wlr_xwayland_surface *xwayland_surface =
+		scene_node_try_get_managed_xwayland_surface(node);
+	if (xwayland_surface != NULL && xwayland_surface->has_shape) {
+		return SCANOUT_INELIGIBLE;
+	}
+#endif
 
 	// The native size of the buffer after any transform is applied
 	int default_width = buffer->buffer->width;

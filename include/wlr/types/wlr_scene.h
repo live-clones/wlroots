@@ -27,6 +27,7 @@
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/util/addon.h>
 #include <wlr/util/box.h>
+#include <wlr/config.h>
 
 struct wlr_output;
 struct wlr_output_layout;
@@ -45,6 +46,9 @@ struct wlr_linux_dmabuf_v1;
 struct wlr_gamma_control_manager_v1;
 struct wlr_color_manager_v1;
 struct wlr_output_state;
+#if WLR_HAS_XWAYLAND
+struct wlr_xwayland_surface;
+#endif
 
 typedef bool (*wlr_scene_buffer_point_accepts_input_func_t)(
 	struct wlr_scene_buffer *buffer, double *sx, double *sy);
@@ -128,6 +132,9 @@ struct wlr_scene_surface {
 	struct {
 		struct wlr_box clip;
 
+#if WLR_HAS_XWAYLAND
+		struct wlr_xwayland_surface *xwayland_surface; // Maybe NULL
+#endif
 		struct wlr_addon addon;
 
 		struct wl_listener outputs_update;
@@ -135,6 +142,10 @@ struct wlr_scene_surface {
 		struct wl_listener frame_done;
 		struct wl_listener surface_destroy;
 		struct wl_listener surface_commit;
+#if WLR_HAS_XWAYLAND
+		struct wl_listener xwayland_surface_set_shape;
+		struct wl_listener xwayland_surface_dissociate;
+#endif
 	} WLR_PRIVATE;
 };
 
