@@ -78,15 +78,40 @@ enum wlr_output_state_field {
 	WLR_OUTPUT_STATE_COLOR_TRANSFORM = 1 << 12,
 	WLR_OUTPUT_STATE_IMAGE_DESCRIPTION = 1 << 13,
 	WLR_OUTPUT_STATE_COLOR_REPRESENTATION = 1 << 14,
+	WLR_OUTPUT_STATE_COLOR_FORMAT = 1 << 15,
+};
+
+/**
+ * Color format of the wire encoding, i.e. how the image is packed on the
+ * connection to the display.
+ *
+ * These values match enum drm_connector_color_format in the kernel.
+ * AUTO (0) is the default and lets the driver pick.
+ */
+enum wlr_output_color_format {
+	WLR_OUTPUT_COLOR_FORMAT_AUTO = 0,
+	WLR_OUTPUT_COLOR_FORMAT_RGB444,
+	WLR_OUTPUT_COLOR_FORMAT_YCBCR444,
+	WLR_OUTPUT_COLOR_FORMAT_YCBCR422,
+	WLR_OUTPUT_COLOR_FORMAT_YCBCR420,
 };
 
 /**
  * Encoding of the image as it is sent to the display.
  *
- * It doesn't affect how the image is rendered. In the KMS DRM backend, this
- * corresponds to the "color_encoding" and "color_range" CRTC properties.
+ * The wire encoding describes how the image is encoded on the connection to
+ * the display: the color format (RGB or YCbCr, and for YCbCr the chroma
+ * subsampling), the colorimetry and the value range. It doesn't affect how
+ * the image is rendered.
+ *
+ * In the KMS DRM backend, this corresponds to the "color format" connector
+ * property and the "color_encoding" and "color_range" CRTC properties.
+ *
+ * The color formats supported by the display are advertised in
+ * wlr_output.supported_color_formats.
  */
 struct wlr_output_wire_encoding {
+	enum wlr_output_color_format format;
 	enum wlr_color_encoding encoding; // may be WLR_COLOR_ENCODING_NONE
 	enum wlr_color_range range; // may be WLR_COLOR_RANGE_NONE
 };
@@ -154,8 +179,10 @@ struct wlr_output_state {
 	 * regular page-flip at the next wlr_output.frame event. */
 	bool tearing_page_flip;
 
-	// Wire encoding, see struct wlr_output_wire_encoding. Set if
-	// (committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION)
+	// Wire encoding, see struct wlr_output_wire_encoding.
+	// `format` is set if (committed & WLR_OUTPUT_STATE_COLOR_FORMAT),
+	// `encoding` and `range` are set if
+	// (committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION).
 	struct wlr_output_wire_encoding wire_encoding;
 
 	enum wlr_output_state_mode_type mode_type;
@@ -214,6 +241,7 @@ struct wlr_output {
 
 	uint32_t supported_primaries; // bitfield of enum wlr_color_named_primaries
 	uint32_t supported_transfer_functions; // bitfield of enum wlr_color_transfer_function
+	uint32_t supported_color_formats; // bitfield of enum wlr_output_color_format
 
 	bool enabled;
 	float scale;
@@ -651,6 +679,25 @@ bool wlr_output_state_set_image_description(struct wlr_output_state *state,
 void wlr_output_state_set_color_encoding_and_range(
 	struct wlr_output_state *state,
 	enum wlr_color_encoding encoding, enum wlr_color_range range);
+
+/**
+ * Set the color format of the wire encoding, see
+ * struct wlr_output_wire_encoding. The color format determines the color
+ * encoding sent to the display (RGB, YCbCr 4:4:4, YCbCr 4:2:2, YCbCr 4:2:0).
+ *
+ * The default value is WLR_OUTPUT_COLOR_FORMAT_AUTO.
+ *
+ * Not all displays support all color formats, see
+ * wlr_output.supported_color_formats. If the display doesn't support the
+ * requested color format, the backend may ignore this setting.
+ *
+ * Changing the color format may require the output to be reconfigured, which
+ * may result in a visible interruption.
+ *
+ * This state will be applied once wlr_output_commit_state() is called.
+ */
+void wlr_output_state_set_color_format(struct wlr_output_state *state,
+	enum wlr_output_color_format color_format);
 
 /**
  * Copies the output state from src to dst. It is safe to then
