@@ -264,10 +264,36 @@ void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
 	enum wlr_color_named_primaries named);
 
 /**
+ * Compute the matrix to convert between two linear RGB color spaces,
+ * chromatically adapting the source white point to the destination white
+ * point using the Bradford CAT.
+ */
+void wlr_color_primaries_transform(const struct wlr_color_primaries *source,
+	const struct wlr_color_primaries *destination, float matrix[static 9]);
+
+/**
  * Compute the matrix to convert between two linear RGB color spaces
  */
 void wlr_color_primaries_transform_absolute_colorimetric(
 	const struct wlr_color_primaries *source,
 	const struct wlr_color_primaries *destination, float matrix[static 9]);
+
+/**
+ * Compare two sets of color primaries for equality.
+ */
+bool wlr_color_primaries_equal(const struct wlr_color_primaries *a,
+	const struct wlr_color_primaries *b);
+
+/**
+ * Check whether the given primaries and white point can be used to build
+ * invertible color space conversion matrices.
+ */
+bool wlr_color_primaries_valid(const struct wlr_color_primaries *primaries);
+
+/**
+ * Compare two sets of color luminances for equality.
+ */
+bool wlr_color_luminances_equal(const struct wlr_color_luminances *a,
+	const struct wlr_color_luminances *b);
 
 #endif

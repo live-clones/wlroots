@@ -55,6 +55,17 @@ struct wlr_image_description_v1 {
 	struct wl_resource *resource;
 	bool get_info_allowed;
 	struct wlr_image_description_v1_data data; // immutable
+	// Target color volume from the output EDID, snapshotted when the
+	// description is created for a specific output. Primaries come from
+	// the base EDID chromaticities, luminances from the HDR static
+	// metadata block, so the two are tracked independently. Without
+	// them, the target events fall back to the description's own values.
+	bool has_target_primaries;
+	struct wlr_color_primaries target_primaries;
+	bool has_target_luminances;
+	struct wlr_color_luminances target_luminances;
+	double target_max_cll; // may be 0, in cd/m²
+	double target_max_fall; // may be 0, in cd/m²
 };
 
 struct wlr_image_description_creator_params_v1 {
@@ -75,19 +86,6 @@ static float decode_cie1931_coord(int32_t raw) {
 	return (float)raw / (1000 * 1000);
 }
 
-static bool cie1931_xy_equal(const struct wlr_color_cie1931_xy *a,
-		const struct wlr_color_cie1931_xy *b) {
-	return a->x == b->x && a->y == b->y;
-}
-
-static bool primaries_equal(const struct wlr_color_primaries *a,
-		const struct wlr_color_primaries *b) {
-	return cie1931_xy_equal(&a->red, &b->red) &&
-		cie1931_xy_equal(&a->green, &b->green) &&
-		cie1931_xy_equal(&a->blue, &b->blue) &&
-		cie1931_xy_equal(&a->white, &b->white);
-}
-
 static bool img_desc_data_equal(const struct wlr_image_description_v1_data *a,
 		const struct wlr_image_description_v1_data *b) {
 	if (a->tf_named != b->tf_named ||
@@ -98,8 +96,23 @@ static bool img_desc_data_equal(const struct wlr_image_description_v1_data *a,
 			a->max_fall != b->max_fall) {
 		return false;
 	}
+	if (a->has_primaries != b->has_primaries) {
+		return false;
+	}
+	if (a->has_primaries && !wlr_color_primaries_equal(&a->primaries, &b->primaries)) {
+		return false;
+	}
+	if (a->has_luminances != b->has_luminances) {
+		return false;
+	}
+	if (a->has_luminances &&
+			(a->luminances.min != b->luminances.min ||
+				a->luminances.max != b->luminances.max ||
+				a->luminances.reference != b->luminances.reference)) {
+		return false;
+	}
 	if (a->has_mastering_display_primaries &&
-			!primaries_equal(&a->mastering_display_primaries, &b->mastering_display_primaries)) {
+			!wlr_color_primaries_equal(&a->mastering_display_primaries, &b->mastering_display_primaries)) {
 		return false;
 	}
 	if (a->has_mastering_luminance &&
@@ -143,14 +156,26 @@ static void image_desc_handle_get_information(struct wl_client *client,
 	}
 
 	struct wlr_color_primaries primaries;
-	wlr_color_primaries_from_named(&primaries,
-		wlr_color_manager_v1_primaries_to_wlr(image_desc->data.primaries_named));
+	if (image_desc->data.has_primaries) {
+		primaries = image_desc->data.primaries;
+	} else {
+		wlr_color_primaries_from_named(&primaries,
+			wlr_color_manager_v1_primaries_to_wlr(image_desc->data.primaries_named));
+	}
 
 	struct wlr_color_luminances luminances;
-	wlr_color_transfer_function_get_default_luminance(
-		wlr_color_manager_v1_transfer_function_to_wlr(image_desc->data.tf_named), &luminances);
+	if (image_desc->data.has_luminances) {
+		luminances = image_desc->data.luminances;
+	} else {
+		wlr_color_transfer_function_get_default_luminance(
+			wlr_color_manager_v1_transfer_function_to_wlr(image_desc->data.tf_named),
+			&luminances);
+	}
 
-	wp_image_description_info_v1_send_primaries_named(resource, image_desc->data.primaries_named);
+	if (image_desc->data.primaries_named != 0) {
+		wp_image_description_info_v1_send_primaries_named(resource,
+				image_desc->data.primaries_named);
+	}
 	wp_image_description_info_v1_send_primaries(resource,
 		encode_cie1931_coord(primaries.red.x), encode_cie1931_coord(primaries.red.y),
 		encode_cie1931_coord(primaries.green.x), encode_cie1931_coord(primaries.green.y),
@@ -162,14 +187,35 @@ static void image_desc_handle_get_information(struct wl_client *client,
 		round(luminances.reference));
 	// TODO: send mastering display primaries and luminances here when we add
 	// support for features.set_mastering_display_primaries
+	struct wlr_color_primaries target_primaries = primaries;
+	if (image_desc->has_target_primaries) {
+		target_primaries = image_desc->target_primaries;
+	}
+
+	struct wlr_color_luminances target_luminances = luminances;
+	double target_max_cll = image_desc->data.max_cll;
+	double target_max_fall = image_desc->data.max_fall;
+	if (image_desc->has_target_luminances) {
+		target_luminances = image_desc->target_luminances;
+		target_max_cll = image_desc->target_max_cll;
+		target_max_fall = image_desc->target_max_fall;
+	}
+
 	wp_image_description_info_v1_send_target_primaries(resource,
-		encode_cie1931_coord(primaries.red.x), encode_cie1931_coord(primaries.red.y),
-		encode_cie1931_coord(primaries.green.x), encode_cie1931_coord(primaries.green.y),
-		encode_cie1931_coord(primaries.blue.x), encode_cie1931_coord(primaries.blue.y),
-		encode_cie1931_coord(primaries.white.x), encode_cie1931_coord(primaries.white.y));
+		encode_cie1931_coord(target_primaries.red.x), encode_cie1931_coord(target_primaries.red.y),
+		encode_cie1931_coord(target_primaries.green.x), encode_cie1931_coord(target_primaries.green.y),
+		encode_cie1931_coord(target_primaries.blue.x), encode_cie1931_coord(target_primaries.blue.y),
+		encode_cie1931_coord(target_primaries.white.x), encode_cie1931_coord(target_primaries.white.y));
 	wp_image_description_info_v1_send_target_luminance(resource,
-		round(luminances.min * 10000), round(luminances.max));
-	// TODO: send target_max_cll and target_max_fall
+		round(target_luminances.min * 10000), round(target_luminances.max));
+	if (target_max_cll != 0) {
+		wp_image_description_info_v1_send_target_max_cll(resource,
+			target_max_cll);
+	}
+	if (target_max_fall != 0) {
+		wp_image_description_info_v1_send_target_max_fall(resource,
+			target_max_fall);
+	}
 	wp_image_description_info_v1_send_done(resource);
 	wl_resource_destroy(resource);
 }
@@ -192,10 +238,29 @@ static struct wl_resource *image_desc_create_resource(
 		version, id);
 }
 
+static void image_desc_snapshot_target(struct wlr_image_description_v1 *image_desc,
+		const struct wlr_output *output) {
+	if (output == NULL) {
+		return;
+	}
+
+	if (output->default_primaries != NULL) {
+		image_desc->target_primaries = *output->default_primaries;
+		image_desc->has_target_primaries = true;
+	}
+
+	if (output->default_luminances != NULL) {
+		image_desc->target_luminances = *output->default_luminances;
+		image_desc->target_max_cll = output->default_max_cll;
+		image_desc->target_max_fall = output->default_max_fall;
+		image_desc->has_target_luminances = true;
+	}
+}
+
 static void image_desc_create_ready(struct wlr_color_manager_v1 *manager,
 		struct wl_resource *parent_resource, uint32_t id,
 		const struct wlr_image_description_v1_data *data,
-		bool get_info_allowed) {
+		const struct wlr_output *output, bool get_info_allowed) {
 	struct wlr_image_description_v1 *image_desc = calloc(1, sizeof(*image_desc));
 	if (image_desc == NULL) {
 		wl_resource_post_no_memory(parent_resource);
@@ -204,6 +269,7 @@ static void image_desc_create_ready(struct wlr_color_manager_v1 *manager,
 
 	image_desc->data = *data;
 	image_desc->get_info_allowed = get_info_allowed;
+	image_desc_snapshot_target(image_desc, output);
 
 	image_desc->resource = image_desc_create_resource(parent_resource, id);
 	if (!image_desc->resource) {
@@ -271,7 +337,8 @@ static void cm_output_handle_get_image_description(struct wl_client *client,
 		data.tf_named = wlr_color_manager_v1_transfer_function_from_wlr(image_desc->transfer_function);
 		data.primaries_named = wlr_color_manager_v1_primaries_from_wlr(image_desc->primaries);
 	}
-	image_desc_create_ready(cm_output->manager, cm_output_resource, id, &data, true);
+	image_desc_create_ready(cm_output->manager, cm_output_resource, id, &data,
+		cm_output->output, true);
 }
 
 static const struct wp_color_management_output_v1_interface cm_output_impl = {
@@ -404,6 +471,22 @@ static void cm_surface_handle_resource_destroy(struct wl_resource *resource) {
 
 static const struct wp_color_management_surface_feedback_v1_interface surface_feedback_impl;
 
+// A surface can span several outputs but an image description carries a
+// single target volume, so pick one: walk the outputs in enter order and
+// take the first one with EDID target data. This is a heuristic, not a
+// promise about where the surface will be displayed.
+static const struct wlr_output *surface_feedback_target_output(
+		struct wlr_surface *surface) {
+	struct wlr_surface_output *surface_output;
+	wl_list_for_each(surface_output, &surface->current_outputs, link) {
+		if (surface_output->output->default_primaries != NULL ||
+				surface_output->output->default_luminances != NULL) {
+			return surface_output->output;
+		}
+	}
+	return NULL;
+}
+
 static struct wlr_color_management_surface_feedback_v1 *surface_feedback_from_resource(
 		struct wl_resource *resource) {
 	assert(wl_resource_instance_of(resource, &wp_color_management_surface_feedback_v1_interface, &surface_feedback_impl));
@@ -422,7 +505,8 @@ static void surface_feedback_handle_get_preferred(struct wl_client *client,
 	}
 
 	image_desc_create_ready(surface_feedback->manager,
-		surface_feedback_resource, id, &surface_feedback->data, true);
+		surface_feedback_resource, id, &surface_feedback->data,
+		surface_feedback_target_output(surface_feedback->surface), true);
 }
 
 static void surface_feedback_handle_get_preferred_parametric(struct wl_client *client,
@@ -437,7 +521,8 @@ static void surface_feedback_handle_get_preferred_parametric(struct wl_client *c
 	}
 
 	image_desc_create_ready(surface_feedback->manager,
-		surface_feedback_resource, id, &surface_feedback->data, true);
+		surface_feedback_resource, id, &surface_feedback->data,
+		surface_feedback_target_output(surface_feedback->surface), true);
 }
 
 static const struct wp_color_management_surface_feedback_v1_interface surface_feedback_impl = {
@@ -514,11 +599,25 @@ static void image_desc_creator_params_handle_create(struct wl_client *client,
 			"missing transfer function");
 		return;
 	}
-	if (params->data.primaries_named == 0) {
+	if (params->data.primaries_named == 0 && !params->data.has_primaries) {
 		wl_resource_post_error(params_resource,
 			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INCOMPLETE_SET,
 			"missing primaries");
 		return;
+	}
+
+	if (params->data.has_primaries &&
+			!wlr_color_primaries_valid(&params->data.primaries)) {
+		image_desc_create_failed(params_resource, id,
+			WP_IMAGE_DESCRIPTION_V1_CAUSE_UNSUPPORTED,
+			"unsupported primaries");
+		return;
+	}
+
+	if (params->data.tf_named == WP_COLOR_MANAGER_V1_TRANSFER_FUNCTION_ST2084_PQ &&
+			params->data.has_luminances) {
+		// The protocol ignores the given max for PQ and takes min + 10000
+		params->data.luminances.max = params->data.luminances.min + 10000.0f;
 	}
 
 	if (params->data.max_cll != 0 && params->data.max_fall != 0 &&
@@ -539,7 +638,8 @@ static void image_desc_creator_params_handle_create(struct wl_client *client,
 	// TODO: check that the target color volume is contained within the
 	// primary color volume
 
-	image_desc_create_ready(params->manager, params_resource, id, &params->data, false);
+	image_desc_create_ready(params->manager, params_resource, id, &params->data,
+		NULL, false);
 }
 
 static void image_desc_creator_params_handle_set_tf_named(struct wl_client *client,
@@ -551,6 +651,14 @@ static void image_desc_creator_params_handle_set_tf_named(struct wl_client *clie
 		wl_resource_post_error(params_resource,
 			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
 			"transfer function already set");
+		return;
+	}
+
+	uint32_t version = wl_resource_get_version(params_resource);
+	if (!wp_color_manager_v1_transfer_function_is_valid(tf, version)) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_TF,
+			"invalid transfer function");
 		return;
 	}
 
@@ -583,7 +691,7 @@ static void image_desc_creator_params_handle_set_primaries_named(struct wl_clien
 	struct wlr_image_description_creator_params_v1 *params =
 		image_desc_creator_params_from_resource(params_resource);
 
-	if (params->data.primaries_named != 0) {
+	if (params->data.primaries_named != 0 || params->data.has_primaries) {
 		wl_resource_post_error(params_resource,
 			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
 			"primaries already set");
@@ -611,17 +719,66 @@ static void image_desc_creator_params_handle_set_primaries(struct wl_client *cli
 		struct wl_resource *params_resource, int32_t r_x, int32_t r_y,
 		int32_t g_x, int32_t g_y, int32_t b_x, int32_t b_y,
 		int32_t w_x, int32_t w_y) {
-	wl_resource_post_error(params_resource,
-		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
-		"set_primaries is not supported");
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+
+	if (!params->manager->features.set_primaries) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+			"set_primaries is not supported");
+		return;
+	}
+
+	if (params->data.primaries_named != 0 || params->data.has_primaries) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+			"primaries already set");
+		return;
+	}
+
+	params->data.has_primaries = true;
+	params->data.primaries = (struct wlr_color_primaries) {
+		.red   = { decode_cie1931_coord(r_x), decode_cie1931_coord(r_y) },
+		.green = { decode_cie1931_coord(g_x), decode_cie1931_coord(g_y) },
+		.blue  = { decode_cie1931_coord(b_x), decode_cie1931_coord(b_y) },
+		.white = { decode_cie1931_coord(w_x), decode_cie1931_coord(w_y) },
+	};
 }
 
 static void image_desc_creator_params_handle_set_luminances(struct wl_client *client,
 		struct wl_resource *params_resource, uint32_t min_lum,
 		uint32_t max_lum, uint32_t reference_lum) {
-	wl_resource_post_error(params_resource,
-		WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
-		"set_luminances is not supported");
+	struct wlr_image_description_creator_params_v1 *params =
+		image_desc_creator_params_from_resource(params_resource);
+
+	if (!params->manager->features.set_luminances) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_UNSUPPORTED_FEATURE,
+			"set_luminances is not supported");
+		return;
+	}
+
+	if (params->data.has_luminances) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_ALREADY_SET,
+			"luminances already set");
+		return;
+	}
+
+	float min = (float)min_lum / 10000.0f;
+	if ((float)max_lum <= min || (float)reference_lum <= min) {
+		wl_resource_post_error(params_resource,
+			WP_IMAGE_DESCRIPTION_CREATOR_PARAMS_V1_ERROR_INVALID_LUMINANCE,
+			"max and reference luminances must be greater than min luminance");
+		return;
+	}
+
+	params->data.has_luminances = true;
+	params->data.luminances = (struct wlr_color_luminances){
+		.min = (float)min_lum / 10000.0f,
+		.max = (float)max_lum,
+		.reference = (float)reference_lum,
+	};
 }
 
 static void image_desc_creator_params_handle_set_mastering_display_primaries(
@@ -984,9 +1141,7 @@ struct wlr_color_manager_v1 *wlr_color_manager_v1_create(struct wl_display *disp
 
 	// TODO: add support for all of these features
 	assert(!options->features.icc_v2_v4);
-	assert(!options->features.set_primaries);
 	assert(!options->features.set_tf_power);
-	assert(!options->features.set_luminances);
 	assert(!options->features.extended_target_volume);
 	assert(!options->features.windows_scrgb);
 

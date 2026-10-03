@@ -194,6 +194,9 @@ struct wlr_output {
 	char *make, *model, *serial; // may be NULL
 	int32_t phys_width, phys_height; // mm
 	const struct wlr_color_primaries *default_primaries; // may be NULL
+	const struct wlr_color_luminances *default_luminances; // may be NULL
+	double default_max_cll; // may be 0, in cd/m²
+	double default_max_fall; // may be 0, in cd/m²
 
 	// Note: some backends may have zero modes
 	struct wl_list modes; // wlr_output_mode.link
@@ -278,6 +281,7 @@ struct wlr_output {
 		struct wlr_output_image_description image_description_value;
 		struct wlr_color_transform *color_transform;
 		struct wlr_color_primaries default_primaries_value;
+		struct wlr_color_luminances default_luminances_value;
 	} WLR_PRIVATE;
 };
 

@@ -252,7 +252,7 @@ static void color_transform_lut_3x1d_eval(struct wlr_color_transform_lut_3x1d *t
 	}
 }
 
-static void multiply_matrix_vector(float out[static 3], float m[static 9], const float v[static 3]);
+static void multiply_matrix_vector(float out[static 3], const float m[static 9], const float v[static 3]);
 
 void wlr_color_transform_eval(struct wlr_color_transform *tr,
 		float out[static 3], const float in[static 3]) {
@@ -362,7 +362,7 @@ void wlr_color_primaries_from_named(struct wlr_color_primaries *out,
 	abort();
 }
 
-static void multiply_matrix_vector(float out[static 3], float m[static 9], const float v[static 3]) {
+static void multiply_matrix_vector(float out[static 3], const float m[static 9], const float v[static 3]) {
 	float result[3] = {
 		m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
 		m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
@@ -409,9 +409,60 @@ void wlr_color_primaries_to_xyz(const struct wlr_color_primaries *primaries, flo
 	memcpy(matrix, result, sizeof(result));
 }
 
+static bool cie1931_xy_equal(const struct wlr_color_cie1931_xy *a,
+		const struct wlr_color_cie1931_xy *b) {
+	return a->x == b->x && a->y == b->y;
+}
+
+bool wlr_color_primaries_equal(const struct wlr_color_primaries *a,
+		const struct wlr_color_primaries *b) {
+	return cie1931_xy_equal(&a->red, &b->red) &&
+		cie1931_xy_equal(&a->green, &b->green) &&
+		cie1931_xy_equal(&a->blue, &b->blue) &&
+		cie1931_xy_equal(&a->white, &b->white);
+}
+
+bool wlr_color_primaries_valid(const struct wlr_color_primaries *primaries) {
+	float r[3], g[3], b[3];
+	xy_to_xyz(r, primaries->red);
+	xy_to_xyz(g, primaries->green);
+	xy_to_xyz(b, primaries->blue);
+
+	float primary_matrix[9] = {
+		r[0], g[0], b[0],
+		r[1], g[1], b[1],
+		r[2], g[2], b[2],
+	};
+	if (matrix_determinant(primary_matrix) == 0) {
+		// The primaries are zero or linearly dependent, so there is no
+		// invertible primaries-to-XYZ matrix
+		return false;
+	}
+
+	// The white point must resolve to non-zero scale factors for every
+	// primary; otherwise the result of wlr_color_primaries_to_xyz() is
+	// singular as well
+	float matrix[9];
+	wlr_color_primaries_to_xyz(primaries, matrix);
+	return matrix_determinant(matrix) != 0;
+}
+
+bool wlr_color_luminances_equal(const struct wlr_color_luminances *a,
+		const struct wlr_color_luminances *b) {
+	return a->min == b->min &&
+		a->max == b->max &&
+		a->reference == b->reference;
+}
+
 void wlr_color_primaries_transform_absolute_colorimetric(
 		const struct wlr_color_primaries *source,
 		const struct wlr_color_primaries *destination, float matrix[static 9]) {
+	if (!wlr_color_primaries_valid(source) ||
+			!wlr_color_primaries_valid(destination)) {
+		wlr_matrix_identity(matrix);
+		return;
+	}
+
 	float source_to_xyz[9];
 	wlr_color_primaries_to_xyz(source, source_to_xyz);
 	float destination_to_xyz[9];
@@ -419,6 +470,72 @@ void wlr_color_primaries_transform_absolute_colorimetric(
 	float xyz_to_destination[9];
 	matrix_invert(xyz_to_destination, destination_to_xyz);
 	wlr_matrix_multiply(matrix, xyz_to_destination, source_to_xyz);
+}
+
+// Bradford chromatic adaptation matrix and its inverse.
+// See: http://www.brucelindbloom.com/index.html?Eqn_ChromAdapt.html
+static const float BRADFORD_CAT[9] = {
+	0.8951000f, 0.2664000f, -0.1614000f,
+	-0.7502000f, 1.7135000f, 0.0367000f,
+	0.0389000f, -0.0685000f, 1.0296000f,
+};
+static const float BRADFORD_CAT_INV[9] = {
+	0.9869929f, -0.1470543f, 0.1599627f,
+	0.4323053f, 0.5183603f, 0.0492912f,
+	-0.0085287f, 0.0400428f, 0.9684867f,
+};
+
+void wlr_color_primaries_transform(const struct wlr_color_primaries *source,
+		const struct wlr_color_primaries *destination, float matrix[static 9]) {
+	if (!wlr_color_primaries_valid(source) ||
+			!wlr_color_primaries_valid(destination)) {
+		wlr_matrix_identity(matrix);
+		return;
+	}
+
+	// If both color spaces share the same white point, no chromatic adaptation
+	// is required; the absolute colorimetric result is exact and avoids
+	// unnecessary matrix multiplications.
+	if (source->white.x == destination->white.x &&
+			source->white.y == destination->white.y) {
+		wlr_color_primaries_transform_absolute_colorimetric(source, destination, matrix);
+		return;
+	}
+
+	float source_to_xyz[9];
+	wlr_color_primaries_to_xyz(source, source_to_xyz);
+
+	float destination_to_xyz[9];
+	wlr_color_primaries_to_xyz(destination, destination_to_xyz);
+	float xyz_to_destination[9];
+	matrix_invert(xyz_to_destination, destination_to_xyz);
+
+	float source_white_xyz[3], destination_white_xyz[3];
+	xy_to_xyz(source_white_xyz, source->white);
+	xy_to_xyz(destination_white_xyz, destination->white);
+
+	float source_cone[3], destination_cone[3];
+	multiply_matrix_vector(source_cone, BRADFORD_CAT, source_white_xyz);
+	multiply_matrix_vector(destination_cone, BRADFORD_CAT, destination_white_xyz);
+
+	float scale[3] = {
+		destination_cone[0] / source_cone[0],
+		destination_cone[1] / source_cone[1],
+		destination_cone[2] / source_cone[2],
+	};
+
+	float scaled_cat[9] = {
+		scale[0] * BRADFORD_CAT[0], scale[0] * BRADFORD_CAT[1], scale[0] * BRADFORD_CAT[2],
+		scale[1] * BRADFORD_CAT[3], scale[1] * BRADFORD_CAT[4], scale[1] * BRADFORD_CAT[5],
+		scale[2] * BRADFORD_CAT[6], scale[2] * BRADFORD_CAT[7], scale[2] * BRADFORD_CAT[8],
+	};
+
+	float cat[9];
+	wlr_matrix_multiply(cat, BRADFORD_CAT_INV, scaled_cat);
+
+	float cat_source_to_xyz[9];
+	wlr_matrix_multiply(cat_source_to_xyz, cat, source_to_xyz);
+	wlr_matrix_multiply(matrix, xyz_to_destination, cat_source_to_xyz);
 }
 
 void wlr_color_transfer_function_get_default_luminance(enum wlr_color_transfer_function tf,
