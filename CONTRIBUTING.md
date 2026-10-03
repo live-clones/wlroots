@@ -128,6 +128,12 @@ Note that as a project hosted on freedesktop.org, wlroots follows its
 in a respectful and civilized manner when communicating with community members
 on IRC and bug tracker.
 
+## Strict No LLM/No AI Policy
+
+Use of generative AI/LLMs is strictly forbidden for all contributions to wlroots.
+
+This includes bug reports and comments on the issue tracker.
+
 ## Style Reference
 
 wlroots is written in C with a style similar to the [kernel style], but with a
