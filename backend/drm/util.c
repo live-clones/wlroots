@@ -3,6 +3,7 @@
 #include <drm_mode.h>
 #include <drm.h>
 #include <libdisplay-info/cvt.h>
+#include <libdisplay-info/cta.h>
 #include <libdisplay-info/edid.h>
 #include <libdisplay-info/info.h>
 #include <stdio.h>
@@ -48,6 +49,69 @@ enum wlr_output_mode_aspect_ratio get_picture_aspect_ratio(const drmModeModeInfo
 			mode->flags & DRM_MODE_FLAG_PIC_AR_MASK);
 		return WLR_OUTPUT_MODE_ASPECT_RATIO_NONE;
 	}
+}
+
+// YUV 4:2:0 support in the EDID is hard to detect reliably, the presence of a
+// YCBCR420 cap map data block is a heuristic (see the CEA-861 spec)
+static bool has_yuv420_cap_map(const struct di_edid_cta *cta) {
+	const struct di_cta_data_block *const *blocks =
+		di_edid_cta_get_data_blocks(cta);
+	for (size_t i = 0; blocks[i] != NULL; i++) {
+		if (di_cta_data_block_get_tag(blocks[i]) ==
+				DI_CTA_DATA_BLOCK_YCBCR420_CAP_MAP) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Determine which color formats the display supports based on its EDID, see
+// enum wlr_output_color_format. The returned value is always a superset of
+// WLR_OUTPUT_COLOR_FORMAT_AUTO, since the display can always fall back to the
+// driver's default encoding.
+static uint32_t get_edid_color_formats(const struct di_edid *edid) {
+	uint32_t formats = 1 << WLR_OUTPUT_COLOR_FORMAT_AUTO;
+
+	const struct di_edid_color_encoding_formats *fmts =
+		di_edid_get_color_encoding_formats(edid);
+	if (fmts != NULL) {
+		if (fmts->rgb444) {
+			formats |= 1 << WLR_OUTPUT_COLOR_FORMAT_RGB444;
+		}
+		if (fmts->ycrcb444) {
+			formats |= 1 << WLR_OUTPUT_COLOR_FORMAT_YCBCR444;
+		}
+		if (fmts->ycrcb422) {
+			formats |= 1 << WLR_OUTPUT_COLOR_FORMAT_YCBCR422;
+		}
+	}
+
+	const struct di_edid_ext *const *exts = di_edid_get_extensions(edid);
+	for (size_t i = 0; exts[i] != NULL; i++) {
+		if (di_edid_ext_get_tag(exts[i]) != DI_EDID_EXT_CEA) {
+			continue;
+		}
+
+		const struct di_edid_cta *cta = di_edid_ext_get_cta(exts[i]);
+		const struct di_edid_cta_flags *cta_flags = di_edid_cta_get_flags(cta);
+		if (cta_flags == NULL) {
+			continue;
+		}
+
+		// Per CEA-861, displays with a CTA block always support RGB
+		formats |= 1 << WLR_OUTPUT_COLOR_FORMAT_RGB444;
+		if (cta_flags->ycc444) {
+			formats |= 1 << WLR_OUTPUT_COLOR_FORMAT_YCBCR444;
+		}
+		if (cta_flags->ycc422) {
+			formats |= 1 << WLR_OUTPUT_COLOR_FORMAT_YCBCR422;
+		}
+		if (has_yuv420_cap_map(cta)) {
+			formats |= 1 << WLR_OUTPUT_COLOR_FORMAT_YCBCR420;
+		}
+	}
+
+	return formats;
 }
 
 void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data) {
@@ -104,6 +168,12 @@ void parse_edid(struct wlr_drm_connector *conn, size_t len, const uint8_t *data)
 	const struct di_hdr_static_metadata *hdr_static_metadata = di_info_get_hdr_static_metadata(info);
 	if (conn->props.hdr_output_metadata != 0 && hdr_static_metadata->type1 && hdr_static_metadata->pq && !is_legacy) {
 		output->supported_transfer_functions |= WLR_COLOR_TRANSFER_FUNCTION_ST2084_PQ;
+	}
+
+	// Only fill this in if the connector supports the "color format" property
+	// and we can actually commit it, i.e. not on the legacy backend
+	if (conn->props.color_format != 0 && !is_legacy) {
+		output->supported_color_formats = get_edid_color_formats(edid);
 	}
 
 	di_info_destroy(info);
