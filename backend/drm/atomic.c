@@ -530,6 +530,11 @@ bool drm_atomic_connector_set_props(drmModeAtomicReq *req,
 	if (modeset && conn->props.max_bpc != 0 && conn->max_bpc_bounds[1] != 0) {
 		ok = ok && atomic_add(req, conn->id, conn->props.max_bpc, pick_max_bpc(conn, state->primary_fb));
 	}
+	if (conn->props.color_format != 0 &&
+			state->base->committed & WLR_OUTPUT_STATE_COLOR_FORMAT) {
+		ok = ok && atomic_add(req, conn->id, conn->props.color_format,
+			state->base->wire_encoding.format);
+	}
 	if (conn->props.colorspace != 0) {
 		ok = ok && atomic_add(req, conn->id, conn->props.colorspace, state->colorspace);
 	}
