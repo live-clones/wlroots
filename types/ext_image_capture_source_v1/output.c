@@ -37,10 +37,39 @@ struct wlr_ext_output_image_capture_source_v1 {
 	bool software_cursors_locked;
 };
 
+struct scene_output_source_addon {
+	struct wlr_addon addon;
+	struct wlr_ext_image_capture_source_v1 *source;
+	struct wl_listener source_destroy;
+};
+
 struct wlr_ext_output_image_capture_source_v1_frame_event {
 	struct wlr_ext_image_capture_source_v1_frame_event base;
 	struct wlr_buffer *buffer;
 	struct timespec when;
+};
+
+static void scene_output_source_addon_handle_source_destroy(struct wl_listener *listener,
+		void *data) {
+	struct scene_output_source_addon *addon =
+		wl_container_of(listener, addon, source_destroy);
+	(void)data;
+	wl_list_remove(&addon->source_destroy.link);
+	wlr_addon_finish(&addon->addon);
+	free(addon);
+}
+
+static void scene_output_source_addon_destroy(struct wlr_addon *addon) {
+	struct scene_output_source_addon *scene_addon =
+		wl_container_of(addon, scene_addon, addon);
+	wl_list_remove(&scene_addon->source_destroy.link);
+	wlr_addon_finish(&scene_addon->addon);
+	free(scene_addon);
+}
+
+static const struct wlr_addon_interface scene_output_source_addon_impl = {
+	.name = "wlr_ext_output_image_capture_scene_source_v1",
+	.destroy = scene_output_source_addon_destroy,
 };
 
 static void output_source_start(struct wlr_ext_image_capture_source_v1 *base,
@@ -185,30 +214,66 @@ static void output_manager_handle_create_source(struct wl_client *client,
 		return;
 	}
 
-	struct wlr_ext_output_image_capture_source_v1 *source;
-	struct wlr_addon *addon = wlr_addon_find(&output->addons, NULL, &output_addon_impl);
-	if (addon != NULL) {
-		source = wl_container_of(addon, source, addon);
+	struct wlr_ext_output_image_capture_source_manager_v1 *manager =
+		wl_resource_get_user_data(manager_resource);
+	struct wlr_ext_image_capture_source_v1 *capture_source = NULL;
+
+	if (manager->scene != NULL) {
+		struct scene_output_source_addon *scene_addon = NULL;
+		struct wlr_addon *addon = wlr_addon_find(&output->addons,
+			NULL, &scene_output_source_addon_impl);
+		if (addon != NULL) {
+			scene_addon = wl_container_of(addon, scene_addon, addon);
+			capture_source = scene_addon->source;
+		} else {
+			scene_addon = calloc(1, sizeof(*scene_addon));
+			if (scene_addon == NULL) {
+				wl_resource_post_no_memory(manager_resource);
+				return;
+			}
+
+			capture_source = wlr_ext_image_capture_source_v1_create_with_scene_output(
+				manager->scene, output, manager->layout);
+			if (capture_source == NULL) {
+				free(scene_addon);
+				wl_resource_post_no_memory(manager_resource);
+				return;
+			}
+
+			scene_addon->source = capture_source;
+			scene_addon->source_destroy.notify = scene_output_source_addon_handle_source_destroy;
+			wl_signal_add(&capture_source->events.destroy, &scene_addon->source_destroy);
+			wlr_addon_init(&scene_addon->addon, &output->addons, NULL,
+				&scene_output_source_addon_impl);
+		}
 	} else {
-		source = calloc(1, sizeof(*source));
-		if (source == NULL) {
-			wl_resource_post_no_memory(manager_resource);
-			return;
+		struct wlr_ext_output_image_capture_source_v1 *source;
+		struct wlr_addon *addon = wlr_addon_find(&output->addons, NULL, &output_addon_impl);
+		if (addon != NULL) {
+			source = wl_container_of(addon, source, addon);
+		} else {
+			source = calloc(1, sizeof(*source));
+			if (source == NULL) {
+				wl_resource_post_no_memory(manager_resource);
+				return;
+			}
+
+			wlr_ext_image_capture_source_v1_init(&source->base, &output_source_impl);
+			wlr_addon_init(&source->addon, &output->addons, NULL, &output_addon_impl);
+			source->output = output;
+
+			source->output_commit.notify = source_handle_output_commit;
+			wl_signal_add(&output->events.commit, &source->output_commit);
+
+			source_update_buffer_constraints(source);
+
+			output_cursor_source_init(&source->cursor, output);
 		}
 
-		wlr_ext_image_capture_source_v1_init(&source->base, &output_source_impl);
-		wlr_addon_init(&source->addon, &output->addons, NULL, &output_addon_impl);
-		source->output = output;
-
-		source->output_commit.notify = source_handle_output_commit;
-		wl_signal_add(&output->events.commit, &source->output_commit);
-
-		source_update_buffer_constraints(source);
-
-		output_cursor_source_init(&source->cursor, output);
+		capture_source = &source->base;
 	}
 
-	if (!wlr_ext_image_capture_source_v1_create_resource(&source->base, client, new_id)) {
+	if (!wlr_ext_image_capture_source_v1_create_resource(capture_source, client, new_id)) {
 		return;
 	}
 }
@@ -234,6 +299,18 @@ static void output_manager_bind(struct wl_client *client, void *data,
 		return;
 	}
 	wl_resource_set_implementation(resource, &output_manager_impl, manager, NULL);
+}
+
+void wlr_ext_output_image_capture_source_manager_v1_set_scene(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+		struct wlr_scene *scene) {
+	manager->scene = scene;
+}
+
+void wlr_ext_output_image_capture_source_manager_v1_set_layout(
+		struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+		struct wlr_output_layout *layout) {
+	manager->layout = layout;
 }
 
 static void output_manager_handle_display_destroy(struct wl_listener *listener, void *data) {

@@ -13,9 +13,12 @@
 #include <wayland-server-core.h>
 #include <wlr/render/drm_format_set.h>
 
+struct wlr_scene;
 struct wlr_scene_node;
 struct wlr_allocator;
 struct wlr_renderer;
+struct wlr_output;
+struct wlr_output_layout;
 
 /**
  * A screen capture source.
@@ -79,6 +82,8 @@ struct wlr_ext_image_capture_source_v1_cursor {
  */
 struct wlr_ext_output_image_capture_source_manager_v1 {
 	struct wl_global *global;
+	struct wlr_scene *scene;
+	struct wlr_output_layout *layout;
 
 	struct {
 		struct wl_listener display_destroy;
@@ -122,6 +127,14 @@ struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_from_res
 struct wlr_ext_output_image_capture_source_manager_v1 *wlr_ext_output_image_capture_source_manager_v1_create(
 	struct wl_display *display, uint32_t version);
 
+void wlr_ext_output_image_capture_source_manager_v1_set_scene(
+	struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+	struct wlr_scene *scene);
+
+void wlr_ext_output_image_capture_source_manager_v1_set_layout(
+	struct wlr_ext_output_image_capture_source_manager_v1 *manager,
+	struct wlr_output_layout *layout);
+
 struct wlr_ext_foreign_toplevel_image_capture_source_manager_v1 *
 wlr_ext_foreign_toplevel_image_capture_source_manager_v1_create(struct wl_display *display, uint32_t version);
 
@@ -132,6 +145,10 @@ bool wlr_ext_foreign_toplevel_image_capture_source_manager_v1_request_accept(
 struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_node(
 	struct wlr_scene_node *node, struct wl_event_loop *event_loop,
 	struct wlr_allocator *allocator, struct wlr_renderer *renderer);
+
+struct wlr_ext_image_capture_source_v1 *wlr_ext_image_capture_source_v1_create_with_scene_output(
+	struct wlr_scene *scene, struct wlr_output *reference_output,
+	struct wlr_output_layout *layout);
 
 /**
  * Returns the corresponding wlr_output for a image capture source
