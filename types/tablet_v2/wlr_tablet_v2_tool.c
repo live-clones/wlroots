@@ -193,6 +193,10 @@ static void handle_wlr_tablet_tool_destroy(struct wl_listener *listener, void *d
 	struct wlr_tablet_v2_tablet_tool *tool =
 		wl_container_of(listener, tool, tool_destroy);
 
+	if (wlr_tablet_tool_v2_has_implicit_grab(tool)) {
+		wlr_tablet_tool_v2_end_grab(tool);
+	}
+
 	struct wlr_tablet_tool_client_v2 *pos;
 	struct wlr_tablet_tool_client_v2 *tmp;
 	wl_list_for_each_safe(pos, tmp, &tool->clients, tool_link) {
@@ -715,11 +719,39 @@ static const struct wlr_tablet_tool_v2_grab_interface
 
 struct implicit_grab_state {
 	struct wlr_surface *original;
+	struct wl_listener original_destroy;
 	bool released;
 
 	struct wlr_surface *focused;
+	struct wl_listener focused_destroy;
 	struct wlr_tablet_v2_tablet *tablet;
 };
+
+static void implicit_grab_handle_original_destroy(struct wl_listener *listener, void *data) {
+	struct implicit_grab_state *state =
+		wl_container_of(listener, state, original_destroy);
+	wl_list_remove(&state->original_destroy.link);
+	wl_list_init(&state->original_destroy.link);
+	state->original = NULL;
+}
+
+static void implicit_grab_handle_focused_destroy(struct wl_listener *listener, void *data) {
+	struct implicit_grab_state *state =
+		wl_container_of(listener, state, focused_destroy);
+	wl_list_remove(&state->focused_destroy.link);
+	wl_list_init(&state->focused_destroy.link);
+	state->focused = NULL;
+}
+
+static void implicit_grab_set_focused(struct implicit_grab_state *state,
+		struct wlr_surface *surface) {
+	wl_list_remove(&state->focused_destroy.link);
+	wl_list_init(&state->focused_destroy.link);
+	state->focused = surface;
+	if (surface) {
+		wl_signal_add(&surface->events.destroy, &state->focused_destroy);
+	}
+}
 
 static void check_and_release_implicit_grab(struct wlr_tablet_tool_v2_grab *grab) {
 	struct implicit_grab_state *state = grab->data;
@@ -755,13 +787,12 @@ static void implicit_tool_proximity_in(
 	 * the grab is released.
 	 */
 	struct implicit_grab_state *state = grab->data;
-	state->focused = surface;
+	implicit_grab_set_focused(state, surface);
 	state->tablet = tablet;
 }
 
 static void implicit_tool_proximity_out(struct wlr_tablet_tool_v2_grab *grab) {
-	struct implicit_grab_state *state = grab->data;
-	state->focused = NULL;
+	implicit_grab_set_focused(grab->data, NULL);
 }
 
 static void implicit_tool_down(struct wlr_tablet_tool_v2_grab *grab) {
@@ -782,7 +813,11 @@ static void implicit_tool_button(
 
 static void implicit_tool_cancel(struct wlr_tablet_tool_v2_grab *grab) {
 	check_and_release_implicit_grab(grab);
-	free(grab->data);
+
+	struct implicit_grab_state *state = grab->data;
+	wl_list_remove(&state->original_destroy.link);
+	wl_list_remove(&state->focused_destroy.link);
+	free(state);
 	free(grab);
 }
 
@@ -832,9 +867,15 @@ void wlr_tablet_tool_v2_start_implicit_grab(
 		return;
 	}
 
-	state->original = tool->focused_surface;
-	state->focused = tool->focused_surface;
+	state->original_destroy.notify = implicit_grab_handle_original_destroy;
+	state->focused_destroy.notify = implicit_grab_handle_focused_destroy;
+	wl_list_init(&state->original_destroy.link);
+	wl_list_init(&state->focused_destroy.link);
 	grab->data = state;
+
+	state->original = tool->focused_surface;
+	wl_signal_add(&tool->focused_surface->events.destroy, &state->original_destroy);
+	implicit_grab_set_focused(state, tool->focused_surface);
 
 	wlr_tablet_tool_v2_start_grab(tool, grab);
 }
