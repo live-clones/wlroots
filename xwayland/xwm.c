@@ -2396,7 +2396,7 @@ void xwm_destroy(struct wlr_xwm *xwm) {
 				wl_display_next_serial(xwm->xwayland->wl_display));
 		}
 
-		wlr_xwayland_set_seat(xwm->xwayland, NULL);
+		xwm_set_seat(xwm, NULL);
 	}
 
 	if (xwm->cursor) {
@@ -2437,6 +2437,7 @@ void xwm_destroy(struct wlr_xwm *xwm) {
 		pending_startup_id_destroy(pending);
 	}
 
+	assert(xwm->xwayland->xwm == xwm || xwm->xwayland->xwm == NULL);
 	xwm->xwayland->xwm = NULL;
 	free(xwm);
 }

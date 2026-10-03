@@ -33,6 +33,11 @@ static void handle_server_start(struct wl_listener *listener, void *data) {
 
 static void xwayland_mark_ready(struct wlr_xwayland *xwayland) {
 	assert(xwayland->server->wm_fd[0] >= 0);
+	// Xwayland may restart before the old xwm is torn down. Drop any
+	// lingering xwm first, or its seat listeners dangle into the new one.
+	if (xwayland->xwm != NULL) {
+		xwm_destroy(xwayland->xwm);
+	}
 	xwayland->xwm = xwm_create(xwayland, xwayland->server->wm_fd[0]);
 	// xwm_create takes ownership of wm_fd[0] under all circumstances
 	xwayland->server->wm_fd[0] = -1;
