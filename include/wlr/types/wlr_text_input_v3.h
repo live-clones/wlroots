@@ -13,6 +13,8 @@
 #include <wlr/types/wlr_seat.h>
 #include <wlr/util/box.h>
 
+#include "text-input-unstable-v3-protocol.h"
+
 struct wlr_surface;
 
 enum wlr_text_input_v3_features {
@@ -36,6 +38,7 @@ struct wlr_text_input_v3_state {
 	} content_type;
 
 	struct wlr_box cursor_rectangle;
+	enum zwp_text_input_v3_action available_actions;
 
 	// Tracks which features were used in the current commit.
 	// Useful in the enabling commit, where usage means support.
@@ -61,6 +64,9 @@ struct wlr_text_input_v3 {
 		struct wl_signal commit;
 		struct wl_signal disable;
 		struct wl_signal destroy;
+		// v2 additions
+		struct wl_signal show_input_panel;
+		struct wl_signal hide_input_panel;
 	} events;
 
 	struct {
@@ -84,7 +90,7 @@ struct wlr_text_input_manager_v3 {
 };
 
 struct wlr_text_input_manager_v3 *wlr_text_input_manager_v3_create(
-	struct wl_display *wl_display);
+	struct wl_display *wl_display, uint32_t version);
 
 // Sends enter to the surface and saves it
 void wlr_text_input_v3_send_enter(struct wlr_text_input_v3 *text_input,
@@ -99,5 +105,12 @@ void wlr_text_input_v3_send_delete_surrounding_text(
 	struct wlr_text_input_v3 *text_input, uint32_t before_length,
 	uint32_t after_length);
 void wlr_text_input_v3_send_done(struct wlr_text_input_v3 *text_input);
+// v2 additions
+void wlr_text_input_v3_action(struct wlr_text_input_v3 *text_input,
+	enum zwp_text_input_v3_action action);
+void wlr_text_input_v3_send_language(struct wlr_text_input_v3 *text_input,
+	const char *language);
+void wlr_text_input_v3_send_preedit_hint(struct wlr_text_input_v3 *text_input,
+	uint32_t start, uint32_t end, enum zwp_text_input_v3_preedit_hint hint);
 
 #endif
