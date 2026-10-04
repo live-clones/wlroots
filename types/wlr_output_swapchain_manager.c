@@ -9,6 +9,7 @@
 #include <wlr/util/log.h>
 #include "render/drm_format_set.h"
 #include "types/wlr_output.h"
+#include "util/env.h"
 
 struct wlr_output_swapchain_manager_output {
 	struct wlr_output *output;
@@ -22,6 +23,9 @@ struct wlr_output_swapchain_manager_output {
 	// wlr_output_swapchain_manager_apply() is called. Can be either a pointer
 	// to the newly allocated swapchain, or the old swapchain, or NULL.
 	struct wlr_swapchain *pending_swapchain;
+	// Whether we will trust the allocator to upgrade implicit allocations to
+	// use explicit modifiers.
+	bool explicit_upgrade;
 };
 
 void wlr_output_swapchain_manager_init(struct wlr_output_swapchain_manager *manager,
@@ -55,6 +59,7 @@ static struct wlr_output_swapchain_manager_output *manager_get_or_add_output(
 	}
 	*manager_output = (struct wlr_output_swapchain_manager_output){
 		.output = output,
+		.explicit_upgrade = env_parse_bool("WLR_GBM_EXPLICIT_UPGRADE"),
 	};
 	return manager_output;
 }
@@ -126,7 +131,9 @@ static bool manager_output_prepare(struct wlr_output_swapchain_manager_output *m
 	}
 
 	if (!explicit_modifiers && (format.len != 1 || format.modifiers[0] != DRM_FORMAT_MOD_LINEAR)) {
-		if (!wlr_drm_format_has(&format, DRM_FORMAT_MOD_INVALID)) {
+		if (!wlr_drm_format_has(&format, DRM_FORMAT_MOD_INVALID) &&
+				!(wlr_drm_format_set_has(display_formats, format.format, DRM_FORMAT_MOD_INVALID) &&
+				manager_output->explicit_upgrade)) {
 			wlr_log(WLR_DEBUG, "Implicit modifiers not supported");
 			wlr_drm_format_finish(&format);
 			return false;
