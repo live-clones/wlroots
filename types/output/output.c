@@ -265,14 +265,6 @@ static void output_apply_state(struct wlr_output *output,
 		(WLR_OUTPUT_STATE_MODE | WLR_OUTPUT_STATE_TRANSFORM |
 		WLR_OUTPUT_STATE_SUBPIXEL);
 
-	// Destroy the swapchains when an output is disabled
-	if ((state->committed & WLR_OUTPUT_STATE_ENABLED) && !state->enabled) {
-		wlr_swapchain_destroy(output->swapchain);
-		output->swapchain = NULL;
-		wlr_swapchain_destroy(output->cursor_swapchain);
-		output->cursor_swapchain = NULL;
-	}
-
 	if (state->committed & WLR_OUTPUT_STATE_LAYERS) {
 		for (size_t i = 0; i < state->layers_len; i++) {
 			struct wlr_output_layer_state *layer_state = &state->layers[i];
