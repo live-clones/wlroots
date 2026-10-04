@@ -97,6 +97,14 @@ void wlr_output_state_set_layers(struct wlr_output_state *state,
 	state->layers_len = layers_len;
 }
 
+void wlr_output_state_set_color_format(struct wlr_output_state *state,
+		enum wlr_output_color_format color_format) {
+	state->committed |= WLR_OUTPUT_STATE_COLOR_FORMAT;
+	state->wire_encoding.format = color_format;
+	// Changing the color format may require a modeset in KMS
+	state->allow_reconfiguration = true;
+}
+
 void wlr_output_state_set_wait_timeline(struct wlr_output_state *state,
 		struct wlr_drm_syncobj_timeline *timeline, uint64_t src_point) {
 	state->committed |= WLR_OUTPUT_STATE_WAIT_TIMELINE;
@@ -145,8 +153,8 @@ void wlr_output_state_set_color_encoding_and_range(
 		struct wlr_output_state *state,
 		enum wlr_color_encoding encoding, enum wlr_color_range range) {
 	state->committed |= WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
-	state->color_encoding = encoding;
-	state->color_range = range;
+	state->wire_encoding.encoding = encoding;
+	state->wire_encoding.range = range;
 }
 
 bool wlr_output_state_copy(struct wlr_output_state *dst,

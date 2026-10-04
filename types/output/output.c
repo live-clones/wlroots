@@ -216,6 +216,10 @@ static void output_apply_state(struct wlr_output *output,
 		output->render_format = state->render_format;
 	}
 
+	if (state->committed & WLR_OUTPUT_STATE_COLOR_FORMAT) {
+		output->wire_encoding.format = state->wire_encoding.format;
+	}
+
 	if (state->committed & WLR_OUTPUT_STATE_SUBPIXEL) {
 		output->subpixel = state->subpixel;
 	}
@@ -234,8 +238,8 @@ static void output_apply_state(struct wlr_output *output,
 	}
 
 	if (state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) {
-		output->color_encoding = state->color_encoding;
-		output->color_range = state->color_range;
+		output->wire_encoding.encoding = state->wire_encoding.encoding;
+		output->wire_encoding.range = state->wire_encoding.range;
 	}
 
 	if (state->committed & WLR_OUTPUT_STATE_IMAGE_DESCRIPTION) {
@@ -357,6 +361,9 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 		.impl = impl,
 		.event_loop = event_loop,
 		.render_format = DRM_FORMAT_XRGB8888,
+		.wire_encoding = (struct wlr_output_wire_encoding){
+			.format = WLR_OUTPUT_COLOR_FORMAT_AUTO,
+		},
 		.transform = WL_OUTPUT_TRANSFORM_NORMAL,
 		.scale = 1,
 		.commit_seq = 0,
@@ -586,9 +593,13 @@ static uint32_t output_compare_state(struct wlr_output *output,
 		fields |= WLR_OUTPUT_STATE_COLOR_TRANSFORM;
 	}
 	if ((state->committed & WLR_OUTPUT_STATE_COLOR_REPRESENTATION) &&
-			output->color_encoding == state->color_encoding &&
-			output->color_range == state->color_range) {
+			output->wire_encoding.encoding == state->wire_encoding.encoding &&
+			output->wire_encoding.range == state->wire_encoding.range) {
 		fields |= WLR_OUTPUT_STATE_COLOR_REPRESENTATION;
+	}
+	if ((state->committed & WLR_OUTPUT_STATE_COLOR_FORMAT) &&
+			output->wire_encoding.format == state->wire_encoding.format) {
+		fields |= WLR_OUTPUT_STATE_COLOR_FORMAT;
 	}
 	return fields;
 }

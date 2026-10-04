@@ -415,10 +415,12 @@ bool drm_atomic_connector_prepare(struct wlr_drm_connector_state *state, bool mo
 	}
 
 	uint32_t color_encoding;
-	if (!convert_color_encoding(state->base->color_encoding, &color_encoding)) {
+	if (!convert_color_encoding(state->base->wire_encoding.encoding,
+			&color_encoding)) {
 		return false;
 	}
-	uint32_t color_range = convert_color_range(state->base->color_range);
+	uint32_t color_range =
+		convert_color_range(state->base->wire_encoding.range);
 
 	state->mode_id = mode_id;
 	state->gamma_lut = gamma_lut;
@@ -527,6 +529,11 @@ bool drm_atomic_connector_set_props(drmModeAtomicReq *req,
 	}
 	if (modeset && conn->props.max_bpc != 0 && conn->max_bpc_bounds[1] != 0) {
 		ok = ok && atomic_add(req, conn->id, conn->props.max_bpc, pick_max_bpc(conn, state->primary_fb));
+	}
+	if (conn->props.color_format != 0 &&
+			state->base->committed & WLR_OUTPUT_STATE_COLOR_FORMAT) {
+		ok = ok && atomic_add(req, conn->id, conn->props.color_format,
+			state->base->wire_encoding.format);
 	}
 	if (conn->props.colorspace != 0) {
 		ok = ok && atomic_add(req, conn->id, conn->props.colorspace, state->colorspace);
