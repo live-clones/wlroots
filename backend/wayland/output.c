@@ -566,6 +566,12 @@ static struct wlr_wl_output_layer *get_or_create_output_layer(
 		&output_layer_addon_impl);
 
 	layer->surface = wl_compositor_create_surface(output->backend->compositor);
+
+	// Set buffer scale for layer surfaces too
+	if (output->backend->max_parent_scale > 1) {
+		wl_surface_set_buffer_scale(layer->surface, output->backend->max_parent_scale);
+	}
+
 	layer->subsurface = wl_subcompositor_get_subsurface(
 		output->backend->subcompositor, layer->surface, output->surface);
 
@@ -1047,6 +1053,14 @@ static void xdg_surface_handle_configure(void *data,
 		output->requested_height = 0;
 	}
 
+	// If buffer scale is set, multiply dimensions to account for it
+	// The parent compositor sends logical dimensions, but we need physical buffer dimensions
+	int32_t scale = output->backend->max_parent_scale;
+	if (scale > 1) {
+		req_width *= scale;
+		req_height *= scale;
+	}
+
 	if (output->unmap_callback != NULL) {
 		return;
 	}
@@ -1110,13 +1124,27 @@ static struct wlr_wl_output *output_create(struct wlr_wl_backend *backend,
 
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
-	wlr_output_state_set_custom_mode(&state, 1280, 720, 0);
+
+	// Scale initial dimensions if parent has HiDPI scale
+	int32_t width = 1280;
+	int32_t height = 720;
+	if (backend->max_parent_scale > 1) {
+		width *= backend->max_parent_scale;
+		height *= backend->max_parent_scale;
+	}
+	wlr_output_state_set_custom_mode(&state, width, height, 0);
 
 	wlr_output_init(wlr_output, &backend->backend, &output_impl,
 		backend->event_loop, &state);
 	wlr_output_state_finish(&state);
 
 	wlr_output->adaptive_sync_status = WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
+
+	// Set output scale to match parent compositor so clients render at correct DPI
+	if (backend->max_parent_scale > 1) {
+		wlr_output->scale = (float)backend->max_parent_scale;
+		wlr_log(WLR_DEBUG, "Set output scale to %.1f to match parent", wlr_output->scale);
+	}
 
 	size_t output_num = ++last_output_num;
 
@@ -1165,6 +1193,12 @@ struct wlr_output *wlr_wl_output_create(struct wlr_backend *wlr_backend) {
 	if (surface == NULL) {
 		wlr_log(WLR_ERROR, "Could not create output surface");
 		return NULL;
+	}
+
+	// Set buffer scale to match parent compositor's maximum scale
+	if (backend->max_parent_scale > 1) {
+		wl_surface_set_buffer_scale(surface, backend->max_parent_scale);
+		wlr_log(WLR_DEBUG, "Set output surface buffer scale to %d", backend->max_parent_scale);
 	}
 
 	struct wlr_wl_output *output = output_create(backend, surface);
