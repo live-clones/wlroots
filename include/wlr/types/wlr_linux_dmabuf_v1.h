@@ -16,6 +16,7 @@
 #include <wlr/render/dmabuf.h>
 #include <wlr/render/drm_format_set.h>
 
+struct wlr_compositor;
 struct wlr_surface;
 
 struct wlr_dmabuf_v1_buffer {
@@ -133,5 +134,52 @@ struct wlr_linux_dmabuf_feedback_v1_init_options {
  */
 bool wlr_linux_dmabuf_feedback_v1_init_with_options(struct wlr_linux_dmabuf_feedback_v1 *feedback,
 	const struct wlr_linux_dmabuf_feedback_v1_init_options *options);
+
+enum wlr_surface_dmabuf_waiter_mode {
+	WLR_SURFACE_DMABUF_WAITER_MODE_AVAILABLE,
+	WLR_SURFACE_DMABUF_WAITER_MODE_COMPLETE,
+};
+
+/**
+ * A helper to wait for client buffers to be ready.
+ *
+ * When attached to a surface, this helper will delay commits until the
+ * relevant GPU fences are materialized or work has completed, depending on
+ * mode. When set to WLR_SURFACE_DMABUF_WAITER_MODE_COMPLETE, this means that
+ * wlr_surface.events.commit will only fire when the GPU buffers attached to
+ * that commit are ready to be read.
+ */
+struct wlr_surface_dmabuf_waiter {
+	struct wlr_surface *surface;
+	enum wlr_surface_dmabuf_waiter_mode mode;
+
+	struct {
+		struct wl_list commits; // wlr_surface_dmabuf_waiter_commit.link
+		struct wl_listener client_commit;
+	} WLR_PRIVATE;
+};
+
+/**
+ * Initialize a buffer waiter for a surface.
+ *
+ * Callers must call wlr_surface_dmabuf_waiter_finish() to unregister the waiter.
+ */
+void wlr_surface_dmabuf_waiter_init(struct wlr_surface_dmabuf_waiter *waiter,
+	struct wlr_surface *surface, enum wlr_surface_dmabuf_waiter_mode mode);
+
+/**
+ * Clean up a buffer waiter.
+ *
+ * Any pending commit waiting on GPU work to complete will be applied
+ * immediately.
+ */
+void wlr_surface_dmabuf_waiter_finish(struct wlr_surface_dmabuf_waiter *waiter);
+
+/**
+ * Initialize a compositor-wide buffer waiter, which will listen for new
+ * surfaces and attach buffer waiters to them.
+ */
+void wlr_compositor_dmabuf_waiter_create(struct wlr_compositor *compositor,
+	enum wlr_surface_dmabuf_waiter_mode mode);
 
 #endif
