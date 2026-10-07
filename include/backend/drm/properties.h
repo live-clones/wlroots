@@ -68,6 +68,7 @@ struct wlr_drm_plane_props {
 
 	uint32_t color_encoding; // Not guaranteed to exist
 	uint32_t color_range; // Not guaranteed to exist
+	uint32_t color_pipeline; // Not guaranteed to exist
 };
 
 // Equivalent to wlr_drm_color_encoding defined in the kernel (but not exported)
@@ -83,10 +84,33 @@ enum wlr_drm_color_range {
 	WLR_DRM_COLOR_YCBCR_LIMITED_RANGE,
 };
 
+// Equivalent to drm_colorop_curve_1d_type defined in the kernel (but not exported)
+enum wlr_drm_colorop_curve_1d_type {
+	WLR_DRM_COLOROP_1D_CURVE_SRGB_EOTF,
+	WLR_DRM_COLOROP_1D_CURVE_SRGB_INV_EOTF,
+	WLR_DRM_COLOROP_1D_CURVE_PQ_125_EOTF,
+	WLR_DRM_COLOROP_1D_CURVE_PQ_125_INV_EOTF,
+	WLR_DRM_COLOROP_1D_CURVE_BT2020_INV_OETF,
+	WLR_DRM_COLOROP_1D_CURVE_BT2020_OETF,
+	WLR_DRM_COLOROP_1D_CURVE_GAMMA22,
+	WLR_DRM_COLOROP_1D_CURVE_GAMMA22_INV,
+};
+
+struct wlr_drm_colorop_props {
+	uint32_t type;
+	uint32_t next;
+	uint32_t bypass;
+	uint32_t data; // for 1D_LUT, CTM_3X4, 3D_LUT
+	uint32_t size; // for 1D_LUT, 3D_LUT
+	uint32_t curve_1d_type; // for 1D_CURVE
+	uint32_t multiplier; // for MULTIPLIER
+};
+
 bool get_drm_connector_props(int fd, uint32_t id,
 	struct wlr_drm_connector_props *out);
 bool get_drm_crtc_props(int fd, uint32_t id, struct wlr_drm_crtc_props *out);
 bool get_drm_plane_props(int fd, uint32_t id, struct wlr_drm_plane_props *out);
+bool get_drm_colorop_props(int fd, uint32_t id, struct wlr_drm_colorop_props *out);
 
 bool get_drm_prop(int fd, uint32_t obj, uint32_t prop, uint64_t *ret);
 void *get_drm_prop_blob(int fd, uint32_t obj, uint32_t prop, size_t *ret_len);
@@ -94,5 +118,6 @@ char *get_drm_prop_enum(int fd, uint32_t obj, uint32_t prop);
 
 bool introspect_drm_prop_range(int fd, uint32_t prop_id,
 	uint64_t *min, uint64_t *max);
+bool introspect_drm_prop_enum(int fd, uint32_t prop_id, uint64_t *bitmask);
 
 #endif
