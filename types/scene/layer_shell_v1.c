@@ -106,7 +106,11 @@ void wlr_scene_layer_surface_v1_configure(
 	}
 
 	wlr_scene_node_set_position(&scene_layer_surface->tree->node, box.x, box.y);
-	wlr_layer_surface_v1_configure(layer_surface, box.width, box.height);
+
+	if (box.width != (int)layer_surface->scheduled.width ||
+			box.height != (int)layer_surface->scheduled.height) {
+		wlr_layer_surface_v1_configure(layer_surface, box.width, box.height);
+	}
 
 	if (layer_surface->surface->mapped && state->exclusive_zone > 0) {
 		enum wlr_edges edge = wlr_layer_surface_v1_get_exclusive_edge(layer_surface);
