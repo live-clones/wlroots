@@ -159,6 +159,13 @@ static const struct ext_workspace_handle_v1_interface workspace_impl = {
 	.remove = workspace_handle_remove,
 };
 
+struct wlr_ext_workspace_handle_v1 *wlr_ext_workspace_handle_v1_from_resource(
+		struct wl_resource *resource) {
+	struct wlr_ext_workspace_v1_resource *workspace_res =
+		workspace_resource_from_resource(resource);
+	return workspace_res ? workspace_res->workspace : NULL;
+}
+
 static void group_handle_create_workspace(struct wl_client *client,
 		struct wl_resource *group_resource, const char *name) {
 	struct wlr_ext_workspace_group_v1_resource *group_res =

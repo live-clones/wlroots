@@ -126,6 +126,15 @@ struct wlr_ext_workspace_handle_v1 *wlr_ext_workspace_handle_v1_create(
 	struct wlr_ext_workspace_manager_v1 *manager, const char *id, uint32_t caps);
 void wlr_ext_workspace_handle_v1_destroy(struct wlr_ext_workspace_handle_v1 *workspace);
 
+/**
+ * Returns the workspace matching the provided ext_workspace_handle_v1
+ * resource. If the resource isn't an ext_workspace_handle_v1, it aborts. If
+ * the resource is inert (because the workspace has been destroyed), NULL is
+ * returned.
+ */
+struct wlr_ext_workspace_handle_v1 *wlr_ext_workspace_handle_v1_from_resource(
+	struct wl_resource *resource);
+
 void wlr_ext_workspace_handle_v1_set_group(
 	struct wlr_ext_workspace_handle_v1 *workspace,
 	struct wlr_ext_workspace_group_handle_v1 *group);
